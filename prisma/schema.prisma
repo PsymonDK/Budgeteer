@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SYSTEM_ADMIN
+  USER
+}
+
+enum HouseholdRole {
+  ADMIN
+  MEMBER
+}
+
+enum BudgetStatus {
+  FUTURE
+  ACTIVE
+  RETIRED
+  SIMULATION
+}
+
+enum Frequency {
+  WEEKLY
+  FORTNIGHTLY
+  MONTHLY
+  QUARTERLY
+  BIANNUAL
+  ANNUAL
+}
+
+model User {
+  id                        String                     @id @default(cuid())
+  email                     String                     @unique
+  name                      String
+  passwordHash              String
+  role                      Role                       @default(USER)
+  isActive                  Boolean                    @default(true)
+  mustChangePassword        Boolean                    @default(true)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+
+  households                HouseholdMember[]
+  incomeEntries             IncomeEntry[]
+  refreshTokens             RefreshToken[]
+  createdCategories         ExpenseCategory[]
+}
+
+model Household {
+  id          String            @id @default(cuid())
+  name        String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  members     HouseholdMember[]
+  budgetYears BudgetYear[]
+}
+
+model HouseholdMember {
+  id          String        @id @default(cuid())
+  household   Household     @relation(fields: [householdId], references: [id])
+  householdId String
+  user        User          @relation(fields: [userId], references: [id])
+  userId      String
+  role        HouseholdRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  @@unique([householdId, userId])
+}
+
+model BudgetYear {
+  id              String       @id @default(cuid())
+  household       Household    @relation(fields: [householdId], references: [id])
+  householdId     String
+  year            Int
+  status          BudgetStatus @default(FUTURE)
+  simulationName  String?
+  copiedFromId    String?
+  copiedFrom      BudgetYear?  @relation("BudgetCopies", fields: [copiedFromId], references: [id])
+  copies          BudgetYear[] @relation("BudgetCopies")
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  expenses        Expense[]
+  savingsEntries  SavingsEntry[]
+  incomeAllocations HouseholdIncomeAllocation[]
+}
+
+model IncomeEntry {
+  id                 String                      @id @default(cuid())
+  user               User                        @relation(fields: [userId], references: [id])
+  userId             String
+  label              String
+  amount             Decimal                     @db.Decimal(10, 2)
+  frequency          Frequency
+  frequencyPeriod    String?
+  monthlyEquivalent  Decimal                     @db.Decimal(10, 2)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  allocations        HouseholdIncomeAllocation[]
+}
+
+model HouseholdIncomeAllocation {
+  id             String      @id @default(cuid())
+  incomeEntry    IncomeEntry @relation(fields: [incomeEntryId], references: [id])
+  incomeEntryId  String
+  budgetYear     BudgetYear  @relation(fields: [budgetYearId], references: [id])
+  budgetYearId   String
+  allocationPct  Decimal     @db.Decimal(5, 2)
+
+  @@unique([incomeEntryId, budgetYearId])
+}
+
+model ExpenseCategory {
+  id              String     @id @default(cuid())
+  name            String
+  isSystemWide    Boolean    @default(false)
+  householdId     String?
+  createdBy       User       @relation(fields: [createdByUserId], references: [id])
+  createdByUserId String
+  createdAt       DateTime   @default(now())
+
+  expenses        Expense[]
+}
+
+model Expense {
+  id                String          @id @default(cuid())
+  budgetYear        BudgetYear      @relation(fields: [budgetYearId], references: [id])
+  budgetYearId      String
+  category          ExpenseCategory @relation(fields: [categoryId], references: [id])
+  categoryId        String
+  label             String
+  amount            Decimal         @db.Decimal(10, 2)
+  frequency         Frequency
+  frequencyPeriod   String?
+  monthlyEquivalent Decimal         @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model SavingsEntry {
+  id                String     @id @default(cuid())
+  budgetYear        BudgetYear @relation(fields: [budgetYearId], references: [id])
+  budgetYearId      String
+  label             String
+  amount            Decimal    @db.Decimal(10, 2)
+  frequency         Frequency
+  monthlyEquivalent Decimal    @db.Decimal(10, 2)
+  notes             String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
