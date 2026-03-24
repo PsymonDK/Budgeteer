@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-03-24 — Sprint 5: Expenses
+
+### Added
+- **Calculations utility** (`lib/calculations.ts`) — `calcMonthlyEquivalent` for all 6 frequencies; `deriveBudgetStatus` from year (EXP-001)
+- **Budget years API** (minimal) — `GET /households/:id/budget-years`, `POST /households/:id/budget-years`; status auto-derived from year; prevents duplicate non-simulation years per household
+- **Expenses API** — `GET/POST /budget-years/:id/expenses`, `PUT/DELETE /budget-years/:id/expenses/:expenseId`; monthly equivalent calculated and stored on every create/update (EXP-001, EXP-002, EXP-003)
+- **Expenses page** (`/households/:id/expenses`) — sortable by label, category, frequency, amount, monthly equivalent; filterable by category; shows entered amount + frequency alongside monthly equivalent; running total in table footer (EXP-004)
+- Auto-selects active budget year; prompts to create current year if none exists
+- Real-time monthly equivalent preview in the add/edit form
+- Delete confirmation dialog (EXP-003)
+- Notes indicator (📝) shown inline on expense rows
+- Expenses link added to household detail page
+
+---
+
 ## [0.4.0] - 2026-03-24 — Sprint 4: Expense Categories
 
 ### Added

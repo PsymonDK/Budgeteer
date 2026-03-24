@@ -9,6 +9,7 @@ import { AdminUsersPage } from './pages/admin/UsersPage'
 import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
+import { ExpensesPage } from './pages/ExpensesPage'
 
 const queryClient = new QueryClient()
 
@@ -64,6 +65,14 @@ function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <CategoriesAdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/expenses"
+              element={
+                <ProtectedRoute>
+                  <ExpensesPage />
                 </ProtectedRoute>
               }
             />

@@ -290,6 +290,12 @@ export function HouseholdPage() {
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Manage</h2>
           <div className="flex gap-3">
             <Link
+              to={`/households/${id}/expenses`}
+              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              Expenses →
+            </Link>
+            <Link
               to={`/households/${id}/categories`}
               className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
             >
