@@ -1,18 +1,24 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import { authRoutes } from './routes/auth'
+import { userRoutes } from './routes/users'
 
 const app = Fastify({ logger: true })
 
 // Plugins
 app.register(cors, {
-  origin: process.env.VITE_API_URL || 'http://localhost:5173',
-  credentials: true
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
 })
 
 app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production'
+  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
 })
+
+// Routes
+app.register(authRoutes)
+app.register(userRoutes)
 
 // Health check
 app.get('/health', async () => {
