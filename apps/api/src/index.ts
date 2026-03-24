@@ -9,6 +9,7 @@ import { budgetYearRoutes } from './routes/budgetYears'
 import { expenseRoutes } from './routes/expenses'
 import { incomeRoutes } from './routes/income'
 import { dashboardRoutes } from './routes/dashboard'
+import { compareRoutes } from './routes/compare'
 
 const app = Fastify({ logger: true })
 
@@ -31,6 +32,7 @@ app.register(budgetYearRoutes)
 app.register(expenseRoutes)
 app.register(incomeRoutes)
 app.register(dashboardRoutes)
+app.register(compareRoutes)
 
 // Health check
 app.get('/health', async () => {

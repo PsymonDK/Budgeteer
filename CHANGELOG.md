@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.0] - 2026-03-24 — Sprint 9: Budget Comparison
+
+### Added
+- **Comparison API** — `GET /households/:id/compare?a=yearIdA&b=yearIdB` returns summary totals (income, expenses, savings, surplus) with deltas, and a merged expense list with change status (new/removed/changed/unchanged) for both years (COMP-001, COMP-002, COMP-003)
+- **Compare page** (`/households/:id/compare`) — select any two budget years or simulations for side-by-side analysis:
+  - Summary cards showing A vs B totals with signed deltas (green/red) (COMP-003)
+  - Expense table with colour-coded rows: green = new, red = removed, amber = changed, neutral = unchanged (COMP-002)
+  - Category multi-select filter chips (COMP-004)
+  - Frequency filter chips (COMP-005)
+  - Monthly / quarterly / annual time period toggle — all amounts scale accordingly (COMP-006)
+  - Filtered totals footer with aggregate delta
+- Compare link added to dashboard manage section and Budget Years page
+
+---
+
 ## [0.8.0] - 2026-03-24 — Sprint 8: Budget Years
 
 ### Added

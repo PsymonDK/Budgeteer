@@ -401,6 +401,12 @@ export function DashboardPage() {
               Budget Years →
             </Link>
             <Link
+              to={`/households/${householdId}/compare`}
+              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              Compare →
+            </Link>
+            <Link
               to={`/households/${householdId}/settings`}
               className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
             >

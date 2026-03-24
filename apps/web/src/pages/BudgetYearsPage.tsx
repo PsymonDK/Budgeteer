@@ -221,14 +221,22 @@ export function BudgetYearsPage() {
             <h1 className="text-2xl font-semibold">Budget Years</h1>
             <p className="text-gray-400 text-sm mt-1">Manage budget years and planning simulations.</p>
           </div>
-          {isAdmin && (
-            <button
-              onClick={() => { setShowCreate(true); setCreateError('') }}
-              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+          <div className="flex items-center gap-3">
+            <Link
+              to={`/households/${householdId}/compare`}
+              className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
             >
-              + New year
-            </button>
-          )}
+              Compare →
+            </Link>
+            {isAdmin && (
+              <button
+                onClick={() => { setShowCreate(true); setCreateError('') }}
+                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+              >
+                + New year
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
