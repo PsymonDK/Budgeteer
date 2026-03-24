@@ -4,9 +4,22 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { deriveBudgetStatus } from '../lib/calculations'
 
+// ── Schemas ───────────────────────────────────────────────────────────────────
+
 const CreateBudgetYearSchema = z.object({
   year: z.number().int().min(2000).max(2100),
 })
+
+const CopyBudgetYearSchema = z.union([
+  z.object({ year: z.number().int().min(2000).max(2100) }),
+  z.object({ simulationName: z.string().min(1).max(100) }),
+])
+
+const RenameSimulationSchema = z.object({
+  simulationName: z.string().min(1).max(100),
+})
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function assertHouseholdMember(householdId: string, userId: string) {
   return prisma.householdMember.findUnique({
@@ -14,8 +27,18 @@ async function assertHouseholdMember(householdId: string, userId: string) {
   })
 }
 
+async function assertHouseholdAdmin(householdId: string, userId: string, role: string) {
+  if (role === 'SYSTEM_ADMIN') return true
+  const member = await prisma.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId } },
+  })
+  return member?.role === 'ADMIN'
+}
+
+// ── Routes ────────────────────────────────────────────────────────────────────
+
 export async function budgetYearRoutes(fastify: FastifyInstance) {
-  // GET /households/:id/budget-years
+  // GET /households/:id/budget-years — all years including simulations
   fastify.get('/households/:id/budget-years', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
@@ -26,17 +49,17 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     }
 
     const years = await prisma.budgetYear.findMany({
-      where: { householdId, status: { not: 'SIMULATION' } },
+      where: { householdId },
       include: {
         _count: { select: { expenses: true, savingsEntries: true } },
       },
-      orderBy: { year: 'desc' },
+      orderBy: [{ year: 'desc' }, { createdAt: 'asc' }],
     })
 
     return reply.send(years)
   })
 
-  // POST /households/:id/budget-years
+  // POST /households/:id/budget-years — create a regular (non-simulation) budget year
   fastify.post('/households/:id/budget-years', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
@@ -46,10 +69,8 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await assertHouseholdMember(householdId, userId)
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
 
     const { year } = result.data
 
@@ -68,5 +89,222 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     })
 
     return reply.status(201).send(budgetYear)
+  })
+
+  // POST /households/:id/budget-years/:yearId/copy — copy expenses + savings to a new year or simulation
+  fastify.post('/households/:id/budget-years/:yearId/copy', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId, yearId } = request.params as { id: string; yearId: string }
+    const { sub: userId, role } = request.user
+
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
+
+    const result = CopyBudgetYearSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Provide either { year } or { simulationName }', details: result.error.flatten() })
+    }
+
+    const source = await prisma.budgetYear.findFirst({
+      where: { id: yearId, householdId },
+      include: { expenses: true, savingsEntries: true },
+    })
+    if (!source) return reply.status(404).send({ error: 'Budget year not found' })
+
+    const data = result.data
+
+    if ('year' in data) {
+      const existing = await prisma.budgetYear.findFirst({
+        where: { householdId, year: data.year, status: { not: 'SIMULATION' } },
+      })
+      if (existing) {
+        return reply.status(409).send({ error: `A budget year for ${data.year} already exists` })
+      }
+
+      const newYear = await prisma.$transaction(async (tx) => {
+        const created = await tx.budgetYear.create({
+          data: { householdId, year: data.year, status: deriveBudgetStatus(data.year), copiedFromId: source.id },
+        })
+
+        if (source.expenses.length > 0) {
+          await tx.expense.createMany({
+            data: source.expenses.map((e) => ({
+              budgetYearId: created.id,
+              label: e.label,
+              amount: e.amount,
+              frequency: e.frequency,
+              frequencyPeriod: e.frequencyPeriod,
+              monthlyEquivalent: e.monthlyEquivalent,
+              notes: e.notes,
+              categoryId: e.categoryId,
+            })),
+          })
+        }
+
+        if (source.savingsEntries.length > 0) {
+          await tx.savingsEntry.createMany({
+            data: source.savingsEntries.map((s) => ({
+              budgetYearId: created.id,
+              label: s.label,
+              amount: s.amount,
+              frequency: s.frequency,
+              monthlyEquivalent: s.monthlyEquivalent,
+              notes: s.notes,
+            })),
+          })
+        }
+
+        return tx.budgetYear.findUnique({
+          where: { id: created.id },
+          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+        })
+      })
+
+      return reply.status(201).send(newYear)
+    } else {
+      const newSim = await prisma.$transaction(async (tx) => {
+        const created = await tx.budgetYear.create({
+          data: {
+            householdId,
+            year: source.year,
+            status: 'SIMULATION',
+            simulationName: data.simulationName,
+            copiedFromId: source.id,
+          },
+        })
+
+        if (source.expenses.length > 0) {
+          await tx.expense.createMany({
+            data: source.expenses.map((e) => ({
+              budgetYearId: created.id,
+              label: e.label,
+              amount: e.amount,
+              frequency: e.frequency,
+              frequencyPeriod: e.frequencyPeriod,
+              monthlyEquivalent: e.monthlyEquivalent,
+              notes: e.notes,
+              categoryId: e.categoryId,
+            })),
+          })
+        }
+
+        if (source.savingsEntries.length > 0) {
+          await tx.savingsEntry.createMany({
+            data: source.savingsEntries.map((s) => ({
+              budgetYearId: created.id,
+              label: s.label,
+              amount: s.amount,
+              frequency: s.frequency,
+              monthlyEquivalent: s.monthlyEquivalent,
+              notes: s.notes,
+            })),
+          })
+        }
+
+        return tx.budgetYear.findUnique({
+          where: { id: created.id },
+          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+        })
+      })
+
+      return reply.status(201).send(newSim)
+    }
+  })
+
+  // PATCH /households/:id/budget-years/:yearId — rename a simulation
+  fastify.patch('/households/:id/budget-years/:yearId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId, yearId } = request.params as { id: string; yearId: string }
+    const { sub: userId, role } = request.user
+
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
+
+    const result = RenameSimulationSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'simulationName is required', details: result.error.flatten() })
+    }
+
+    const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
+    if (!target) return reply.status(404).send({ error: 'Budget year not found' })
+    if (target.status !== 'SIMULATION') return reply.status(400).send({ error: 'Only simulations can be renamed' })
+
+    const updated = await prisma.budgetYear.update({
+      where: { id: yearId },
+      data: { simulationName: result.data.simulationName },
+      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+    })
+
+    return reply.send(updated)
+  })
+
+  // PATCH /households/:id/budget-years/:yearId/retire — manually retire a budget year
+  fastify.patch('/households/:id/budget-years/:yearId/retire', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId, yearId } = request.params as { id: string; yearId: string }
+    const { sub: userId, role } = request.user
+
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
+
+    const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
+    if (!target) return reply.status(404).send({ error: 'Budget year not found' })
+    if (target.status !== 'ACTIVE' && target.status !== 'FUTURE') {
+      return reply.status(400).send({ error: 'Only active or future budget years can be retired' })
+    }
+
+    const updated = await prisma.budgetYear.update({
+      where: { id: yearId },
+      data: { status: 'RETIRED' },
+      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+    })
+
+    return reply.send(updated)
+  })
+
+  // PATCH /households/:id/budget-years/:yearId/promote — promote a simulation to active
+  fastify.patch('/households/:id/budget-years/:yearId/promote', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId, yearId } = request.params as { id: string; yearId: string }
+    const { sub: userId, role } = request.user
+
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
+
+    const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
+    if (!target) return reply.status(404).send({ error: 'Budget year not found' })
+    if (target.status !== 'SIMULATION') {
+      return reply.status(400).send({ error: 'Only simulations can be promoted' })
+    }
+
+    const promoted = await prisma.$transaction(async (tx) => {
+      await tx.budgetYear.updateMany({
+        where: { householdId, status: 'ACTIVE' },
+        data: { status: 'RETIRED' },
+      })
+
+      return tx.budgetYear.update({
+        where: { id: yearId },
+        data: { status: 'ACTIVE', simulationName: null },
+        include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      })
+    })
+
+    return reply.send(promoted)
+  })
+
+  // DELETE /households/:id/budget-years/:yearId — delete a simulation
+  fastify.delete('/households/:id/budget-years/:yearId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId, yearId } = request.params as { id: string; yearId: string }
+    const { sub: userId, role } = request.user
+
+    const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
+    if (!isAdmin) return reply.status(403).send({ error: 'Forbidden' })
+
+    const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
+    if (!target) return reply.status(404).send({ error: 'Budget year not found' })
+    if (target.status !== 'SIMULATION') {
+      return reply.status(400).send({ error: 'Only simulations can be deleted' })
+    }
+
+    await prisma.budgetYear.delete({ where: { id: yearId } })
+
+    return reply.status(204).send()
   })
 }

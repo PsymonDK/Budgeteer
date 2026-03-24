@@ -13,6 +13,7 @@ import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { IncomePage } from './pages/IncomePage'
 import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
+import { BudgetYearsPage } from './pages/BudgetYearsPage'
 
 const queryClient = new QueryClient()
 
@@ -100,6 +101,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <HouseholdIncomePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/budget-years"
+              element={
+                <ProtectedRoute>
+                  <BudgetYearsPage />
                 </ProtectedRoute>
               }
             />

@@ -1,5 +1,5 @@
 import { useState, useMemo, type FormEvent } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
@@ -28,6 +28,7 @@ interface BudgetYear {
   id: string
   year: number
   status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
+  simulationName: string | null
 }
 
 interface Household {
@@ -90,8 +91,15 @@ const emptyForm: ExpenseForm = {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+function yearLabel(y: BudgetYear) {
+  if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`
+  return `${y.year} (${y.status.charAt(0) + y.status.slice(1).toLowerCase()})`
+}
+
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const requestedYearId = searchParams.get('budgetYearId')
   const { user: me, logout } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -122,8 +130,13 @@ export function ExpensesPage() {
     enabled: !!householdId,
   })
 
-  // Auto-select the active year, falling back to the most recent
-  const activeBudgetYear = budgetYears.find((y) => y.status === 'ACTIVE') ?? budgetYears[0] ?? null
+  // Respect ?budgetYearId param; otherwise default to active year or most recent
+  const [selectedYearId, setSelectedYearId] = useState<string | null>(requestedYearId)
+  const activeBudgetYear = (
+    selectedYearId
+      ? budgetYears.find((y) => y.id === selectedYearId)
+      : budgetYears.find((y) => y.status === 'ACTIVE') ?? budgetYears[0]
+  ) ?? null
 
   const { data: expenses = [], isLoading: expensesLoading } = useQuery<Expense[]>({
     queryKey: ['expenses', activeBudgetYear?.id],
@@ -301,16 +314,29 @@ export function ExpensesPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        {/* Budget year banner */}
-        {activeBudgetYear && (
+        {/* Budget year selector */}
+        {budgetYears.length > 0 && (
           <div className="mb-6 flex items-center gap-3">
-            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-              activeBudgetYear.status === 'ACTIVE' ? 'bg-green-900/50 text-green-300' :
-              activeBudgetYear.status === 'FUTURE' ? 'bg-blue-900/50 text-blue-300' :
-              'bg-gray-800 text-gray-400'
-            }`}>
-              {activeBudgetYear.year} · {activeBudgetYear.status}
-            </span>
+            {budgetYears.length === 1 ? (
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
+                activeBudgetYear?.status === 'ACTIVE' ? 'bg-green-900/50 text-green-300' :
+                activeBudgetYear?.status === 'FUTURE' ? 'bg-blue-900/50 text-blue-300' :
+                activeBudgetYear?.status === 'SIMULATION' ? 'bg-purple-900/50 text-purple-300' :
+                'bg-gray-800 text-gray-400'
+              }`}>
+                {activeBudgetYear ? yearLabel(activeBudgetYear) : ''}
+              </span>
+            ) : (
+              <select
+                value={activeBudgetYear?.id ?? ''}
+                onChange={(e) => setSelectedYearId(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                {budgetYears.map((y) => (
+                  <option key={y.id} value={y.id}>{yearLabel(y)}</option>
+                ))}
+              </select>
+            )}
           </div>
         )}
 

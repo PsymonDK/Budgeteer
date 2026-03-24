@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-03-24 — Sprint 8: Budget Years
+
+### Added
+- **Budget year lifecycle API** — full CRUD on `/households/:id/budget-years`:
+  - `POST /:yearId/copy` — copies all expenses and savings to a new calendar year or a named simulation (income allocations not copied) (BY-002)
+  - `PATCH /:yearId` — rename a simulation (BY-003)
+  - `PATCH /:yearId/retire` — manually retire an active or future budget year; sets to read-only (BY-005)
+  - `PATCH /:yearId/promote` — promote a simulation to active; current active year is automatically retired (BY-004)
+  - `DELETE /:yearId` — delete a simulation (BY-003)
+- `GET /households/:id/budget-years` now includes simulations with `simulationName` field
+- **Budget Years page** (`/households/:id/budget-years`) — lists regular years and simulations in separate sections; create, copy, rename, retire, promote, and delete actions with confirmation dialogs (BY-001 – BY-005)
+- **Budget year selector** on Expenses page — dropdown to switch between all years and simulations; respects `?budgetYearId=` query param for direct linking from Budget Years page (BY-003)
+- Budget Years link added to household dashboard manage section
+
+---
+
 ## [0.7.0] - 2026-03-24 — Sprint 7: Dashboard & Summary
 
 ### Added
