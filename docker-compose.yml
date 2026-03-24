@@ -34,6 +34,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
 
   web:
     build:
