@@ -3,6 +3,7 @@ import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
 import { authRoutes } from './routes/auth'
 import { userRoutes } from './routes/users'
+import { householdRoutes } from './routes/households'
 
 const app = Fastify({ logger: true })
 
@@ -19,6 +20,7 @@ app.register(jwt, {
 // Routes
 app.register(authRoutes)
 app.register(userRoutes)
+app.register(householdRoutes)
 
 // Health check
 app.get('/health', async () => {

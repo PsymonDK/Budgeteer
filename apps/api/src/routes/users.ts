@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { hashPassword } from '../lib/password'
-import { requireAdmin } from '../plugins/authenticate'
+import { authenticate, requireAdmin } from '../plugins/authenticate'
 
 const CreateUserSchema = z.object({
   email: z.string().email(),
@@ -31,8 +31,8 @@ const userSelect = {
 } as const
 
 export async function userRoutes(fastify: FastifyInstance) {
-  // GET /users — list all users (admin only)
-  fastify.get('/users', { preHandler: requireAdmin }, async (_request, reply) => {
+  // GET /users — all authenticated users can list; needed so household admins can pick members
+  fastify.get('/users', { preHandler: authenticate }, async (_request, reply) => {
     const users = await prisma.user.findMany({
       select: userSelect,
       orderBy: { createdAt: 'asc' },

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-03-24 — Sprint 3: Households
+
+### Added
+- **Household API** — `GET/POST /households`, `GET/PUT /households/:id`, member endpoints (`POST/PUT/DELETE /households/:id/members`) (HH-001 – HH-004)
+- **Households page** (`/`) — lists all user households with member count and role badge; create household modal navigates directly into the new household (HH-001, HH-004)
+- **Household detail page** (`/households/:id`) — inline name editing (admin), members table with role toggle and remove actions; last-admin guard enforced on both frontend and API (HH-002, HH-003)
+- **Admin households page** (`/admin/households`) — system admin view of all households with member count and admin names (ADMIN-004)
+- `GET /users` now accessible to all authenticated users so household admins can select members from the full user list (HH-002)
+- Income allocations are preserved on member removal — they live on `IncomeEntry`, not `HouseholdMember` (HH-003)
+
+### Changed
+- `App.tsx` — placeholder Dashboard replaced by `HouseholdsPage`; added `/households/:id` and `/admin/households` routes
+
+---
+
 ## [0.2.0] - 2026-03-24 — Sprint 2: Auth & User Management
 
 ### Added
