@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { HouseholdsPage } from './pages/HouseholdsPage'
 import { HouseholdPage } from './pages/HouseholdPage'
+import { DashboardPage } from './pages/DashboardPage'
 import { AdminUsersPage } from './pages/admin/UsersPage'
 import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
 import { CategoriesPage } from './pages/CategoriesPage'
@@ -32,6 +33,14 @@ function App() {
             />
             <Route
               path="/households/:id"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/settings"
               element={
                 <ProtectedRoute>
                   <HouseholdPage />

@@ -156,7 +156,11 @@ export function HouseholdPage() {
             ☠️ Budgeteer
           </Link>
           <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm truncate max-w-xs">{household.name}</span>
+          <Link to={`/households/${id}`} className="text-gray-300 text-sm hover:text-white transition-colors truncate max-w-xs">
+            {household.name}
+          </Link>
+          <span className="text-gray-600">/</span>
+          <span className="text-gray-400 text-sm">Settings</span>
         </div>
         <div className="flex items-center gap-4">
           {me?.role === 'SYSTEM_ADMIN' && (
@@ -287,27 +291,12 @@ export function HouseholdPage() {
         </div>
 
         <div className="mt-10 pt-6 border-t border-gray-800">
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Manage</h2>
-          <div className="flex gap-3">
-            <Link
-              to={`/households/${id}/income`}
-              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
-            >
-              Income →
-            </Link>
-            <Link
-              to={`/households/${id}/expenses`}
-              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
-            >
-              Expenses →
-            </Link>
-            <Link
-              to={`/households/${id}/categories`}
-              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
-            >
-              Categories →
-            </Link>
-          </div>
+          <Link
+            to={`/households/${id}`}
+            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+          >
+            ← Back to dashboard
+          </Link>
         </div>
       </main>
 
