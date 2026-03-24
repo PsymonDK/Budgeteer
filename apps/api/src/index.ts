@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt'
 import { authRoutes } from './routes/auth'
 import { userRoutes } from './routes/users'
 import { householdRoutes } from './routes/households'
+import { categoryRoutes } from './routes/categories'
 
 const app = Fastify({ logger: true })
 
@@ -21,6 +22,7 @@ app.register(jwt, {
 app.register(authRoutes)
 app.register(userRoutes)
 app.register(householdRoutes)
+app.register(categoryRoutes)
 
 // Health check
 app.get('/health', async () => {

@@ -286,9 +286,17 @@ export function HouseholdPage() {
           </table>
         </div>
 
-        <p className="text-gray-600 text-xs mt-6 text-center">
-          Budget years coming in Sprint 5+
-        </p>
+        <div className="mt-10 pt-6 border-t border-gray-800">
+          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Manage</h2>
+          <div className="flex gap-3">
+            <Link
+              to={`/households/${id}/categories`}
+              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              Categories →
+            </Link>
+          </div>
+        </div>
       </main>
 
       {/* Add member modal */}

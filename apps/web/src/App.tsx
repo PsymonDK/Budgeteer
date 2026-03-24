@@ -7,6 +7,8 @@ import { HouseholdsPage } from './pages/HouseholdsPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { AdminUsersPage } from './pages/admin/UsersPage'
 import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
+import { CategoriesPage } from './pages/CategoriesPage'
+import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
 
 const queryClient = new QueryClient()
 
@@ -46,6 +48,22 @@ function App() {
               element={
                 <ProtectedRoute requireAdmin>
                   <HouseholdsAdminPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/categories"
+              element={
+                <ProtectedRoute>
+                  <CategoriesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/categories"
+              element={
+                <ProtectedRoute requireAdmin>
+                  <CategoriesAdminPage />
                 </ProtectedRoute>
               }
             />
