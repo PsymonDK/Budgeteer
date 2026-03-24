@@ -12,6 +12,8 @@ import { dashboardRoutes } from './routes/dashboard'
 import { compareRoutes } from './routes/compare'
 import { savingsRoutes } from './routes/savings'
 
+const VERSION = process.env.npm_package_version ?? '0.12.0'
+
 const app = Fastify({ logger: true })
 
 // Plugins
@@ -38,7 +40,7 @@ app.register(savingsRoutes)
 
 // Health check
 app.get('/health', async () => {
-  return { status: 'ok', version: '0.1.0' }
+  return { status: 'ok', version: VERSION }
 })
 
 // Start
@@ -46,7 +48,7 @@ const start = async () => {
   try {
     const port = Number(process.env.API_PORT) || 3001
     await app.listen({ port, host: '0.0.0.0' })
-    console.log(`API running on port ${port}`)
+    console.log(`API v${VERSION} running on port ${port}`)
   } catch (err) {
     app.log.error(err)
     process.exit(1)

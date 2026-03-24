@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.0] - 2026-03-24 — Sprint 11 & 12: History + Open Source
+
+### Added
+- **Trends API** — `GET /households/:id/trends` returns income, expenses, savings, surplus and per-category expense breakdown for every non-simulation budget year, ordered by year (HIST-002)
+- **Dashboard summary `?budgetYearId=`** — optional query param lets any budget year (including retired ones) be loaded as a read-only summary (HIST-001)
+- **History page** (`/households/:id/history`) — year-over-year grouped bar chart (recharts) with an expense category filter; collapsible timeline showing each year's totals and category breakdown with a link to its expenses (HIST-001, HIST-002)
+- **Test suite** — Vitest set up for API; unit tests for `calcMonthlyEquivalent` (all 6 frequencies) and `deriveBudgetStatus` (`npm test` in `apps/api/`) (OSS-002)
+- **Demo seed data** (`SEED_DEMO_DATA=true`) — 4 users, 2 households, 3 budget years (retired, active, simulation), sample expenses, savings, and income allocations (OSS-003)
+- **API versioning** — version read from `npm_package_version` at runtime; returned in `GET /health`; displayed in app footer (OSS-004)
+- **`CONTRIBUTING.md`** — setup guide (Docker + bare metal), architecture decisions table, branching & PR guidelines, endpoint authoring conventions, environment variable reference (OSS-001)
+- History link added to dashboard manage section; `AppFooter` component added to dashboard
+
+---
+
 ## [0.10.0] - 2026-03-24 — Sprint 10: Savings
 
 ### Added

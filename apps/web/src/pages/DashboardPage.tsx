@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { AppFooter } from '../components/AppFooter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -503,6 +504,12 @@ export function DashboardPage() {
               Budget Years →
             </Link>
             <Link
+              to={`/households/${householdId}/history`}
+              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              History →
+            </Link>
+            <Link
               to={`/households/${householdId}/compare`}
               className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
             >
@@ -517,6 +524,7 @@ export function DashboardPage() {
           </div>
         </div>
       </main>
+      <AppFooter />
     </div>
   )
 }
