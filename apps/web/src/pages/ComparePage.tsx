@@ -184,8 +184,6 @@ export function ComparePage() {
     navigate('/login', { replace: true })
   }
 
-  const mul = PERIOD_MULTIPLIER[period]
-
   // ── Status row styling ─────────────────────────────────────────────────────
 
   function rowStyle(status: ExpenseRow['status']) {

@@ -151,26 +151,25 @@ async function main() {
     ],
   })
 
-  // Alice income + allocation to Smith active
+  // Alice income + allocation to Smith active + retired
   const aliceIncome = await prisma.incomeEntry.create({
     data: { userId: alice.id, label: 'Salary', amount: 5500, frequency: 'MONTHLY', monthlyEquivalent: 5500 },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: aliceIncome.id, householdId: smithHousehold.id, budgetYearId: smithActive.id, allocationPct: 100 },
+    data: { incomeEntryId: aliceIncome.id, budgetYearId: smithActive.id, allocationPct: 100 },
   })
-  const aliceIncomeRetired = await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: aliceIncome.id, householdId: smithHousehold.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+  await prisma.householdIncomeAllocation.create({
+    data: { incomeEntryId: aliceIncome.id, budgetYearId: smithRetired.id, allocationPct: 100 },
   })
-  void aliceIncomeRetired
 
   const bobIncome = await prisma.incomeEntry.create({
     data: { userId: bob.id, label: 'Salary', amount: 4200, frequency: 'MONTHLY', monthlyEquivalent: 4200 },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: bobIncome.id, householdId: smithHousehold.id, budgetYearId: smithActive.id, allocationPct: 100 },
+    data: { incomeEntryId: bobIncome.id, budgetYearId: smithActive.id, allocationPct: 100 },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: bobIncome.id, householdId: smithHousehold.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+    data: { incomeEntryId: bobIncome.id, budgetYearId: smithRetired.id, allocationPct: 100 },
   })
 
   console.log('✓ Created Smith Family household (2 budget years + 1 simulation)')
@@ -208,14 +207,14 @@ async function main() {
     data: { userId: carol.id, label: 'Salary', amount: 6000, frequency: 'MONTHLY', monthlyEquivalent: 6000 },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: carolIncome.id, householdId: cdHousehold.id, budgetYearId: cdActive.id, allocationPct: 100 },
+    data: { incomeEntryId: carolIncome.id, budgetYearId: cdActive.id, allocationPct: 100 },
   })
 
   const daveIncome = await prisma.incomeEntry.create({
     data: { userId: dave.id, label: 'Freelance', amount: 3500, frequency: 'MONTHLY', monthlyEquivalent: 3500 },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: daveIncome.id, householdId: cdHousehold.id, budgetYearId: cdActive.id, allocationPct: 100 },
+    data: { incomeEntryId: daveIncome.id, budgetYearId: cdActive.id, allocationPct: 100 },
   })
 
   console.log('✓ Created Carol & Dave household (1 active budget year)')

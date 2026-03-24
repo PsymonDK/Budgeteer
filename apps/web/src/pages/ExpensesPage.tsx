@@ -211,7 +211,7 @@ export function ExpensesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: typeof form) =>
+    mutationFn: (data: Omit<ExpenseForm, 'frequencyPeriod' | 'notes'> & { frequencyPeriod?: string; notes?: string }) =>
       api.put<Expense>(`/budget-years/${activeBudgetYear!.id}/expenses/${editingExpense!.id}`, {
         ...data,
         amount: parseFloat(data.amount),
