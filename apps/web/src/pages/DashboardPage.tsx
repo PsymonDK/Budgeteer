@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
@@ -73,6 +73,14 @@ interface Household {
   myRole: 'ADMIN' | 'MEMBER' | null
 }
 
+interface SavingsHistoryRow {
+  year: number
+  status: string
+  totalMonthlyIncome: string
+  totalMonthlySavings: string
+  savingsRate: string | null
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(v: number | string) {
@@ -97,9 +105,18 @@ export function DashboardPage() {
   // DASH-003: dismissed warning keys
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
+  // SAV-003: affordability slider (extra monthly savings)
+  const [extraSavings, setExtraSavings] = useState(0)
+
   const { data: household } = useQuery<Household>({
     queryKey: ['household', householdId],
     queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
+    enabled: !!householdId,
+  })
+
+  const { data: savingsHistory = [] } = useQuery<SavingsHistoryRow[]>({
+    queryKey: ['savings-history', householdId],
+    queryFn: async () => (await api.get<SavingsHistoryRow[]>(`/households/${householdId}/savings-history`)).data,
     enabled: !!householdId,
   })
 
@@ -124,6 +141,13 @@ export function DashboardPage() {
   const expenses = parseFloat(summary?.expenses.totalMonthly ?? '0')
   const savings = parseFloat(summary?.savings.totalMonthly ?? '0')
   const surplus = parseFloat(summary?.surplus ?? '0')
+
+  // SAV-002: savings rate
+  const savingsRate = income > 0 ? (savings / income) * 100 : null
+
+  // SAV-003: adjusted surplus after extra savings slider
+  const adjustedSurplus = useMemo(() => surplus - extraSavings, [surplus, extraSavings])
+  const sliderMax = useMemo(() => Math.max(Math.ceil(surplus / 100) * 100, 500), [surplus])
 
   const warnings = summary?.warnings
   const activeWarnings: { key: string; message: string }[] = []
@@ -219,6 +243,9 @@ export function DashboardPage() {
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
                 <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Savings / mo</p>
                 <p className="text-2xl font-bold text-white">{fmt(savings)}</p>
+                {savingsRate !== null && (
+                  <p className="text-xs text-gray-500 mt-1">{savingsRate.toFixed(1)}% of income</p>
+                )}
               </div>
               <div className={`bg-gray-900 border rounded-xl p-4 ${
                 surplus < 0 ? 'border-red-800' : 'border-gray-800'
@@ -229,6 +256,75 @@ export function DashboardPage() {
                 </p>
               </div>
             </div>
+
+            {/* SAV-003: Affordability calculator */}
+            {surplus > 0 && (
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
+                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Affordability calculator</h2>
+                <p className="text-gray-400 text-xs mb-4">What if I saved more each month?</p>
+                <div className="flex items-center gap-4 mb-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={sliderMax}
+                    step={10}
+                    value={extraSavings}
+                    onChange={(e) => setExtraSavings(Number(e.target.value))}
+                    className="flex-1 accent-amber-400"
+                  />
+                  <span className="text-amber-400 font-bold tabular-nums w-24 text-right">
+                    +{fmt(extraSavings)} / mo
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-400">Remaining surplus</span>
+                  <span className={`font-bold tabular-nums text-lg ${adjustedSurplus < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                    {fmt(adjustedSurplus)} / mo
+                  </span>
+                </div>
+                {extraSavings > 0 && income > 0 && (
+                  <p className="text-xs text-gray-600 mt-2">
+                    Total savings rate would be {(((savings + extraSavings) / income) * 100).toFixed(1)}% of income
+                  </p>
+                )}
+                {extraSavings > 0 && (
+                  <button
+                    onClick={() => setExtraSavings(0)}
+                    className="mt-3 text-xs text-gray-600 hover:text-gray-400 transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* SAV-002: Savings rate history */}
+            {savingsHistory.filter((r) => r.savingsRate !== null).length > 1 && (
+              <div className="mb-8">
+                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Savings rate history</h2>
+                <div className="space-y-2">
+                  {savingsHistory.filter((r) => r.savingsRate !== null).map((r) => {
+                    const rate = parseFloat(r.savingsRate!)
+                    return (
+                      <div key={r.year} className="flex items-center gap-3">
+                        <span className="text-gray-400 text-sm w-16 shrink-0">{r.year}</span>
+                        <div className="flex-1 bg-gray-800 rounded-full h-2">
+                          <div
+                            className="bg-amber-400/70 h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(rate, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-gray-300 text-sm tabular-nums w-12 text-right">{rate.toFixed(1)}%</span>
+                        <span className={`text-xs w-14 text-right ${
+                          r.status === 'ACTIVE' ? 'text-green-400' :
+                          r.status === 'FUTURE' ? 'text-blue-400' : 'text-gray-600'
+                        }`}>{r.status.toLowerCase()}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Member splits */}
             {summary.memberSplits.length > 0 && (
@@ -381,6 +477,12 @@ export function DashboardPage() {
               className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
             >
               Income →
+            </Link>
+            <Link
+              to={`/households/${householdId}/savings`}
+              className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-lg px-4 py-3 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              Savings →
             </Link>
             <Link
               to={`/households/${householdId}/expenses`}

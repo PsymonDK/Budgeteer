@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0] - 2026-03-24 — Sprint 10: Savings
+
+### Added
+- **Savings API** — full CRUD on `/budget-years/:id/savings`; monthly equivalent calculated on every save; read-only enforcement on RETIRED years (SAV-001)
+- **Savings history API** — `GET /households/:id/savings-history` returns savings rate per non-simulation budget year (SAV-002)
+- **Savings page** (`/households/:id/savings`) — add/edit/delete savings entries with label, amount, frequency, optional notes; budget year selector; running total footer; read-only view for retired years (SAV-001)
+- **Savings rate on dashboard** — savings card shows percentage of income; historical savings rate bar chart appears when multiple years have data (SAV-002)
+- **Affordability calculator on dashboard** — slider to model "what if I saved X more?"; shows adjusted remaining surplus and projected total savings rate; resets to zero on dismiss (SAV-003)
+- Savings link added to household dashboard manage section
+
+---
+
 ## [0.9.0] - 2026-03-24 — Sprint 9: Budget Comparison
 
 ### Added

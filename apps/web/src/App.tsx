@@ -15,6 +15,7 @@ import { IncomePage } from './pages/IncomePage'
 import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
 import { BudgetYearsPage } from './pages/BudgetYearsPage'
 import { ComparePage } from './pages/ComparePage'
+import { SavingsPage } from './pages/SavingsPage'
 
 const queryClient = new QueryClient()
 
@@ -118,6 +119,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ComparePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/savings"
+              element={
+                <ProtectedRoute>
+                  <SavingsPage />
                 </ProtectedRoute>
               }
             />
