@@ -10,6 +10,8 @@ import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
 import { ExpensesPage } from './pages/ExpensesPage'
+import { IncomePage } from './pages/IncomePage'
+import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
 
 const queryClient = new QueryClient()
 
@@ -73,6 +75,22 @@ function App() {
               element={
                 <ProtectedRoute>
                   <ExpensesPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/income"
+              element={
+                <ProtectedRoute>
+                  <IncomePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/households/:id/income"
+              element={
+                <ProtectedRoute>
+                  <HouseholdIncomePage />
                 </ProtectedRoute>
               }
             />
