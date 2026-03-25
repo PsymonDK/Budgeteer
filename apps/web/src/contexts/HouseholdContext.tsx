@@ -29,6 +29,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['households'],
     queryFn: async () => (await api.get<Household[]>('/households')).data,
     enabled: !!user,
+    retry: false,
   })
 
   // Validate stored ID on load; fall back if no longer member

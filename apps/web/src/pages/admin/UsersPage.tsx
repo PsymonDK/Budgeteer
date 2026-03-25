@@ -148,7 +148,10 @@ export function AdminUsersPage() {
   function handleCreate(e: FormEvent) {
     e.preventDefault()
     setFormError('')
-    createMutation.mutate(createForm)
+    const payload = createForm.isProxy
+      ? { name: createForm.name, email: createForm.email, isProxy: true }
+      : createForm
+    createMutation.mutate(payload as UserFormData)
   }
 
   function handleEdit(e: FormEvent) {
