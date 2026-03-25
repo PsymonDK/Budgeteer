@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
@@ -43,8 +43,7 @@ function statusLabel(by: BudgetYear) {
 
 export function BudgetYearsPage() {
   const { id: householdId } = useParams<{ id: string }>()
-  const { user: me, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user: me } = useAuth()
   const queryClient = useQueryClient()
 
   // Create year modal
@@ -183,11 +182,6 @@ export function BudgetYearsPage() {
     setRenameError('')
   }
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   // ── Grouping ──────────────────────────────────────────────────────────────────
 
   const regularYears = years.filter((y) => y.status !== 'SIMULATION')
@@ -196,25 +190,7 @@ export function BudgetYearsPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">☠️ Budgeteer</Link>
-          <span className="text-gray-600">/</span>
-          <Link to={`/households/${householdId}`} className="text-gray-300 text-sm hover:text-white transition-colors">
-            {household?.name ?? '…'}
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-400 text-sm">Budget Years</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {me?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-          )}
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">Sign out</button>
-        </div>
-      </header>
-
+    <>
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -630,6 +606,6 @@ export function BudgetYearsPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

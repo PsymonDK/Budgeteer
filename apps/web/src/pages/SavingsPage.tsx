@@ -1,9 +1,8 @@
 import { useState, useMemo, type FormEvent } from 'react'
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
-import { useAuth } from '../contexts/AuthContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -32,11 +31,6 @@ interface BudgetYear {
   year: number
   status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
   simulationName: string | null
-}
-
-interface Household {
-  id: string
-  name: string
 }
 
 interface EntryForm {
@@ -89,8 +83,6 @@ export function SavingsPage() {
   const { id: householdId } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const requestedYearId = searchParams.get('budgetYearId')
-  const { user: me, logout } = useAuth()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const [selectedYearId, setSelectedYearId] = useState<string | null>(requestedYearId)
@@ -101,12 +93,6 @@ export function SavingsPage() {
   const [formError, setFormError] = useState('')
 
   // ── Queries ──────────────────────────────────────────────────────────────────
-
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
 
   const { data: budgetYears = [], isLoading: yearsLoading } = useQuery<BudgetYear[]>({
     queryKey: ['budget-years', householdId],
@@ -214,32 +200,12 @@ export function SavingsPage() {
     else createMutation.mutate(form)
   }
 
-  async function handleLogout() { await logout(); navigate('/login', { replace: true }) }
-
   const isMutating = createMutation.isPending || updateMutation.isPending
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">☠️ Budgeteer</Link>
-          <span className="text-gray-600">/</span>
-          <Link to={`/households/${householdId}`} className="text-gray-300 text-sm hover:text-white transition-colors">
-            {household?.name ?? '…'}
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-400 text-sm">Savings</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {me?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-          )}
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">Sign out</button>
-        </div>
-      </header>
-
+    <>
       <main className="max-w-4xl mx-auto px-6 py-8">
         {/* Budget year selector */}
         {budgetYears.length > 0 && (
@@ -506,6 +472,6 @@ export function SavingsPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
@@ -32,8 +32,7 @@ const inputClass =
 
 export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
-  const { user: me, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user: me } = useAuth()
   const queryClient = useQueryClient()
 
   const [showAddMember, setShowAddMember] = useState(false)
@@ -106,11 +105,6 @@ export function HouseholdPage() {
     },
   })
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   function handleAddMember(e: FormEvent) {
     e.preventDefault()
     setAddError('')
@@ -131,7 +125,7 @@ export function HouseholdPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <span className="text-gray-500 text-sm">Loading…</span>
       </div>
     )
@@ -139,7 +133,7 @@ export function HouseholdPage() {
 
   if (!household) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <p className="text-gray-400 mb-4">Household not found.</p>
           <Link to="/" className="text-amber-400 hover:text-amber-300 text-sm">← Back to households</Link>
@@ -149,32 +143,7 @@ export function HouseholdPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <Link to={`/households/${id}`} className="text-gray-300 text-sm hover:text-white transition-colors truncate max-w-xs">
-            {household.name}
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-400 text-sm">Settings</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {me?.role === 'SYSTEM_ADMIN' && (
-            <>
-              <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-              <Link to="/admin/households" className="text-sm text-gray-400 hover:text-white transition-colors">All households</Link>
-            </>
-          )}
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
-            Sign out
-          </button>
-        </div>
-      </header>
-
+    <>
       <main className="max-w-4xl mx-auto px-6 py-8">
         {/* Household name */}
         <div className="mb-8">
@@ -289,15 +258,6 @@ export function HouseholdPage() {
             </tbody>
           </table>
         </div>
-
-        <div className="mt-10 pt-6 border-t border-gray-800">
-          <Link
-            to={`/households/${id}`}
-            className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
-          >
-            ← Back to dashboard
-          </Link>
-        </div>
       </main>
 
       {/* Add member modal */}
@@ -357,6 +317,6 @@ export function HouseholdPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

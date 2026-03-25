@@ -18,6 +18,7 @@ import { ComparePage } from './pages/ComparePage'
 import { SavingsPage } from './pages/SavingsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
+import { HouseholdLayout } from './layouts/HouseholdLayout'
 
 const queryClient = new QueryClient()
 
@@ -40,18 +41,20 @@ function App() {
               path="/households/:id"
               element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <HouseholdLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/households/:id/settings"
-              element={
-                <ProtectedRoute>
-                  <HouseholdPage />
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route index element={<DashboardPage />} />
+              <Route path="income" element={<HouseholdIncomePage />} />
+              <Route path="savings" element={<SavingsPage />} />
+              <Route path="expenses" element={<ExpensesPage />} />
+              <Route path="categories" element={<CategoriesPage />} />
+              <Route path="budget-years" element={<BudgetYearsPage />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="compare" element={<ComparePage />} />
+              <Route path="settings" element={<HouseholdPage />} />
+            </Route>
             <Route
               path="/admin/users"
               element={
@@ -69,14 +72,6 @@ function App() {
               }
             />
             <Route
-              path="/households/:id/categories"
-              element={
-                <ProtectedRoute>
-                  <CategoriesPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/admin/categories"
               element={
                 <ProtectedRoute requireAdmin>
@@ -85,58 +80,10 @@ function App() {
               }
             />
             <Route
-              path="/households/:id/expenses"
-              element={
-                <ProtectedRoute>
-                  <ExpensesPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
               path="/income"
               element={
                 <ProtectedRoute>
                   <IncomePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/households/:id/income"
-              element={
-                <ProtectedRoute>
-                  <HouseholdIncomePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/households/:id/budget-years"
-              element={
-                <ProtectedRoute>
-                  <BudgetYearsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/households/:id/compare"
-              element={
-                <ProtectedRoute>
-                  <ComparePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/households/:id/history"
-              element={
-                <ProtectedRoute>
-                  <HistoryPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/households/:id/savings"
-              element={
-                <ProtectedRoute>
-                  <SavingsPage />
                 </ProtectedRoute>
               }
             />

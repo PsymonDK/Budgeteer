@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
@@ -26,8 +26,7 @@ const inputClass =
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
-  const { user: me, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user: me } = useAuth()
   const queryClient = useQueryClient()
 
   const [showCreate, setShowCreate] = useState(false)
@@ -116,36 +115,8 @@ export function CategoriesPage() {
     })
   }
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <Link to={`/households/${householdId}`} className="text-gray-300 text-sm hover:text-white transition-colors">
-            {household?.name ?? '…'}
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-400 text-sm">Categories</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {isSystemAdmin && (
-            <>
-              <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-              <Link to="/admin/categories" className="text-sm text-gray-400 hover:text-white transition-colors">All categories</Link>
-            </>
-          )}
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">Sign out</button>
-        </div>
-      </header>
-
+    <>
       <main className="max-w-4xl mx-auto px-6 py-8">
         {createWarning && (
           <div className="mb-6 bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
@@ -360,6 +331,6 @@ export function CategoriesPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

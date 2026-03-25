@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.1] - 2026-03-25 — Auth improvements + sidebar navigation
+
+### Added
+- **Admin password reset** — system admins can reset any user's password via a modal on the Users page; sets `mustChangePassword=true` so the user must choose a new password on next login
+- **User self-service password change** — `POST /users/me/change-password` verifies current password and clears the `mustChangePassword` flag; accessible from a "Change password" link in the header nav
+- **Mandatory change-password flow** — `ProtectedRoute` redirects to `/change-password` when `mustChangePassword` is set, blocking access to all other pages until complete; the page switches to an optional flow (with cancel) for voluntary changes
+- **Household left sidebar navigation** — all household sub-pages now share a `HouseholdLayout` wrapper rendered via React Router v6 nested routes; a fixed `w-56` sidebar (lucide-react icons, active highlight via `useLocation`) replaces the bottom "Manage" button grid on the dashboard; top header shows household name and right-side links (My income, Users for admins, Change password, Sign out)
+
+### Changed
+- `App.tsx` — 9 flat `/households/:id/*` routes replaced by a single nested route under `HouseholdLayout`; `DashboardPage` no longer renders the "Manage" section
+- Admin `UsersPage` brand link changed from plain text to a `<Link>` so users can navigate back from the admin area
+
+---
+
+## [0.14.0] - 2026-03-25 — Sprint 14: Enhanced Income Tracking
+
+### Added
+- **Job-centric income model** — replaces the flat `IncomeEntry` with `Job`, `SalaryRecord`, `MonthlyIncomeOverride`, and `Bonus` models; `HouseholdIncomeAllocation` now references `jobId`
+- **Salary history resolution** — `lib/incomeCalc.ts` helpers (`getJobMonthlyIncome`, `calcIncomeForYear`) resolve the active salary for any month using the most recent `SalaryRecord` where `effectiveFrom <= month`; monthly overrides take precedence
+- **Bonuses** — `includeInBudget` toggle + budget mode (`ONE_OFF` or `SPREAD_ANNUALLY`) controls whether a bonus is factored into the annual income calculation
+- **Jobs API** (`routes/jobs.ts`) — full CRUD for jobs, salary records, monthly overrides, bonuses, allocations, and `GET /jobs/history` income history endpoint
+- **Income page rewrite** — three-tab UI: Jobs & Salary / Monthly Overrides / Bonuses; allocation grid per household; recharts history chart of monthly income over time
+
+### Changed
+- Dashboard, compare, and savings-history endpoints updated to use `incomeCalc` helpers
+- Demo seed data updated to use `Job` / `SalaryRecord` / `Bonus` records instead of `IncomeEntry`
+
+---
+
+## [0.13.0] - 2026-03-25 — Sprint 13: Currency Support
+
+### Added
+- **Base currency configuration** — `BASE_CURRENCY` env var (default `DKK`); `GET /config` returns `baseCurrency` to the frontend (CUR-001)
+- **Exchange rate sync** — fetches and parses Danmarks Nationalbank XML feed via `fast-xml-parser`; rates stored in new `CurrencyRate` table (CUR-002)
+- **Daily rate sync job** — `node-cron` job runs at 06:00; recalculates monthly equivalents for all unlocked foreign-currency expenses and savings entries (CUR-003)
+- **Manual rate refresh** — `POST /admin/currencies/refresh` (admin only) triggers an immediate rate sync (CUR-004)
+- **Foreign-currency expenses and savings** — `currencyCode`, `originalAmount`, `rateUsed`, `rateDate` fields on `Expense` and `SavingsEntry`; UI shows currency selector, original amount, and applied rate in add/edit forms and table rows (CUR-005)
+- **Rate snapshot on payment** — nightly job locks `rateUsed` / `rateDate` for expenses and savings entries once their `frequencyPeriod` date has passed (CUR-006)
+- **Currency API** — `GET /currencies` (latest rates), `GET /currencies/:code/history` (CUR-007)
+- `SavingsEntry` gains `frequencyPeriod` field to support payment-date rate locking
+
+---
+
+## [0.12.1] - 2026-03-24 — Infrastructure: Docker fixes + Prisma v7 upgrade
+
+### Changed
+- **Prisma v5 → v7** — added `prisma.config.ts` with `@prisma/adapter-pg` migrate adapter; `PrismaClient` now uses the PrismaPg driver adapter; `--schema` flags removed from npm scripts (handled by config file); `Dockerfile.api` copies `prisma.config.ts`
+- Removed deprecated `url` field from the `datasource` block in `schema.prisma`
+- Decimal imports updated from `runtime/library` → `runtime/client`
+
+### Fixed
+- `SEED_DEMO_DATA` env var now correctly passed into the API container via `docker-compose.yml`
+- TypeScript build errors in `Dockerfile.web` that prevented the Docker web image from building
+- Removed `pg Pool` import from `seed.ts` (no `@types/pg` in scope); PrismaPg adapter initialised correctly for seed context
+
+---
+
 ## [0.12.0] - 2026-03-24 — Sprint 11 & 12: History + Open Source
 
 ### Added
