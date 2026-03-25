@@ -5,7 +5,9 @@ export interface AuthUser {
   id: string
   email: string
   name: string
-  role: 'SYSTEM_ADMIN' | 'USER'
+  role: 'SYSTEM_ADMIN' | 'BOOKKEEPER' | 'USER'
+  isProxy: boolean
+  avatarUrl?: string | null
   mustChangePassword: boolean
 }
 

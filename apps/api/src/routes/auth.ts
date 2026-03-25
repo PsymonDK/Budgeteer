@@ -33,6 +33,10 @@ export async function authRoutes(fastify: FastifyInstance) {
       return reply.status(401).send({ error: 'Invalid credentials' })
     }
 
+    if (user.isProxy) {
+      return reply.status(403).send({ error: 'This account cannot log in directly' })
+    }
+
     // Check account lockout
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return reply.status(401).send({ error: 'Account temporarily locked. Try again later.' })

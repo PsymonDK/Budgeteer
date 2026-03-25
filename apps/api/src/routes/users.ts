@@ -1,5 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import fs from 'fs'
+import path from 'path'
+import crypto from 'crypto'
 import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
@@ -28,7 +31,8 @@ const UpdatePreferencesSchema = z
 const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
-  password: z.string().min(8),
+  password: z.string().min(8).optional(),
+  isProxy: z.boolean().optional(),
 })
 
 const UpdateUserSchema = z
@@ -36,6 +40,8 @@ const UpdateUserSchema = z
     name: z.string().min(1),
     email: z.string().email(),
     isActive: z.boolean(),
+    isProxy: z.boolean(),
+    role: z.enum(['SYSTEM_ADMIN', 'BOOKKEEPER', 'USER']),
   })
   .partial()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
@@ -47,6 +53,8 @@ const userSelect = {
   name: true,
   role: true,
   isActive: true,
+  isProxy: true,
+  avatarUrl: true,
   mustChangePassword: true,
   createdAt: true,
 } as const
@@ -67,16 +75,22 @@ export async function userRoutes(fastify: FastifyInstance) {
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
-    const { email, name, password } = result.data
+    const { email, name, password, isProxy } = result.data
+
+    if (!isProxy && !password) {
+      return reply.status(400).send({ error: 'Password is required for non-proxy users' })
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } })
     if (existing) {
       return reply.status(409).send({ error: 'Email already in use' })
     }
 
-    const passwordHash = await hashPassword(password)
+    const passwordHash = isProxy
+      ? await hashPassword(crypto.randomUUID())
+      : await hashPassword(password!)
     const newUser = await prisma.user.create({
-      data: { email, name, passwordHash, mustChangePassword: true },
+      data: { email, name, passwordHash, mustChangePassword: !isProxy, isProxy: isProxy ?? false },
       select: userSelect,
     })
     await prisma.userPreferences.create({ data: { userId: newUser.id } })
@@ -103,6 +117,12 @@ export async function userRoutes(fastify: FastifyInstance) {
       if (taken) {
         return reply.status(409).send({ error: 'Email already in use' })
       }
+    }
+
+    // Guard: proxy users cannot be assigned elevated roles
+    if (result.data.role && result.data.role !== 'USER') {
+      const target = await prisma.user.findUnique({ where: { id } })
+      if (target?.isProxy) return reply.status(400).send({ error: 'Proxy users cannot be assigned elevated roles' })
     }
 
     const user = await prisma.user.update({
@@ -233,5 +253,56 @@ export async function userRoutes(fastify: FastifyInstance) {
       select: userSelect,
     })
     return reply.send(updated)
+  })
+
+  // POST /users/me/avatar — upload avatar image
+  fastify.post('/users/me/avatar', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
+
+    const data = await request.file()
+    if (!data) return reply.status(400).send({ error: 'No file uploaded' })
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowed.includes(data.mimetype)) {
+      return reply.status(400).send({ error: 'Invalid file type. Use JPG, PNG, or WebP.' })
+    }
+
+    const ext = data.mimetype === 'image/png' ? 'png' : data.mimetype === 'image/webp' ? 'webp' : 'jpg'
+    const avatarDir = path.resolve(UPLOAD_DIR, 'avatars')
+    fs.mkdirSync(avatarDir, { recursive: true })
+
+    // Delete any existing avatar for this user
+    for (const existing of ['jpg', 'png', 'webp']) {
+      const fp = path.join(avatarDir, `${userId}.${existing}`)
+      if (fs.existsSync(fp)) fs.unlinkSync(fp)
+    }
+
+    const filePath = path.join(avatarDir, `${userId}.${ext}`)
+    const buffer = await data.toBuffer()
+    fs.writeFileSync(filePath, buffer)
+
+    const avatarUrl = `/uploads/avatars/${userId}.${ext}`
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl },
+      select: userSelect,
+    })
+    return reply.send({ avatarUrl: user.avatarUrl })
+  })
+
+  // DELETE /users/me/avatar — remove avatar
+  fastify.delete('/users/me/avatar', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
+    const avatarDir = path.resolve(UPLOAD_DIR, 'avatars')
+
+    for (const ext of ['jpg', 'png', 'webp']) {
+      const fp = path.join(avatarDir, `${userId}.${ext}`)
+      if (fs.existsSync(fp)) fs.unlinkSync(fp)
+    }
+
+    await prisma.user.update({ where: { id: userId }, data: { avatarUrl: null } })
+    return reply.send({ avatarUrl: null })
   })
 }

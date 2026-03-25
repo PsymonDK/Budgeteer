@@ -10,7 +10,7 @@ interface Member {
   userId: string
   role: 'ADMIN' | 'MEMBER'
   joinedAt: string
-  user: { id: string; name: string; email: string; isActive: boolean }
+  user: { id: string; name: string; email: string; isActive: boolean; isProxy?: boolean }
 }
 
 interface Household {
@@ -216,6 +216,14 @@ export function HouseholdPage() {
                     <td className="px-4 py-3 text-white">
                       {m.user.name}
                       {isMe && <span className="ml-2 text-xs text-gray-500">(you)</span>}
+                      {m.user.isProxy && (me?.role === 'SYSTEM_ADMIN' || me?.role === 'BOOKKEEPER') && (
+                        <Link
+                          to={`/income?proxyUserId=${m.userId}`}
+                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors ml-2"
+                        >
+                          Manage income →
+                        </Link>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-300">{m.user.email}</td>
                     <td className="px-4 py-3">

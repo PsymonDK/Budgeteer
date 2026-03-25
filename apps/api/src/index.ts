@@ -1,6 +1,10 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import fastifyStatic from '@fastify/static'
+import fastifyMultipart from '@fastify/multipart'
+import fs from 'fs'
+import path from 'path'
 import cron from 'node-cron'
 import { authRoutes } from './routes/auth'
 import { userRoutes } from './routes/users'
@@ -28,6 +32,16 @@ app.register(cors, {
 
 app.register(jwt, {
   secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+})
+
+const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
+fs.mkdirSync(path.resolve(UPLOAD_DIR, 'avatars'), { recursive: true })
+
+app.register(fastifyMultipart, { limits: { fileSize: 2 * 1024 * 1024 } })
+app.register(fastifyStatic, {
+  root: path.resolve(UPLOAD_DIR),
+  prefix: '/uploads/',
+  decorateReply: false,
 })
 
 // Routes

@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import HeaderUserMenu from '../components/HeaderUserMenu'
 
 interface Household {
   id: string
@@ -13,7 +14,7 @@ interface Household {
 }
 
 export function HouseholdsPage() {
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -40,11 +41,6 @@ export function HouseholdsPage() {
     },
   })
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
@@ -62,10 +58,7 @@ export function HouseholdsPage() {
               <Link to="/admin/households" className="text-sm text-gray-400 hover:text-white transition-colors">All households</Link>
             </>
           )}
-          <Link to="/change-password" className="text-sm text-gray-400 hover:text-white transition-colors">Change password</Link>
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
-            Sign out
-          </button>
+          <HeaderUserMenu />
         </div>
       </header>
 

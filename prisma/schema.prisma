@@ -8,6 +8,7 @@ datasource db {
 
 enum Role {
   SYSTEM_ADMIN
+  BOOKKEEPER
   USER
 }
 
@@ -44,6 +45,8 @@ model User {
   passwordHash              String
   role                      Role                       @default(USER)
   isActive                  Boolean                    @default(true)
+  avatarUrl                 String?
+  isProxy                   Boolean                    @default(false)
   mustChangePassword        Boolean                    @default(true)
   failedLoginAttempts       Int                        @default(0)
   lockedUntil               DateTime?

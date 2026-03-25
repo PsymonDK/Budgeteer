@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import {
@@ -122,6 +122,10 @@ export function IncomePage() {
   const { user: me, logout } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [params] = useSearchParams()
+  const proxyUserId = params.get('proxyUserId')
+  const isProxy = !!proxyUserId && (me?.role === 'SYSTEM_ADMIN' || me?.role === 'BOOKKEEPER')
+  const targetUserId = isProxy ? proxyUserId : me?.id
 
   const [activeTab, setActiveTab] = useState<Tab>('jobs')
 
@@ -161,10 +165,18 @@ export function IncomePage() {
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
+  // Fetch users list to get proxy user name (only when acting as proxy)
+  const { data: allUsers = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ['users'],
+    queryFn: async () => (await api.get<{ id: string; name: string }[]>('/users')).data,
+    enabled: isProxy,
+  })
+  const proxyUserName = isProxy ? allUsers.find((u) => u.id === proxyUserId)?.name : undefined
+
   const { data: jobs = [], isLoading } = useQuery<Job[]>({
-    queryKey: ['jobs', me?.id],
-    queryFn: async () => (await api.get<Job[]>(`/users/${me!.id}/jobs`)).data,
-    enabled: !!me,
+    queryKey: ['jobs', targetUserId],
+    queryFn: async () => (await api.get<Job[]>(`/users/${targetUserId}/jobs`)).data,
+    enabled: !!targetUserId,
   })
 
   const { data: households = [] } = useQuery<Household[]>({
@@ -209,17 +221,17 @@ export function IncomePage() {
   })
 
   const { data: historyData } = useQuery<{ buckets: HistoryBucket[] }>({
-    queryKey: ['income-history', me?.id, histFrom, histTo, granularity],
+    queryKey: ['income-history', targetUserId, histFrom, histTo, granularity],
     queryFn: async () =>
-      (await api.get(`/users/${me!.id}/income/history`, { params: { from: histFrom, to: histTo, granularity } })).data,
-    enabled: !!me,
+      (await api.get(`/users/${targetUserId}/income/history`, { params: { from: histFrom, to: histTo, granularity } })).data,
+    enabled: !!targetUserId,
   })
 
   // ── Mutations ─────────────────────────────────────────────────────────────
 
   const createJobMutation = useMutation({
     mutationFn: (data: JobForm) =>
-      api.post(`/users/${me!.id}/jobs`, {
+      api.post(`/users/${targetUserId}/jobs`, {
         name: data.name, employer: data.employer || undefined,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
@@ -229,7 +241,7 @@ export function IncomePage() {
 
   const updateJobMutation = useMutation({
     mutationFn: (data: JobForm) =>
-      api.put(`/users/${me!.id}/jobs/${editingJob!.id}`, {
+      api.put(`/users/${targetUserId}/jobs/${editingJob!.id}`, {
         name: data.name, employer: data.employer || undefined,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
@@ -238,7 +250,7 @@ export function IncomePage() {
   })
 
   const closeJobMutation = useMutation({
-    mutationFn: (jobId: string) => api.delete(`/users/${me!.id}/jobs/${jobId}`),
+    mutationFn: (jobId: string) => api.delete(`/users/${targetUserId}/jobs/${jobId}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   })
 
@@ -385,6 +397,13 @@ export function IncomePage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+
+        {/* ── Proxy banner ────────────────────────────────────────────────── */}
+        {isProxy && proxyUserName && (
+          <div className="bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+            <span>⚠ Entering income on behalf of <strong>{proxyUserName}</strong></span>
+          </div>
+        )}
 
         {/* ── Income History Chart ─────────────────────────────────────────── */}
         <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">

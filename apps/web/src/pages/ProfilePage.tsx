@@ -10,6 +10,7 @@ import { sankey, sankeyLinkHorizontal, SankeyNode, SankeyLink } from 'd3-sankey'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertTriangle, User, TrendingUp, Home } from 'lucide-react'
+import Avatar from '../components/Avatar'
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -25,6 +26,7 @@ interface UserMe {
   email: string
   name: string
   role: string
+  avatarUrl?: string | null
   preferences: {
     preferredCurrency: string
     defaultHouseholdId: string | null
@@ -115,6 +117,8 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   const [profileSuccess, setProfileSuccess] = useState('')
   const [prefError, setPrefError] = useState('')
   const [prefSuccess, setPrefSuccess] = useState('')
+  const [avatarError, setAvatarError] = useState('')
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (me) {
@@ -156,6 +160,36 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     },
   })
 
+  async function handleAvatarUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarError('')
+    const form = new FormData()
+    form.append('avatar', file)
+    try {
+      await api.post('/users/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+      queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setAvatarError((err.response?.data as { error?: string })?.error ?? 'Failed to upload avatar')
+      }
+    }
+  }
+
+  async function handleAvatarDelete() {
+    setAvatarError('')
+    try {
+      await api.delete('/users/me/avatar')
+      queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setAvatarError((err.response?.data as { error?: string })?.error ?? 'Failed to remove avatar')
+      }
+    }
+  }
+
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault()
     setProfileSuccess('')
@@ -185,6 +219,38 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
       {/* Personal info */}
       <div className={cardClass}>
         <h2 className="text-base font-semibold mb-4">Personal information</h2>
+
+        {/* Avatar */}
+        <div className="flex items-center gap-4 mb-5">
+          <Avatar user={me} size={40} />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              className="text-sm text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              Upload photo
+            </button>
+            {me.avatarUrl && (
+              <button
+                type="button"
+                onClick={handleAvatarDelete}
+                className="text-sm text-gray-500 hover:text-red-400 transition-colors"
+              >
+                Remove
+              </button>
+            )}
+          </div>
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={handleAvatarUpload}
+          />
+        </div>
+        {avatarError && <p className="text-red-400 text-xs mb-3">{avatarError}</p>}
+
         <form onSubmit={handleProfileSubmit} className="space-y-4 max-w-sm">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>

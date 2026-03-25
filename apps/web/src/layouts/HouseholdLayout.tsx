@@ -1,17 +1,14 @@
-import { Link, Outlet, useParams, useLocation, useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { Link, Outlet, useParams, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import {
   LayoutDashboard, TrendingUp, PiggyBank, Receipt, Tag,
   Calendar, Clock, BarChart2, Settings,
 } from 'lucide-react'
-import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { useHousehold } from '../contexts/HouseholdContext'
 import { AppFooter } from '../components/AppFooter'
-
-interface Household {
-  id: string
-  name: string
-}
+import HeaderUserMenu from '../components/HeaderUserMenu'
+import HouseholdSwitcher from '../components/HouseholdSwitcher'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '',             icon: LayoutDashboard },
@@ -27,19 +24,16 @@ const NAV_ITEMS = [
 export function HouseholdLayout() {
   const { id: householdId } = useParams<{ id: string }>()
   const location = useLocation()
-  const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const { user } = useAuth()
+  const { setActiveHousehold } = useHousehold()
 
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
-
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
+  // Keep localStorage in sync when navigating directly to a household URL
+  useEffect(() => {
+    if (householdId) {
+      setActiveHousehold(householdId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [householdId])
 
   function isActive(path: string) {
     const base = `/households/${householdId}`
@@ -56,7 +50,7 @@ export function HouseholdLayout() {
             ☠️ Budgeteer
           </Link>
           <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm">{household?.name ?? '…'}</span>
+          <HouseholdSwitcher currentHouseholdId={householdId!} />
         </div>
         <div className="flex items-center gap-5">
           <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
@@ -67,15 +61,7 @@ export function HouseholdLayout() {
               Users
             </Link>
           )}
-          <Link to="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">
-            {user?.name ?? 'Profile'}
-          </Link>
-          <button
-            onClick={handleLogout}
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            Sign out
-          </button>
+          <HeaderUserMenu />
         </div>
       </header>
 

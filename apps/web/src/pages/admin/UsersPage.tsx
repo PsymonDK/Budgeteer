@@ -10,8 +10,9 @@ interface User {
   id: string
   email: string
   name: string
-  role: 'SYSTEM_ADMIN' | 'USER'
+  role: 'SYSTEM_ADMIN' | 'BOOKKEEPER' | 'USER'
   isActive: boolean
+  isProxy: boolean
   mustChangePassword: boolean
   createdAt: string
 }
@@ -20,12 +21,15 @@ interface UserFormData {
   email: string
   name: string
   password: string
+  isProxy: boolean
 }
 
 interface EditFormData {
   name: string
   email: string
   isActive: boolean
+  isProxy: boolean
+  role: 'SYSTEM_ADMIN' | 'BOOKKEEPER' | 'USER'
 }
 
 function Badge({ active }: { active: boolean }) {
@@ -40,6 +44,20 @@ function Badge({ active }: { active: boolean }) {
   )
 }
 
+function ProxyBadge() {
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-900/50 text-purple-300 ml-1">
+      Proxy
+    </span>
+  )
+}
+
+function roleLabel(role: string) {
+  if (role === 'SYSTEM_ADMIN') return 'Sys Admin'
+  if (role === 'BOOKKEEPER') return 'Bookkeeper'
+  return 'User'
+}
+
 export function AdminUsersPage() {
   const { logout } = useAuth()
   const navigate = useNavigate()
@@ -50,8 +68,8 @@ export function AdminUsersPage() {
   const [resetUser, setResetUser] = useState<User | null>(null)
   const [formError, setFormError] = useState('')
 
-  const [createForm, setCreateForm] = useState<UserFormData>({ email: '', name: '', password: '' })
-  const [editForm, setEditForm] = useState<EditFormData>({ name: '', email: '', isActive: true })
+  const [createForm, setCreateForm] = useState<UserFormData>({ email: '', name: '', password: '', isProxy: false })
+  const [editForm, setEditForm] = useState<EditFormData>({ name: '', email: '', isActive: true, isProxy: false, role: 'USER' })
   const [resetPassword, setResetPassword] = useState('')
 
   const { data: users = [], isLoading } = useQuery<User[]>({
@@ -67,7 +85,7 @@ export function AdminUsersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setShowCreate(false)
-      setCreateForm({ email: '', name: '', password: '' })
+      setCreateForm({ email: '', name: '', password: '', isProxy: false })
       setFormError('')
     },
     onError: (err) => {
@@ -110,7 +128,7 @@ export function AdminUsersPage() {
 
   function openEdit(user: User) {
     setEditingUser(user)
-    setEditForm({ name: user.name, email: user.email, isActive: user.isActive })
+    setEditForm({ name: user.name, email: user.email, isActive: user.isActive, isProxy: user.isProxy, role: user.role })
     setFormError('')
   }
 
@@ -162,7 +180,7 @@ export function AdminUsersPage() {
         </button>
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Users</h1>
           <button
@@ -190,11 +208,14 @@ export function AdminUsersPage() {
               <tbody>
                 {users.map((u) => (
                   <tr key={u.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-white">{u.name}</td>
+                    <td className="px-4 py-3 text-white">
+                      {u.name}
+                      {u.isProxy && <ProxyBadge />}
+                    </td>
                     <td className="px-4 py-3 text-gray-300">{u.email}</td>
                     <td className="px-4 py-3">
-                      <span className={`text-xs font-medium ${u.role === 'SYSTEM_ADMIN' ? 'text-amber-400' : 'text-gray-400'}`}>
-                        {u.role === 'SYSTEM_ADMIN' ? 'Admin' : 'User'}
+                      <span className={`text-xs font-medium ${u.role === 'SYSTEM_ADMIN' ? 'text-amber-400' : u.role === 'BOOKKEEPER' ? 'text-blue-400' : 'text-gray-400'}`}>
+                        {roleLabel(u.role)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -202,12 +223,14 @@ export function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-4">
-                        <button
-                          onClick={() => openReset(u)}
-                          className="text-xs text-gray-400 hover:text-amber-400 transition-colors"
-                        >
-                          Reset password
-                        </button>
+                        {!u.isProxy && (
+                          <button
+                            onClick={() => openReset(u)}
+                            className="text-xs text-gray-400 hover:text-amber-400 transition-colors"
+                          >
+                            Reset password
+                          </button>
+                        )}
                         <button
                           onClick={() => openEdit(u)}
                           className="text-xs text-gray-400 hover:text-white transition-colors"
@@ -248,17 +271,35 @@ export function AdminUsersPage() {
                 placeholder="jane@example.com"
               />
             </Field>
-            <Field label="Temporary password">
-              <input
-                type="password"
-                value={createForm.password}
-                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                required
-                minLength={8}
-                className={inputClass}
-                placeholder="Min. 8 characters"
-              />
+            <Field label="Account type">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createForm.isProxy}
+                  onChange={(e) => setCreateForm({ ...createForm, isProxy: e.target.checked })}
+                  className="w-4 h-4 rounded accent-amber-400"
+                />
+                <span className="text-gray-300 text-sm">Proxy user (cannot log in directly)</span>
+              </label>
             </Field>
+            {!createForm.isProxy && (
+              <Field label="Temporary password">
+                <input
+                  type="password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                  required={!createForm.isProxy}
+                  minLength={8}
+                  className={inputClass}
+                  placeholder="Min. 8 characters"
+                />
+              </Field>
+            )}
+            {createForm.isProxy && (
+              <p className="text-xs text-amber-400/80 bg-amber-950/30 border border-amber-900/50 rounded px-3 py-2">
+                Proxy users cannot log in directly. A bookkeeper or admin can enter income on their behalf.
+              </p>
+            )}
             {formError && <ErrorMsg>{formError}</ErrorMsg>}
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={createMutation.isPending} className={submitClass}>
@@ -326,6 +367,21 @@ export function AdminUsersPage() {
                 className={inputClass}
               />
             </Field>
+            <Field label="Role">
+              <select
+                value={editForm.role}
+                onChange={(e) => setEditForm({ ...editForm, role: e.target.value as EditFormData['role'] })}
+                disabled={editForm.isProxy}
+                className={inputClass}
+              >
+                <option value="USER">User</option>
+                <option value="BOOKKEEPER">Bookkeeper</option>
+                <option value="SYSTEM_ADMIN">System Admin</option>
+              </select>
+              {editForm.isProxy && (
+                <p className="text-xs text-gray-500 mt-1">Proxy users can only have the User role.</p>
+              )}
+            </Field>
             <Field label="Account status">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -335,6 +391,20 @@ export function AdminUsersPage() {
                   className="w-4 h-4 rounded accent-amber-400"
                 />
                 <span className="text-gray-300 text-sm">Active</span>
+              </label>
+            </Field>
+            <Field label="Proxy user">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={editForm.isProxy}
+                  onChange={(e) => {
+                    const isProxy = e.target.checked
+                    setEditForm({ ...editForm, isProxy, role: isProxy ? 'USER' : editForm.role })
+                  }}
+                  className="w-4 h-4 rounded accent-amber-400"
+                />
+                <span className="text-gray-300 text-sm">Cannot log in directly</span>
               </label>
             </Field>
             {formError && <ErrorMsg>{formError}</ErrorMsg>}

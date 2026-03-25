@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from './contexts/AuthContext'
+import { HouseholdProvider } from './contexts/HouseholdContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { HouseholdsPage } from './pages/HouseholdsPage'
@@ -28,6 +29,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
+          <HouseholdProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route
@@ -106,6 +108,7 @@ function App() {
             />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </HouseholdProvider>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

@@ -65,10 +65,13 @@ async function getOrCreateActiveBudgetYear(householdId: string) {
   })
 }
 
-async function assertJobOwnership(jobId: string, userId: string) {
-  const job = await prisma.job.findUnique({ where: { id: jobId } })
-  if (!job || job.userId !== userId) return null
-  return job
+async function assertJobOwnership(jobId: string, requesterId: string, requesterRole: string) {
+  const job = await prisma.job.findUnique({ where: { id: jobId }, include: { user: true } })
+  if (!job) return null
+  if (job.userId === requesterId) return job
+  // Bookkeeper or admin: may only access proxy users' jobs
+  if (['SYSTEM_ADMIN', 'BOOKKEEPER'].includes(requesterRole) && job.user.isProxy) return job
+  return null
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -83,7 +86,12 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const { sub: userId, role } = request.user
 
     if (role !== 'SYSTEM_ADMIN' && userId !== targetUserId) {
-      return reply.status(403).send({ error: 'Forbidden' })
+      if (role === 'BOOKKEEPER') {
+        const target = await prisma.user.findUnique({ where: { id: targetUserId } })
+        if (!target?.isProxy) return reply.status(403).send({ error: 'Forbidden' })
+      } else {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
     }
 
     const jobs = await prisma.job.findMany({
@@ -122,9 +130,16 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // POST /users/:id/jobs
   fastify.post('/users/:id/jobs', { preHandler: authenticate }, async (request, reply) => {
     const { id: targetUserId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    if (userId !== targetUserId) return reply.status(403).send({ error: 'Forbidden' })
+    if (userId !== targetUserId) {
+      if (['SYSTEM_ADMIN', 'BOOKKEEPER'].includes(role)) {
+        const target = await prisma.user.findUnique({ where: { id: targetUserId } })
+        if (!target?.isProxy) return reply.status(403).send({ error: 'Forbidden' })
+      } else {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
+    }
 
     const result = CreateJobSchema.safeParse(request.body)
     if (!result.success) {
@@ -134,7 +149,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const { name, employer, startDate, endDate } = result.data
     const job = await prisma.job.create({
       data: {
-        userId,
+        userId: targetUserId,
         name,
         employer,
         startDate: new Date(startDate),
@@ -148,9 +163,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // PUT /users/:id/jobs/:jobId
   fastify.put('/users/:id/jobs/:jobId', { preHandler: authenticate }, async (request, reply) => {
     const { jobId } = request.params as { id: string; jobId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const result = UpdateJobSchema.safeParse(request.body)
@@ -175,9 +190,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // DELETE /users/:id/jobs/:jobId — soft-close by setting endDate = today
   fastify.delete('/users/:id/jobs/:jobId', { preHandler: authenticate }, async (request, reply) => {
     const { jobId } = request.params as { id: string; jobId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const updated = await prisma.job.update({
@@ -193,9 +208,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // GET /jobs/:id/salary
   fastify.get('/jobs/:id/salary', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const records = await prisma.salaryRecord.findMany({
@@ -209,9 +224,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // POST /jobs/:id/salary
   fastify.post('/jobs/:id/salary', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const result = CreateSalarySchema.safeParse(request.body)
@@ -238,9 +253,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   fastify.get('/jobs/:id/overrides', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
     const { year } = request.query as { year?: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const overrides = await prisma.monthlyIncomeOverride.findMany({
@@ -254,9 +269,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // POST /jobs/:id/overrides — upsert
   fastify.post('/jobs/:id/overrides', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const result = OverrideSchema.safeParse(request.body)
@@ -277,9 +292,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // DELETE /jobs/:id/overrides/:overrideId
   fastify.delete('/jobs/:id/overrides/:overrideId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, overrideId } = request.params as { id: string; overrideId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const existing = await prisma.monthlyIncomeOverride.findFirst({ where: { id: overrideId, jobId } })
@@ -294,9 +309,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // GET /jobs/:id/bonuses
   fastify.get('/jobs/:id/bonuses', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const bonuses = await prisma.bonus.findMany({
@@ -310,9 +325,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // POST /jobs/:id/bonuses
   fastify.post('/jobs/:id/bonuses', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const result = CreateBonusSchema.safeParse(request.body)
@@ -339,9 +354,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // PUT /jobs/:id/bonuses/:bonusId
   fastify.put('/jobs/:id/bonuses/:bonusId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, bonusId } = request.params as { id: string; bonusId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const existing = await prisma.bonus.findFirst({ where: { id: bonusId, jobId } })
@@ -372,9 +387,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // DELETE /jobs/:id/bonuses/:bonusId
   fastify.delete('/jobs/:id/bonuses/:bonusId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, bonusId } = request.params as { id: string; bonusId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const existing = await prisma.bonus.findFirst({ where: { id: bonusId, jobId } })
@@ -389,14 +404,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // PUT /income/:id/allocations/:householdId — :id is now a jobId
   fastify.put('/income/:id/allocations/:householdId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, householdId } = request.params as { id: string; householdId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
     const result = AllocationSchema.safeParse(request.body)
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const membership = await prisma.householdMember.findUnique({
@@ -418,9 +433,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // DELETE /income/:id/allocations/:householdId
   fastify.delete('/income/:id/allocations/:householdId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, householdId } = request.params as { id: string; householdId: string }
-    const { sub: userId } = request.user
+    const { sub: userId, role } = request.user
 
-    const job = await assertJobOwnership(jobId, userId)
+    const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     await prisma.householdIncomeAllocation.deleteMany({
@@ -443,7 +458,12 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const { sub: userId, role } = request.user
 
     if (role !== 'SYSTEM_ADMIN' && userId !== targetUserId) {
-      return reply.status(403).send({ error: 'Forbidden' })
+      if (role === 'BOOKKEEPER') {
+        const target = await prisma.user.findUnique({ where: { id: targetUserId } })
+        if (!target?.isProxy) return reply.status(403).send({ error: 'Forbidden' })
+      } else {
+        return reply.status(403).send({ error: 'Forbidden' })
+      }
     }
 
     const now = new Date()
