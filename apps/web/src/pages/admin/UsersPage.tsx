@@ -1,4 +1,5 @@
 import { useState, type ReactNode, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../../api/client'
@@ -118,7 +119,7 @@ export function AdminUsersPage() {
       {/* Header */}
       <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="text-amber-400 font-bold text-lg">☠️ Budgeteer</span>
+          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">☠️ Budgeteer</Link>
           <span className="text-gray-600">/</span>
           <span className="text-gray-300 text-sm">User Management</span>
         </div>
