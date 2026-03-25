@@ -47,10 +47,12 @@ export function AdminUsersPage() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [resetUser, setResetUser] = useState<User | null>(null)
   const [formError, setFormError] = useState('')
 
   const [createForm, setCreateForm] = useState<UserFormData>({ email: '', name: '', password: '' })
   const [editForm, setEditForm] = useState<EditFormData>({ name: '', email: '', isActive: true })
+  const [resetPassword, setResetPassword] = useState('')
 
   const { data: users = [], isLoading } = useQuery<User[]>({
     queryKey: ['users'],
@@ -90,10 +92,39 @@ export function AdminUsersPage() {
     },
   })
 
+  const resetMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api.post<User>(`/users/${id}/reset-password`, { password }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setResetUser(null)
+      setResetPassword('')
+      setFormError('')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to reset password')
+      }
+    },
+  })
+
   function openEdit(user: User) {
     setEditingUser(user)
     setEditForm({ name: user.name, email: user.email, isActive: user.isActive })
     setFormError('')
+  }
+
+  function openReset(user: User) {
+    setResetUser(user)
+    setResetPassword('')
+    setFormError('')
+  }
+
+  function handleReset(e: FormEvent) {
+    e.preventDefault()
+    if (!resetUser) return
+    setFormError('')
+    resetMutation.mutate({ id: resetUser.id, password: resetPassword })
   }
 
   function handleCreate(e: FormEvent) {
@@ -170,12 +201,20 @@ export function AdminUsersPage() {
                       <Badge active={u.isActive} />
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => openEdit(u)}
-                        className="text-xs text-gray-400 hover:text-white transition-colors"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex items-center justify-end gap-4">
+                        <button
+                          onClick={() => openReset(u)}
+                          className="text-xs text-gray-400 hover:text-amber-400 transition-colors"
+                        >
+                          Reset password
+                        </button>
+                        <button
+                          onClick={() => openEdit(u)}
+                          className="text-xs text-gray-400 hover:text-white transition-colors"
+                        >
+                          Edit
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -226,6 +265,38 @@ export function AdminUsersPage() {
                 {createMutation.isPending ? 'Creating…' : 'Create user'}
               </button>
               <button type="button" onClick={() => setShowCreate(false)} className={cancelClass}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Reset password modal */}
+      {resetUser && (
+        <Modal title={`Reset password — ${resetUser.name}`} onClose={() => setResetUser(null)}>
+          <p className="text-sm text-gray-400 mb-4">
+            The user will be required to change their password on next login.
+          </p>
+          <form onSubmit={handleReset} className="space-y-4">
+            <Field label="New temporary password">
+              <input
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                required
+                minLength={8}
+                autoFocus
+                className={inputClass}
+                placeholder="Min. 8 characters"
+              />
+            </Field>
+            {formError && <ErrorMsg>{formError}</ErrorMsg>}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={resetMutation.isPending} className={submitClass}>
+                {resetMutation.isPending ? 'Saving…' : 'Reset password'}
+              </button>
+              <button type="button" onClick={() => setResetUser(null)} className={cancelClass}>
                 Cancel
               </button>
             </div>

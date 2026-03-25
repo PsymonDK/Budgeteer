@@ -62,6 +62,7 @@ export function HouseholdsPage() {
               <Link to="/admin/households" className="text-sm text-gray-400 hover:text-white transition-colors">All households</Link>
             </>
           )}
+          <Link to="/change-password" className="text-sm text-gray-400 hover:text-white transition-colors">Change password</Link>
           <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
             Sign out
           </button>

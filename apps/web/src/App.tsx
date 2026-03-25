@@ -17,6 +17,7 @@ import { BudgetYearsPage } from './pages/BudgetYearsPage'
 import { ComparePage } from './pages/ComparePage'
 import { SavingsPage } from './pages/SavingsPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { ChangePasswordPage } from './pages/ChangePasswordPage'
 
 const queryClient = new QueryClient()
 
@@ -136,6 +137,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <SavingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/change-password"
+              element={
+                <ProtectedRoute>
+                  <ChangePasswordPage />
                 </ProtectedRoute>
               }
             />

@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { hashPassword } from '../lib/password'
+import { hashPassword, verifyPassword } from '../lib/password'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 
 const CreateUserSchema = z.object({
@@ -90,5 +90,51 @@ export async function userRoutes(fastify: FastifyInstance) {
     })
 
     return reply.send(user)
+  })
+
+  // POST /users/:id/reset-password — admin only, sets new password + mustChangePassword
+  fastify.post('/users/:id/reset-password', { preHandler: requireAdmin }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const result = z.object({ password: z.string().min(8) }).safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id } })
+    if (!existing) return reply.status(404).send({ error: 'User not found' })
+
+    const passwordHash = await hashPassword(result.data.password)
+    const user = await prisma.user.update({
+      where: { id },
+      data: { passwordHash, mustChangePassword: true },
+      select: userSelect,
+    })
+    return reply.send(user)
+  })
+
+  // POST /users/me/change-password — authenticated user changes their own password
+  fastify.post('/users/me/change-password', { preHandler: authenticate }, async (request, reply) => {
+    const result = z.object({
+      currentPassword: z.string(),
+      newPassword: z.string().min(8),
+    }).safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const { sub: userId } = request.user
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+
+    const valid = await verifyPassword(result.data.currentPassword, user.passwordHash)
+    if (!valid) return reply.status(400).send({ error: 'Current password is incorrect' })
+
+    const passwordHash = await hashPassword(result.data.newPassword)
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, mustChangePassword: false },
+      select: userSelect,
+    })
+    return reply.send(updated)
   })
 }
