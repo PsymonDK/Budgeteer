@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { CategoryIcon } from '../components/CategoryIcon'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -21,7 +22,7 @@ interface SummaryLine {
 interface ExpenseRow {
   status: 'unchanged' | 'changed' | 'new' | 'removed'
   label: string
-  category: { id: string; name: string }
+  category: { id: string; name: string; icon?: string | null }
   frequency: string
   a: { id: string; amount: string; monthlyEquivalent: string; frequency: string } | null
   b: { id: string; amount: string; monthlyEquivalent: string; frequency: string } | null
@@ -122,9 +123,11 @@ export function ComparePage() {
 
   const allCategories = useMemo(() => {
     if (!result) return []
-    const map = new Map<string, string>()
-    for (const e of result.expenses) map.set(e.category.id, e.category.name)
-    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+    const map = new Map<string, { name: string; icon: string | null | undefined }>()
+    for (const e of result.expenses) map.set(e.category.id, { name: e.category.name, icon: e.category.icon })
+    return [...map.entries()]
+      .map(([id, { name, icon }]) => ({ id, name, icon }))
+      .sort((a, b) => a.name.localeCompare(b.name))
   }, [result])
 
   const allFrequencies = useMemo(() => {
@@ -293,16 +296,17 @@ export function ComparePage() {
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">Categories</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {allCategories.map(([id, name]) => (
+                    {allCategories.map(({ id, name, icon }) => (
                       <button
                         key={id}
                         onClick={() => toggleCategory(id)}
-                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
                           filterCategories.has(id)
                             ? 'bg-amber-400 text-gray-950 border-amber-400'
                             : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
                         }`}
                       >
+                        {icon && <CategoryIcon name={icon} size={12} />}
                         {name}
                       </button>
                     ))}
@@ -389,7 +393,14 @@ export function ComparePage() {
                             <span className="ml-2">{statusBadge(e.status)}</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-400">{e.category.name}</td>
+                        <td className="px-4 py-3 text-gray-400">
+                          <span className="flex items-center gap-1.5">
+                            {e.category.icon && (
+                              <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />
+                            )}
+                            {e.category.name}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-gray-400">
                           {FREQ_LABELS[e.b?.frequency ?? e.a?.frequency ?? ''] ?? (e.b?.frequency ?? e.a?.frequency ?? '—')}
                         </td>

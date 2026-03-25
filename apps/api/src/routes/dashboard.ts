@@ -82,15 +82,15 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     // ── Expenses ─────────────────────────────────────────────────────────────
     const expenses = await prisma.expense.findMany({
       where: { budgetYearId: activeBudgetYear.id },
-      include: { category: { select: { id: true, name: true } } },
+      include: { category: { select: { id: true, name: true, icon: true } } },
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
     const totalMonthlyExpenses = expenses.reduce(
       (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
     )
-    const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; totalMonthly: number }>()
+    const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
     for (const e of expenses) {
-      const existing = byCategoryMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, totalMonthly: 0 }
+      const existing = byCategoryMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
       existing.totalMonthly += parseFloat(e.monthlyEquivalent.toString())
       byCategoryMap.set(e.categoryId, existing)
     }
@@ -168,7 +168,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
       include: {
-        expenses: { include: { category: { select: { id: true, name: true } } } },
+        expenses: { include: { category: { select: { id: true, name: true, icon: true } } } },
         savingsEntries: true,
       },
       orderBy: { year: 'asc' },
@@ -183,9 +183,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         const totalSavings = y.savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
 
         // Category breakdown for this year
-        const catMap = new Map<string, { categoryId: string; categoryName: string; totalMonthly: number }>()
+        const catMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
         for (const e of y.expenses) {
-          const cur = catMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, totalMonthly: 0 }
+          const cur = catMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
           cur.totalMonthly += parseFloat(e.monthlyEquivalent.toString())
           catMap.set(e.categoryId, cur)
         }

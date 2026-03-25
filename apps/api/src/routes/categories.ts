@@ -6,6 +6,7 @@ import { authenticate, requireAdmin } from '../plugins/authenticate'
 const CreateCategorySchema = z.object({
   name: z.string().min(1).max(100),
   householdId: z.string(),
+  icon: z.string().optional(),
 })
 
 const DeleteCategorySchema = z
@@ -15,6 +16,7 @@ const DeleteCategorySchema = z
 const categorySelect = {
   id: true,
   name: true,
+  icon: true,
   isSystemWide: true,
   householdId: true,
   createdAt: true,
@@ -63,7 +65,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
-    const { name, householdId } = result.data
+    const { name, householdId, icon } = result.data
     const { sub: userId, role } = request.user
 
     // Requester must be a member of the household
@@ -83,7 +85,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     }
 
     const category = await prisma.expenseCategory.create({
-      data: { name, householdId, isSystemWide: false, createdByUserId: userId },
+      data: { name, householdId, icon, isSystemWide: false, createdByUserId: userId },
       select: categorySelect,
     })
 

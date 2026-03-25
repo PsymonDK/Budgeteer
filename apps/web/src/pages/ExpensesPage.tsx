@@ -3,12 +3,14 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
+import { CategoryIcon } from '../components/CategoryIcon'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Category {
   id: string
   name: string
+  icon: string | null
   isSystemWide: boolean
 }
 
@@ -420,7 +422,14 @@ export function ExpensesPage() {
                             <span className="ml-2 text-gray-600 text-xs" title={e.notes}>📝</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-gray-300">{e.category.name}</td>
+                        <td className="px-4 py-3 text-gray-300">
+                          <span className="flex items-center gap-1.5">
+                            {e.category.icon && (
+                              <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />
+                            )}
+                            {e.category.name}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-gray-300">
                           {FREQUENCIES.find((f) => f.value === e.frequency)?.label}
                           {e.frequencyPeriod && (

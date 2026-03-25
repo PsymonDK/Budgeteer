@@ -4,16 +4,16 @@ import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }) })
 
-const DEFAULT_CATEGORIES = [
-  'Housing',
-  'Transport',
-  'Utilities',
-  'Food & Groceries',
-  'Insurance',
-  'Subscriptions',
-  'Healthcare',
-  'Savings',
-  'Other',
+const DEFAULT_CATEGORIES: { name: string; icon: string }[] = [
+  { name: 'Housing',         icon: 'Home' },
+  { name: 'Transport',       icon: 'Car' },
+  { name: 'Utilities',       icon: 'Zap' },
+  { name: 'Food & Groceries',icon: 'ShoppingCart' },
+  { name: 'Insurance',       icon: 'Shield' },
+  { name: 'Subscriptions',   icon: 'RefreshCw' },
+  { name: 'Healthcare',      icon: 'Heart' },
+  { name: 'Savings',         icon: 'PiggyBank' },
+  { name: 'Other',           icon: 'Tag' },
 ]
 
 async function main() {
@@ -35,17 +35,22 @@ async function main() {
     console.log(`  Change this on first login.`)
   }
 
-  // ── Default system-wide categories (idempotent) ────────────────────────────
+  // ── Default system-wide categories (idempotent, with icons) ───────────────
   let seeded = 0
-  for (const categoryName of DEFAULT_CATEGORIES) {
+  for (const { name: categoryName, icon } of DEFAULT_CATEGORIES) {
     const existing = await prisma.expenseCategory.findFirst({
       where: { name: categoryName, isSystemWide: true },
     })
     if (!existing) {
       await prisma.expenseCategory.create({
-        data: { name: categoryName, isSystemWide: true, createdByUserId: admin.id },
+        data: { name: categoryName, icon, isSystemWide: true, createdByUserId: admin.id },
       })
       seeded++
+    } else if (existing.icon !== icon) {
+      await prisma.expenseCategory.update({
+        where: { id: existing.id },
+        data: { icon },
+      })
     }
   }
   if (seeded > 0) console.log(`✓ Seeded ${seeded} default expense categories.`)
