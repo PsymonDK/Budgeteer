@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyEquivalent } from '../lib/calculations'
+import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ const CreateSavingsSchema = z.object({
   amount: z.number().positive(),
   frequency: FrequencyEnum,
   notes: z.string().optional(),
+  currencyCode: z.string().length(3).optional(),
 })
 
 const UpdateSavingsSchema = CreateSavingsSchema.partial().refine(
@@ -68,12 +70,26 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { label, amount, frequency, notes } = result.data
-    const amountDecimal = new Decimal(amount)
-    const monthlyEquivalent = calcMonthlyEquivalent(amountDecimal, frequency)
+    const { label, amount, frequency, notes, currencyCode } = result.data
+    const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
+    const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
+    if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+
+    const amountInBase = amount * rate
+    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
 
     const entry = await prisma.savingsEntry.create({
-      data: { budgetYearId: id, label, amount: amountDecimal, frequency, monthlyEquivalent, notes },
+      data: {
+        budgetYearId: id,
+        label,
+        amount: new Decimal(amount),
+        frequency,
+        monthlyEquivalent,
+        notes,
+        currencyCode: currency !== BASE_CURRENCY ? currency : null,
+        originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
+        rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+      },
     })
 
     return reply.status(201).send(entry)
@@ -97,13 +113,36 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     }
 
     const data = result.data
-    const amount = data.amount !== undefined ? new Decimal(data.amount) : existing.amount
-    const frequency = data.frequency ?? existing.frequency
-    const monthlyEquivalent = calcMonthlyEquivalent(amount, frequency)
+    const newCurrency = data.currencyCode ? data.currencyCode.toUpperCase()
+      : (existing.currencyCode ?? BASE_CURRENCY)
+    let rate: number
+    if (newCurrency === BASE_CURRENCY) {
+      rate = 1
+    } else if (existing.rateDate && existing.rateUsed) {
+      rate = parseFloat(existing.rateUsed.toString())
+    } else {
+      const fetched = await getLatestRate(newCurrency)
+      if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
+      rate = fetched
+    }
+
+    const newAmount = data.amount !== undefined ? data.amount : parseFloat(existing.amount.toString())
+    const newFrequency = data.frequency ?? existing.frequency
+    const amountInBase = newAmount * rate
+    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
 
     const updated = await prisma.savingsEntry.update({
       where: { id: entryId },
-      data: { label: data.label, amount, frequency, monthlyEquivalent, notes: data.notes },
+      data: {
+        label: data.label,
+        amount: new Decimal(newAmount),
+        frequency: newFrequency,
+        monthlyEquivalent,
+        notes: data.notes,
+        currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
+        originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
+        rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+      },
     })
 
     return reply.send(updated)

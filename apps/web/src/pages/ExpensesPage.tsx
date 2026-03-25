@@ -22,6 +22,15 @@ interface Expense {
   monthlyEquivalent: string
   notes: string | null
   category: Category
+  currencyCode: string | null
+  originalAmount: string | null
+  rateUsed: string | null
+}
+
+interface Currency {
+  code: string
+  rate: number
+  baseCurrency: string
 }
 
 interface BudgetYear {
@@ -83,11 +92,12 @@ interface ExpenseForm {
   categoryId: string
   frequencyPeriod: string
   notes: string
+  currencyCode: string
 }
 
-const emptyForm: ExpenseForm = {
-  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '',
-}
+const emptyForm = (baseCurrency: string): ExpenseForm => ({
+  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '', currencyCode: baseCurrency,
+})
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -113,7 +123,7 @@ export function ExpensesPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null)
-  const [form, setForm] = useState<ExpenseForm>(emptyForm)
+  const [form, setForm] = useState<ExpenseForm>(emptyForm('DKK'))
   const [formError, setFormError] = useState('')
 
   // ── Queries ──────────────────────────────────────────────────────────────────
@@ -152,6 +162,18 @@ export function ExpensesPage() {
     enabled: !!householdId,
   })
 
+  const { data: config } = useQuery<{ baseCurrency: string }>({
+    queryKey: ['config'],
+    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
+  })
+
+  const { data: currencies = [] } = useQuery<Currency[]>({
+    queryKey: ['currencies'],
+    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
+  })
+
+  const baseCurrency = config?.baseCurrency ?? 'DKK'
+
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
@@ -177,9 +199,11 @@ export function ExpensesPage() {
     [filtered]
   )
 
+  const selectedCurrencyRate = currencies.find((c) => c.code === form.currencyCode)?.rate ?? 1
   const previewMonthly = form.amount && form.frequency
-    ? calcMonthly(parseFloat(form.amount) || 0, form.frequency)
+    ? calcMonthly((parseFloat(form.amount) || 0) * selectedCurrencyRate, form.frequency)
     : null
+  const isForeignCurrency = form.currencyCode !== baseCurrency
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -192,15 +216,16 @@ export function ExpensesPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: Omit<ExpenseForm, 'frequencyPeriod' | 'notes'> & { frequencyPeriod?: string; notes?: string }) =>
+    mutationFn: (data: ExpenseForm & { frequencyPeriod?: string; notes?: string }) =>
       api.post<Expense>(`/budget-years/${activeBudgetYear!.id}/expenses`, {
         ...data,
         amount: parseFloat(data.amount),
+        currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
       setShowAdd(false)
-      setForm(emptyForm)
+      setForm(emptyForm(baseCurrency))
       setFormError('')
     },
     onError: (err) => {
@@ -211,15 +236,16 @@ export function ExpensesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (data: Omit<ExpenseForm, 'frequencyPeriod' | 'notes'> & { frequencyPeriod?: string; notes?: string }) =>
+    mutationFn: (data: ExpenseForm & { frequencyPeriod?: string; notes?: string }) =>
       api.put<Expense>(`/budget-years/${activeBudgetYear!.id}/expenses/${editingExpense!.id}`, {
         ...data,
         amount: parseFloat(data.amount),
+        currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
       setEditingExpense(null)
-      setForm(emptyForm)
+      setForm(emptyForm(baseCurrency))
       setFormError('')
     },
     onError: (err) => {
@@ -241,7 +267,7 @@ export function ExpensesPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function openAdd() {
-    setForm(emptyForm)
+    setForm(emptyForm(baseCurrency))
     setFormError('')
     setShowAdd(true)
   }
@@ -249,11 +275,12 @@ export function ExpensesPage() {
   function openEdit(expense: Expense) {
     setForm({
       label: expense.label,
-      amount: expense.amount,
+      amount: expense.originalAmount ?? expense.amount,
       frequency: expense.frequency,
       categoryId: expense.category.id,
       frequencyPeriod: expense.frequencyPeriod ?? '',
       notes: expense.notes ?? '',
+      currencyCode: expense.currencyCode ?? baseCurrency,
     })
     setFormError('')
     setEditingExpense(expense)
@@ -271,7 +298,7 @@ export function ExpensesPage() {
       ...form,
       frequencyPeriod: form.frequencyPeriod || undefined,
       notes: form.notes || undefined,
-    }
+    } as ExpenseForm
     if (editingExpense) updateMutation.mutate(payload)
     else createMutation.mutate(payload)
   }
@@ -441,10 +468,14 @@ export function ExpensesPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-gray-200 tabular-nums">
-                          {fmt(parseFloat(e.amount))}
+                          {fmt(parseFloat(e.originalAmount ?? e.amount))}
+                          {e.currencyCode && (
+                            <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
                           {fmt(parseFloat(e.monthlyEquivalent))}
+                          <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -535,10 +566,31 @@ export function ExpensesPage() {
                 </div>
               </div>
 
+              {currencies.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                  <select
+                    value={form.currencyCode}
+                    onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value={baseCurrency}>{baseCurrency} (base)</option>
+                    {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {previewMonthly !== null && (
                 <p className="text-xs text-gray-500">
                   Monthly equivalent:{' '}
-                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)}</span>
+                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                  {isForeignCurrency && form.amount && (
+                    <span className="ml-2 text-gray-600">
+                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                    </span>
+                  )}
                 </p>
               )}
 

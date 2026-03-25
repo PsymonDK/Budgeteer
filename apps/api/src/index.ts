@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import cron from 'node-cron'
 import { authRoutes } from './routes/auth'
 import { userRoutes } from './routes/users'
 import { householdRoutes } from './routes/households'
@@ -11,8 +12,10 @@ import { incomeRoutes } from './routes/income'
 import { dashboardRoutes } from './routes/dashboard'
 import { compareRoutes } from './routes/compare'
 import { savingsRoutes } from './routes/savings'
+import { currencyRoutes } from './routes/currencies'
+import { syncRates, BASE_CURRENCY } from './lib/currency'
 
-const VERSION = process.env.npm_package_version ?? '0.12.0'
+const VERSION = process.env.npm_package_version ?? '0.13.0'
 
 const app = Fastify({ logger: true })
 
@@ -37,10 +40,16 @@ app.register(incomeRoutes)
 app.register(dashboardRoutes)
 app.register(compareRoutes)
 app.register(savingsRoutes)
+app.register(currencyRoutes)
 
 // Health check
 app.get('/health', async () => {
   return { status: 'ok', version: VERSION }
+})
+
+// App config (public, no auth required)
+app.get('/config', async () => {
+  return { baseCurrency: BASE_CURRENCY }
 })
 
 // Start
@@ -49,6 +58,16 @@ const start = async () => {
     const port = Number(process.env.API_PORT) || 3001
     await app.listen({ port, host: '0.0.0.0' })
     console.log(`API v${VERSION} running on port ${port}`)
+
+    // Daily currency rate sync at 06:00
+    cron.schedule('0 6 * * *', async () => {
+      try {
+        const count = await syncRates()
+        app.log.info(`Currency rates synced: ${count} currencies updated`)
+      } catch (err) {
+        app.log.error({ err }, 'Failed to sync currency rates')
+      }
+    })
   } catch (err) {
     app.log.error(err)
     process.exit(1)

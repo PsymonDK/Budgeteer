@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyEquivalent } from '../lib/calculations'
+import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 
@@ -14,6 +15,7 @@ const CreateExpenseSchema = z.object({
   categoryId: z.string(),
   frequencyPeriod: z.string().optional(),
   notes: z.string().optional(),
+  currencyCode: z.string().length(3).optional(),
 })
 
 const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
@@ -71,12 +73,17 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, notes } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode } = result.data
 
     const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
     if (!category) return reply.status(400).send({ error: 'Category not found' })
 
-    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amount), frequency)
+    const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
+    const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
+    if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+
+    const amountInBase = amount * rate
+    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
 
     const expense = await prisma.expense.create({
       data: {
@@ -88,6 +95,9 @@ export async function expenseRoutes(fastify: FastifyInstance) {
         frequencyPeriod: frequencyPeriod ?? null,
         notes: notes ?? null,
         monthlyEquivalent,
+        currencyCode: currency !== BASE_CURRENCY ? currency : null,
+        originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
+        rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
       },
       include: expenseInclude,
     })
@@ -113,26 +123,43 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    const { amount, frequency, categoryId, ...rest } = result.data
-
-    // Recalculate monthly equivalent if amount or frequency changed
-    const newAmount = amount !== undefined ? new Decimal(amount) : existing.amount
-    const newFrequency = frequency ?? existing.frequency
-    const monthlyEquivalent = calcMonthlyEquivalent(newAmount, newFrequency)
+    const { amount, frequency, categoryId, currencyCode, ...rest } = result.data
 
     if (categoryId) {
       const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
+    // Determine currency and rate — respect locked rate if rateDate is set
+    const newCurrency = currencyCode ? currencyCode.toUpperCase()
+      : (existing.currencyCode ?? BASE_CURRENCY)
+    let rate: number
+    if (newCurrency === BASE_CURRENCY) {
+      rate = 1
+    } else if (existing.rateDate && existing.rateUsed) {
+      rate = parseFloat(existing.rateUsed.toString())
+    } else {
+      const fetched = await getLatestRate(newCurrency)
+      if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
+      rate = fetched
+    }
+
+    const newAmount = amount !== undefined ? amount : parseFloat(existing.amount.toString())
+    const newFrequency = frequency ?? existing.frequency
+    const amountInBase = newAmount * rate
+    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
+
     const expense = await prisma.expense.update({
       where: { id: expenseId },
       data: {
         ...rest,
-        ...(amount !== undefined && { amount: newAmount }),
+        ...(amount !== undefined && { amount: new Decimal(amount) }),
         ...(frequency !== undefined && { frequency }),
         ...(categoryId !== undefined && { categoryId }),
         monthlyEquivalent,
+        currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
+        originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
+        rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
       },
       include: expenseInclude,
     })

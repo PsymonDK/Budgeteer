@@ -35,6 +35,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
 
   web:
     build:

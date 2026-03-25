@@ -16,6 +16,15 @@ interface SavingsEntry {
   frequency: Frequency
   monthlyEquivalent: string
   notes: string | null
+  currencyCode: string | null
+  originalAmount: string | null
+  rateUsed: string | null
+}
+
+interface Currency {
+  code: string
+  rate: number
+  baseCurrency: string
 }
 
 interface BudgetYear {
@@ -35,6 +44,7 @@ interface EntryForm {
   amount: string
   frequency: Frequency
   notes: string
+  currencyCode: string
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -48,7 +58,7 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
   { value: 'ANNUAL',      label: 'Annually' },
 ]
 
-const emptyForm: EntryForm = { label: '', amount: '', frequency: 'MONTHLY', notes: '' }
+const emptyForm = (baseCurrency: string): EntryForm => ({ label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency })
 
 const inputClass =
   'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
@@ -87,7 +97,7 @@ export function SavingsPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [editingEntry, setEditingEntry] = useState<SavingsEntry | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SavingsEntry | null>(null)
-  const [form, setForm] = useState<EntryForm>(emptyForm)
+  const [form, setForm] = useState<EntryForm>(emptyForm('DKK'))
   const [formError, setFormError] = useState('')
 
   // ── Queries ──────────────────────────────────────────────────────────────────
@@ -119,6 +129,18 @@ export function SavingsPage() {
     enabled: !!activeBudgetYear,
   })
 
+  const { data: config } = useQuery<{ baseCurrency: string }>({
+    queryKey: ['config'],
+    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
+  })
+
+  const { data: currencies = [] } = useQuery<Currency[]>({
+    queryKey: ['currencies'],
+    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
+  })
+
+  const baseCurrency = config?.baseCurrency ?? 'DKK'
+
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const totalMonthly = useMemo(
@@ -126,9 +148,11 @@ export function SavingsPage() {
     [entries]
   )
 
+  const selectedCurrencyRate = currencies.find((c) => c.code === form.currencyCode)?.rate ?? 1
   const previewMonthly = form.amount && form.frequency
-    ? calcMonthly(parseFloat(form.amount) || 0, form.frequency)
+    ? calcMonthly((parseFloat(form.amount) || 0) * selectedCurrencyRate, form.frequency)
     : null
+  const isForeignCurrency = form.currencyCode !== baseCurrency
 
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
@@ -143,8 +167,9 @@ export function SavingsPage() {
         ...data,
         amount: parseFloat(data.amount),
         notes: data.notes || undefined,
+        currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
-    onSuccess: () => { invalidate(); setShowAdd(false); setForm(emptyForm); setFormError('') },
+    onSuccess: () => { invalidate(); setShowAdd(false); setForm(emptyForm(baseCurrency)); setFormError('') },
     onError: (err) => {
       if (axios.isAxiosError(err))
         setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
@@ -157,8 +182,9 @@ export function SavingsPage() {
         ...data,
         amount: parseFloat(data.amount),
         notes: data.notes || undefined,
+        currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
-    onSuccess: () => { invalidate(); setEditingEntry(null); setForm(emptyForm); setFormError('') },
+    onSuccess: () => { invalidate(); setEditingEntry(null); setForm(emptyForm(baseCurrency)); setFormError('') },
     onError: (err) => {
       if (axios.isAxiosError(err))
         setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
@@ -173,10 +199,10 @@ export function SavingsPage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
-  function openAdd() { setForm(emptyForm); setFormError(''); setShowAdd(true) }
+  function openAdd() { setForm(emptyForm(baseCurrency)); setFormError(''); setShowAdd(true) }
 
   function openEdit(e: SavingsEntry) {
-    setForm({ label: e.label, amount: e.amount, frequency: e.frequency, notes: e.notes ?? '' })
+    setForm({ label: e.label, amount: e.originalAmount ?? e.amount, frequency: e.frequency, notes: e.notes ?? '', currencyCode: e.currencyCode ?? baseCurrency })
     setFormError('')
     setEditingEntry(e)
   }
@@ -303,8 +329,14 @@ export function SavingsPage() {
                     <td className="px-4 py-3 text-gray-300">
                       {FREQUENCIES.find((f) => f.value === e.frequency)?.label}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-200 tabular-nums">{fmt(parseFloat(e.amount))}</td>
-                    <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">{fmt(parseFloat(e.monthlyEquivalent))}</td>
+                    <td className="px-4 py-3 text-right text-gray-200 tabular-nums">
+                      {fmt(parseFloat(e.originalAmount ?? e.amount))}
+                      {e.currencyCode && <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
+                      {fmt(parseFloat(e.monthlyEquivalent))}
+                      <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
+                    </td>
                     {!isReadOnly && (
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -382,9 +414,31 @@ export function SavingsPage() {
                 </div>
               </div>
 
+              {currencies.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                  <select
+                    value={form.currencyCode}
+                    onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value={baseCurrency}>{baseCurrency} (base)</option>
+                    {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {previewMonthly !== null && (
                 <p className="text-xs text-gray-500">
-                  Monthly equivalent: <span className="text-amber-400 font-medium">{fmt(previewMonthly)}</span>
+                  Monthly equivalent:{' '}
+                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                  {isForeignCurrency && form.amount && (
+                    <span className="ml-2 text-gray-600">
+                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                    </span>
+                  )}
                 </p>
               )}
 
