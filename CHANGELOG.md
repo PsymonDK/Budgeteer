@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.16.0] - 2026-03-25 — Sprint 16: Category Icons
+
+### Added
+- **Icon field on expense categories** — optional `icon String?` added to `ExpenseCategory` schema; stores a Lucide icon name (e.g. `"Home"`, `"Zap"`); defaults to `"Tag"` at render time if unset (CAT-010)
+- **Icon picker** — scrollable, searchable grid of all 1,400+ Lucide icons in the create-category modal; uses `lucide-react/dynamicIconImports` for the full index without upfront bundle cost; icons loaded lazily on demand (CAT-011)
+- **`CategoryIcon` component** — shared `apps/web/src/components/CategoryIcon.tsx` renders a Lucide icon by name via dynamic import with `Tag` as static fallback; zero bundle cost for icons not assigned to any category (CAT-012)
+- **Icon rendering throughout UI** — category icons appear in expense table rows, compare view category chips and table, dashboard by-category section, and category management tables (CAT-012)
+- **Default system category icons in seed** — Housing→Home, Transport→Car, Utilities→Zap, Food & Groceries→ShoppingCart, Insurance→Shield, Subscriptions→RefreshCw, Healthcare→Heart, Savings→PiggyBank, Other→Tag; seed is idempotent (CAT-013)
+
+---
+
+## [0.15.0] - 2026-03-25 — Sprint 15: User Profile
+
+### Added
+- **`UserPreferences` model** — `preferredCurrency`, `defaultHouseholdId`, four notification toggles (`notifyOverAllocation`, `notifyExpensesExceedIncome`, `notifyNoSavings`, `notifyUncategorised`); created automatically with defaults when a new user is created (USR-003)
+- **Profile API** — `GET /users/me` (profile + preferences), `PUT /users/me` (name/email; email change requires current password), `PUT /users/me/preferences` (partial update with upsert) (USR-001, USR-003)
+- **Income summary API** — `GET /users/me/income/summary` returns totalMonthly, totalAllocated, totalUnallocated, allocationPct, overAllocated across all active jobs and their household allocations (USR-004)
+- **Income trend API** — `GET /users/me/income/trend` resolves salary history server-side for each of the past 12 months; returns per-job monthly arrays, combined total, and bonus markers (USR-005)
+- **Income Sankey API** — `GET /users/me/income/sankey` returns d3-sankey-shaped `{ nodes, links }` showing job → income total → household → expenses/savings/surplus flow; unallocated node omitted when fully allocated (USR-006)
+- **Profile page** (`/profile`) — three-tab layout: Profile | Income | Households (USR-002)
+  - *Profile tab*: editable name/email (email change requires inline password confirmation), Change Password button, preferred currency select (from `/currencies`), default household select, four notification preference toggles with auto-save (USR-003)
+  - *Income tab*: summary bar (4 stat cards with over-allocation badge), 12-month recharts line chart with per-job coloured lines + dashed total + bonus dot markers, d3-sankey SVG flow diagram, link to full job management at `/income` (USR-004, USR-005, USR-006, USR-007)
+  - *Households tab*: list of user's households with role badge, budget year status, and quick links to open each household; over-allocation warning banner (USR-008)
+- **Profile navigation** — user's name in the household top-bar header links to `/profile` (USR-001)
+
+---
+
 ## [0.14.1] - 2026-03-25 — Auth improvements + sidebar navigation
 
 ### Added
