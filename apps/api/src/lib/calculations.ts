@@ -1,5 +1,5 @@
 import { Frequency } from '@prisma/client'
-import { Decimal } from '@prisma/client/runtime/library'
+import { Decimal } from '@prisma/client/runtime/client'
 
 export function calcMonthlyEquivalent(amount: Decimal, frequency: Frequency): Decimal {
   const a = new Decimal(amount.toString())

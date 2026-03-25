@@ -12,6 +12,7 @@ RUN npm install
 
 # Copy source
 COPY tsconfig.json ./
+COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY apps/api ./apps/api
 COPY packages/shared ./packages/shared

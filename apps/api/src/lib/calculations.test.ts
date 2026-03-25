@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { Decimal } from '@prisma/client/runtime/library'
+import { Decimal } from '@prisma/client/runtime/client'
 import { calcMonthlyEquivalent, deriveBudgetStatus } from './calculations'
 
 // ── calcMonthlyEquivalent ─────────────────────────────────────────────────────
