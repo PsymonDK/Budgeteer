@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.17.0] - 2026-03-25 — Avatar, Bookkeeper Role & Household Switcher
+
+### Added
+- **User avatar** — circular avatar in all headers; initials fallback with deterministic colour (8-colour palette, name-hashed); BOOKKEEPER and SYSTEM_ADMIN users show an amber ring (AVT-001)
+- **Avatar upload** — profile page lets users upload a JPG/PNG/WebP (max 2 MB); stored server-side via `POST /users/me/avatar`; served as static files from `UPLOAD_DIR/avatars/`; `DELETE /users/me/avatar` reverts to initials (AVT-002)
+- **Header user dropdown** — clicking the avatar opens a menu with name, email, Profile link, and Sign out; replaces the plain user-name link and separate sign-out button (AVT-003)
+- **`@fastify/multipart`** and **`@fastify/static`** registered in the API for file upload handling and avatar serving; `UPLOAD_DIR` env var (default `./uploads`) controls storage location
+- **`BOOKKEEPER` role** — added to `Role` enum between `SYSTEM_ADMIN` and `USER`; `requireBookkeeperOrAdmin` middleware exported from authenticate plugin; admin user management page shows role selector and Bookkeeper option (BK-001)
+- **Proxy users** — `isProxy Boolean` field on `User`; proxy users cannot log in (403 on `/auth/login`); admin can create proxy users without a password; proxy users cannot be given elevated roles (BK-003)
+- **Bookkeeper proxy income entry** — BOOKKEEPER and SYSTEM_ADMIN can manage income for proxy users via `GET /users/:id/jobs` (extended permission check); "Manage income →" link shown next to proxy members in household settings; `/income?proxyUserId=` opens IncomePage with a banner "Entering income on behalf of [name]" (BK-002)
+- **Household switcher** — header dropdown listing all user households with fast switching; selecting a household navigates to the same sub-page in the new household; single-household users see a static label (HH-010)
+- **`HouseholdContext`** — React context provider wrapping the app; `useHousehold()` hook; active household persisted to `localStorage` key `budgeteer_active_household`; validated against current membership on app load; falls back to `defaultHouseholdId` → first household (HH-010)
+- **Default household pin** — pin icon in household switcher dropdown sets `defaultHouseholdId` in `UserPreferences`; current default shown with filled pin icon (HH-011)
+
+### Changed
+- `GET /users/me` now returns `avatarUrl` and `isProxy` fields
+- `POST /users` accepts optional `isProxy` flag; proxy users skip password requirement
+- `PUT /users/:id` accepts `role` and `isProxy` updates (admin only)
+- Job ownership checks now allow BOOKKEEPER access to proxy users' jobs across all job/salary/bonus/override endpoints
+
+---
+
 ## [0.16.0] - 2026-03-25 — Sprint 16: Category Icons
 
 ### Added
