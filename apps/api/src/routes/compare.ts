@@ -35,12 +35,12 @@ export async function compareRoutes(fastify: FastifyInstance) {
     const [expensesA, expensesB] = await Promise.all([
       prisma.expense.findMany({
         where: { budgetYearId: yearIdA },
-        include: { category: { select: { id: true, name: true } } },
+        include: { category: { select: { id: true, name: true, icon: true } } },
         orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
       }),
       prisma.expense.findMany({
         where: { budgetYearId: yearIdB },
-        include: { category: { select: { id: true, name: true } } },
+        include: { category: { select: { id: true, name: true, icon: true } } },
         orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
       }),
     ])
@@ -71,7 +71,7 @@ export async function compareRoutes(fastify: FastifyInstance) {
     type ExpenseRow = {
       status: 'unchanged' | 'changed' | 'new' | 'removed'
       label: string
-      category: { id: string; name: string }
+      category: { id: string; name: string; icon: string | null }
       frequency: string
       a: { id: string; amount: string; monthlyEquivalent: string; frequency: string } | null
       b: { id: string; amount: string; monthlyEquivalent: string; frequency: string } | null

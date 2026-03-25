@@ -4,10 +4,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { CategoryIcon } from '../components/CategoryIcon'
+import { IconPicker } from '../components/IconPicker'
 
 interface Category {
   id: string
   name: string
+  icon: string | null
   isSystemWide: boolean
   householdId: string | null
   createdAt: string
@@ -31,6 +34,8 @@ export function CategoriesPage() {
 
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newIcon, setNewIcon] = useState<string | null>(null)
+  const [showIconPicker, setShowIconPicker] = useState(false)
   const [createError, setCreateError] = useState('')
   const [createWarning, setCreateWarning] = useState('')
 
@@ -61,12 +66,14 @@ export function CategoriesPage() {
   const replacementOptions = categories.filter((c) => c.id !== deleteTarget?.id)
 
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
-      api.post<Category & { warning?: string }>('/categories', { name, householdId }),
+    mutationFn: ({ name, icon }: { name: string; icon: string | null }) =>
+      api.post<Category & { warning?: string }>('/categories', { name, householdId, ...(icon ? { icon } : {}) }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['categories', householdId] })
       setShowCreate(false)
       setNewName('')
+      setNewIcon(null)
+      setShowIconPicker(false)
       setCreateError('')
       if (res.data.warning) setCreateWarning(res.data.warning)
     },
@@ -102,7 +109,7 @@ export function CategoriesPage() {
     e.preventDefault()
     setCreateError('')
     setCreateWarning('')
-    createMutation.mutate(newName)
+    createMutation.mutate({ name: newName, icon: newIcon })
   }
 
   function handleDelete(e: FormEvent) {
@@ -131,7 +138,7 @@ export function CategoriesPage() {
             <h2 className="text-lg font-semibold">Custom categories</h2>
             {isHouseholdAdmin && (
               <button
-                onClick={() => { setShowCreate(true); setCreateError(''); setCreateWarning('') }}
+                onClick={() => { setShowCreate(true); setNewIcon(null); setShowIconPicker(false); setCreateError(''); setCreateWarning('') }}
                 className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
               >
                 + New category
@@ -157,7 +164,12 @@ export function CategoriesPage() {
                 <tbody>
                   {customCategories.map((c) => (
                     <tr key={c.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
-                      <td className="px-4 py-3 text-white font-medium">{c.name}</td>
+                      <td className="px-4 py-3 text-white font-medium">
+                        <span className="flex items-center gap-2">
+                          {c.icon && <CategoryIcon name={c.icon} size={16} className="text-gray-400 shrink-0" />}
+                          {c.name}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-gray-400">{c.createdBy.name}</td>
                       <td className="px-4 py-3 text-gray-400">{c._count.expenses}</td>
                       <td className="px-4 py-3 text-right">
@@ -204,7 +216,12 @@ export function CategoriesPage() {
               <tbody>
                 {systemCategories.map((c) => (
                   <tr key={c.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
-                    <td className="px-4 py-3 text-white">{c.name}</td>
+                    <td className="px-4 py-3 text-white">
+                      <span className="flex items-center gap-2">
+                        {c.icon && <CategoryIcon name={c.icon} size={16} className="text-gray-400 shrink-0" />}
+                        {c.name}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-gray-400">{c._count.expenses}</td>
                     {isSystemAdmin && (
                       <td className="px-4 py-3 text-right">
@@ -227,7 +244,7 @@ export function CategoriesPage() {
       {/* Create category modal */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold">New custom category</h2>
               <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
@@ -244,6 +261,35 @@ export function CategoriesPage() {
                   className={inputClass}
                   placeholder="e.g. Pet expenses"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
+                  Icon <span className="text-gray-600 font-normal">(optional)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  {newIcon ? (
+                    <span className="flex items-center gap-2 text-sm text-gray-300">
+                      <CategoryIcon name={newIcon} size={16} className="text-amber-400" />
+                      {newIcon}
+                    </span>
+                  ) : (
+                    <span className="text-sm text-gray-600">None selected</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowIconPicker((v) => !v)}
+                    className="ml-auto text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                  >
+                    {showIconPicker ? 'Close' : newIcon ? 'Change' : 'Pick icon'}
+                  </button>
+                </div>
+                {showIconPicker && (
+                  <IconPicker
+                    value={newIcon}
+                    onChange={setNewIcon}
+                    onClose={() => setShowIconPicker(false)}
+                  />
+                )}
               </div>
               {createError && (
                 <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>

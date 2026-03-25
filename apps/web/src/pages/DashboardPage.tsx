@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { CategoryIcon } from '../components/CategoryIcon'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ interface IncomeMember {
 interface Category {
   id: string
   name: string
+  icon: string | null
 }
 
 interface ExpenseItem {
@@ -39,6 +41,7 @@ interface ExpenseItem {
 interface ExpenseByCategory {
   categoryId: string
   categoryName: string
+  categoryIcon: string | null
   totalMonthly: string
 }
 
@@ -386,7 +389,14 @@ export function DashboardPage() {
                           {e.label}
                           {e.notes && <span className="ml-1.5 text-gray-600 text-xs" title={e.notes}>📝</span>}
                         </td>
-                        <td className="px-4 py-3 text-gray-400">{e.category.name}</td>
+                        <td className="px-4 py-3 text-gray-400">
+                          <span className="flex items-center gap-1.5">
+                            {e.category.icon && (
+                              <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />
+                            )}
+                            {e.category.name}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums text-gray-300">
                           {expenseView === 'monthly'
                             ? fmt(e.monthlyEquivalent)
@@ -421,7 +431,12 @@ export function DashboardPage() {
                   const pct = expenses > 0 ? (parseFloat(c.totalMonthly) / expenses) * 100 : 0
                   return (
                     <div key={c.categoryId} className="flex items-center gap-3">
-                      <span className="text-gray-300 text-sm w-36 shrink-0 truncate">{c.categoryName}</span>
+                      <span className="text-gray-300 text-sm w-36 shrink-0 truncate flex items-center gap-1.5">
+                        {c.categoryIcon && (
+                          <CategoryIcon name={c.categoryIcon} size={14} className="text-gray-500 shrink-0" />
+                        )}
+                        {c.categoryName}
+                      </span>
                       <div className="flex-1 bg-gray-800 rounded-full h-2">
                         <div
                           className="bg-amber-400/70 h-2 rounded-full transition-all"

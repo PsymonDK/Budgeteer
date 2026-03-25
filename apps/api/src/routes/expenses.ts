@@ -24,7 +24,7 @@ const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
 )
 
 const expenseInclude = {
-  category: { select: { id: true, name: true, isSystemWide: true } },
+  category: { select: { id: true, name: true, icon: true, isSystemWide: true } },
 } as const
 
 // Verify the caller is a member of the household that owns the budget year

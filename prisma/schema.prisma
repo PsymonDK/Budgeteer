@@ -183,6 +183,7 @@ model HouseholdIncomeAllocation {
 model ExpenseCategory {
   id              String     @id @default(cuid())
   name            String
+  icon            String?
   isSystemWide    Boolean    @default(false)
   householdId     String?
   createdBy       User       @relation(fields: [createdByUserId], references: [id])
