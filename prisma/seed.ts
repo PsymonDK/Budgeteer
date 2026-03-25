@@ -30,6 +30,7 @@ async function main() {
     admin = await prisma.user.create({
       data: { email, name, passwordHash, role: 'SYSTEM_ADMIN', mustChangePassword: true },
     })
+    await prisma.userPreferences.create({ data: { userId: admin.id } })
     console.log(`✓ Created admin user: ${admin.email}`)
     console.log(`  Default password: ${password}`)
     console.log(`  Change this on first login.`)
@@ -69,6 +70,12 @@ async function main() {
     prisma.user.create({ data: { email: 'bob@demo.local',   name: 'Bob Demo',   passwordHash: demoPassword } }),
     prisma.user.create({ data: { email: 'carol@demo.local', name: 'Carol Demo', passwordHash: demoPassword } }),
     prisma.user.create({ data: { email: 'dave@demo.local',  name: 'Dave Demo',  passwordHash: demoPassword } }),
+  ])
+  await Promise.all([
+    prisma.userPreferences.create({ data: { userId: alice.id } }),
+    prisma.userPreferences.create({ data: { userId: bob.id } }),
+    prisma.userPreferences.create({ data: { userId: carol.id } }),
+    prisma.userPreferences.create({ data: { userId: dave.id } }),
   ])
   console.log('✓ Created 4 demo users (password: demo1234)')
 

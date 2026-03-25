@@ -4,6 +4,27 @@ import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 
+const UpdateMeSchema = z
+  .object({
+    name: z.string().min(1),
+    email: z.string().email(),
+    currentPassword: z.string(),
+  })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
+
+const UpdatePreferencesSchema = z
+  .object({
+    defaultHouseholdId: z.string().nullable(),
+    preferredCurrency: z.string().min(1).max(10),
+    notifyOverAllocation: z.boolean(),
+    notifyExpensesExceedIncome: z.boolean(),
+    notifyNoSavings: z.boolean(),
+    notifyUncategorised: z.boolean(),
+  })
+  .partial()
+  .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
+
 const CreateUserSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
@@ -54,12 +75,13 @@ export async function userRoutes(fastify: FastifyInstance) {
     }
 
     const passwordHash = await hashPassword(password)
-    const user = await prisma.user.create({
+    const newUser = await prisma.user.create({
       data: { email, name, passwordHash, mustChangePassword: true },
       select: userSelect,
     })
+    await prisma.userPreferences.create({ data: { userId: newUser.id } })
 
-    return reply.status(201).send(user)
+    return reply.status(201).send(newUser)
   })
 
   // PUT /users/:id — edit name/email or deactivate (admin only)
@@ -110,6 +132,81 @@ export async function userRoutes(fastify: FastifyInstance) {
       select: userSelect,
     })
     return reply.send(user)
+  })
+
+  // GET /users/me — returns current user + preferences
+  fastify.get('/users/me', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        ...userSelect,
+        preferences: {
+          select: {
+            preferredCurrency: true,
+            defaultHouseholdId: true,
+            notifyOverAllocation: true,
+            notifyExpensesExceedIncome: true,
+            notifyNoSavings: true,
+            notifyUncategorised: true,
+          },
+        },
+      },
+    })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+    return reply.send(user)
+  })
+
+  // PUT /users/me — update name and/or email (email change requires currentPassword)
+  fastify.put('/users/me', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const result = UpdateMeSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return reply.status(404).send({ error: 'User not found' })
+
+    const { name, email, currentPassword } = result.data
+
+    // Email change requires password verification
+    if (email && email !== user.email) {
+      if (!currentPassword) {
+        return reply.status(400).send({ error: 'currentPassword is required to change email' })
+      }
+      const valid = await verifyPassword(currentPassword, user.passwordHash)
+      if (!valid) return reply.status(400).send({ error: 'Current password is incorrect' })
+
+      const taken = await prisma.user.findUnique({ where: { email } })
+      if (taken) return reply.status(409).send({ error: 'Email already in use' })
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(name !== undefined && { name }),
+        ...(email !== undefined && { email }),
+      },
+      select: userSelect,
+    })
+    return reply.send(updated)
+  })
+
+  // PUT /users/me/preferences — update preferences (partial)
+  fastify.put('/users/me/preferences', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const result = UpdatePreferencesSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const prefs = await prisma.userPreferences.upsert({
+      where: { userId },
+      create: { userId, ...result.data },
+      update: result.data,
+    })
+    return reply.send(prefs)
   })
 
   // POST /users/me/change-password — authenticated user changes their own password

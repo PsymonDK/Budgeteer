@@ -54,6 +54,21 @@ model User {
   jobs                      Job[]
   refreshTokens             RefreshToken[]
   createdCategories         ExpenseCategory[]
+  preferences               UserPreferences?
+}
+
+model UserPreferences {
+  id                         String    @id @default(cuid())
+  userId                     String    @unique
+  user                       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultHouseholdId         String?
+  preferredCurrency          String    @default("DKK")
+  notifyOverAllocation       Boolean   @default(true)
+  notifyExpensesExceedIncome Boolean   @default(true)
+  notifyNoSavings            Boolean   @default(true)
+  notifyUncategorised        Boolean   @default(true)
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 }
 
 model Household {

@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh repo:*)",
+      "Bash(gh api:*)",
+      "Bash(gh issue:*)",
+      "Bash(for i:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(for issue:*)",
+      "Bash(do gh:*)",
+      "Bash(echo \"✓ #$issue\" done)"
+    ]
+  }
+}
