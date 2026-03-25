@@ -67,8 +67,8 @@ export function HouseholdLayout() {
               Users
             </Link>
           )}
-          <Link to="/change-password" className="text-sm text-gray-400 hover:text-white transition-colors">
-            Change password
+          <Link to="/profile" className="text-sm text-gray-400 hover:text-white transition-colors">
+            {user?.name ?? 'Profile'}
           </Link>
           <button
             onClick={handleLogout}

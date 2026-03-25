@@ -13,6 +13,7 @@ import { dashboardRoutes } from './routes/dashboard'
 import { compareRoutes } from './routes/compare'
 import { savingsRoutes } from './routes/savings'
 import { currencyRoutes } from './routes/currencies'
+import { profileRoutes } from './routes/profile'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 
 const VERSION = process.env.npm_package_version ?? '0.14.0'
@@ -41,6 +42,7 @@ app.register(dashboardRoutes)
 app.register(compareRoutes)
 app.register(savingsRoutes)
 app.register(currencyRoutes)
+app.register(profileRoutes)
 
 // Health check
 app.get('/health', async () => {
