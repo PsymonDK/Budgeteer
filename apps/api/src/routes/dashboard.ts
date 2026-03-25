@@ -1,23 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-
-// ── Shared income helper ──────────────────────────────────────────────────────
-
-async function calcIncomeForYear(householdId: string, budgetYearId: string, memberUserIds: string[]) {
-  return Promise.all(
-    memberUserIds.map(async (userId) => {
-      const entries = await prisma.incomeEntry.findMany({
-        where: { userId, allocations: { some: { budgetYearId } } },
-        include: { allocations: { where: { budgetYearId } } },
-      })
-      return entries.reduce((sum, e) => {
-        const pct = parseFloat((e.allocations[0]?.allocationPct ?? '0').toString())
-        return sum + parseFloat(e.monthlyEquivalent.toString()) * pct / 100
-      }, 0)
-    })
-  )
-}
+import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /households/:id/summary ─────────────────────────────────────────────
@@ -78,21 +62,22 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     }
 
     // ── Income ──────────────────────────────────────────────────────────────
-    const incomeAmounts = await calcIncomeForYear(
-      householdId,
-      activeBudgetYear.id,
-      household.members.map((m) => m.userId)
-    )
-    const totalMonthlyIncome = incomeAmounts.reduce((s, v) => s + v, 0)
-    const incomeMembers = household.members.map((m, i) => ({
-      userId: m.userId,
-      name: m.user.name,
-      email: m.user.email,
-      monthlyAllocated: incomeAmounts[i].toFixed(2),
-      sharePct: totalMonthlyIncome > 0
-        ? ((incomeAmounts[i] / totalMonthlyIncome) * 100).toFixed(1)
-        : '0.0',
-    }))
+    const referenceDate = getIncomeReferenceDate(activeBudgetYear.year, activeBudgetYear.status)
+    const incomeResult = await calcIncomeForYear(activeBudgetYear.id, referenceDate)
+    const totalMonthlyIncome = incomeResult.totalMonthly
+    const memberIncomeMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocated]))
+    const incomeMembers = household.members.map((m) => {
+      const allocated = memberIncomeMap.get(m.userId) ?? 0
+      return {
+        userId: m.userId,
+        name: m.user.name,
+        email: m.user.email,
+        monthlyAllocated: allocated.toFixed(2),
+        sharePct: totalMonthlyIncome > 0
+          ? ((allocated / totalMonthlyIncome) * 100).toFixed(1)
+          : '0.0',
+      }
+    })
 
     // ── Expenses ─────────────────────────────────────────────────────────────
     const expenses = await prisma.expense.findMany({
@@ -189,12 +174,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       orderBy: { year: 'asc' },
     })
 
-    const memberUserIds = household.members.map((m) => m.userId)
-
     const rows = await Promise.all(
       years.map(async (y) => {
-        const incomeAmounts = await calcIncomeForYear(householdId, y.id, memberUserIds)
-        const totalIncome = incomeAmounts.reduce((s, v) => s + v, 0)
+        const refDate = getIncomeReferenceDate(y.year, y.status)
+        const incomeResult = await calcIncomeForYear(y.id, refDate)
+        const totalIncome = incomeResult.totalMonthly
         const totalExpenses = y.expenses.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
         const totalSavings = y.savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
 

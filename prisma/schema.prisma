@@ -32,6 +32,11 @@ enum Frequency {
   ANNUAL
 }
 
+enum BudgetMode {
+  ONE_OFF
+  SPREAD_ANNUALLY
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -46,7 +51,7 @@ model User {
   updatedAt                 DateTime                   @updatedAt
 
   households                HouseholdMember[]
-  incomeEntries             IncomeEntry[]
+  jobs                      Job[]
   refreshTokens             RefreshToken[]
   createdCategories         ExpenseCategory[]
 }
@@ -91,30 +96,73 @@ model BudgetYear {
   incomeAllocations HouseholdIncomeAllocation[]
 }
 
-model IncomeEntry {
-  id                 String                      @id @default(cuid())
-  user               User                        @relation(fields: [userId], references: [id])
-  userId             String
-  label              String
-  amount             Decimal                     @db.Decimal(10, 2)
-  frequency          Frequency
-  frequencyPeriod    String?
-  monthlyEquivalent  Decimal                     @db.Decimal(10, 2)
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
+model Job {
+  id         String    @id @default(cuid())
+  user       User      @relation(fields: [userId], references: [id])
+  userId     String
+  name       String
+  employer   String?
+  startDate  DateTime
+  endDate    DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  allocations        HouseholdIncomeAllocation[]
+  salaryRecords   SalaryRecord[]
+  overrides       MonthlyIncomeOverride[]
+  bonuses         Bonus[]
+  allocations     HouseholdIncomeAllocation[]
+}
+
+model SalaryRecord {
+  id             String   @id @default(cuid())
+  job            Job      @relation(fields: [jobId], references: [id])
+  jobId          String
+  grossAmount    Decimal  @db.Decimal(10, 2)
+  netAmount      Decimal  @db.Decimal(10, 2)
+  effectiveFrom  DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([jobId, effectiveFrom])
+}
+
+model MonthlyIncomeOverride {
+  id          String   @id @default(cuid())
+  job         Job      @relation(fields: [jobId], references: [id])
+  jobId       String
+  year        Int
+  month       Int
+  grossAmount Decimal  @db.Decimal(10, 2)
+  netAmount   Decimal  @db.Decimal(10, 2)
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([jobId, year, month])
+}
+
+model Bonus {
+  id               String      @id @default(cuid())
+  job              Job         @relation(fields: [jobId], references: [id])
+  jobId            String
+  label            String
+  grossAmount      Decimal     @db.Decimal(10, 2)
+  netAmount        Decimal     @db.Decimal(10, 2)
+  paymentDate      DateTime
+  includeInBudget  Boolean
+  budgetMode       BudgetMode?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }
 
 model HouseholdIncomeAllocation {
-  id             String      @id @default(cuid())
-  incomeEntry    IncomeEntry @relation(fields: [incomeEntryId], references: [id])
-  incomeEntryId  String
-  budgetYear     BudgetYear  @relation(fields: [budgetYearId], references: [id])
-  budgetYearId   String
-  allocationPct  Decimal     @db.Decimal(5, 2)
+  id            String     @id @default(cuid())
+  job           Job        @relation(fields: [jobId], references: [id])
+  jobId         String
+  budgetYear    BudgetYear @relation(fields: [budgetYearId], references: [id])
+  budgetYearId  String
+  allocationPct Decimal    @db.Decimal(5, 2)
 
-  @@unique([incomeEntryId, budgetYearId])
+  @@unique([jobId, budgetYearId])
 }
 
 model ExpenseCategory {

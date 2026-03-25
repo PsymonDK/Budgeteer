@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyEquivalent } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
+import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -186,14 +187,9 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     // For each year, calculate income and savings totals
     const rows = await Promise.all(
       years.map(async (y) => {
-        const allocs = await prisma.householdIncomeAllocation.findMany({
-          where: { budgetYearId: y.id },
-          include: { incomeEntry: { select: { monthlyEquivalent: true } } },
-        })
-        const income = allocs.reduce(
-          (s, a) => s + parseFloat(a.incomeEntry.monthlyEquivalent.toString()) * parseFloat(a.allocationPct.toString()) / 100,
-          0
-        )
+        const refDate = getIncomeReferenceDate(y.year, y.status)
+        const incomeResult = await calcIncomeForYear(y.id, refDate)
+        const income = incomeResult.totalMonthly
         const savings = y.savingsEntries.reduce(
           (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
         )

@@ -8,14 +8,14 @@ import { householdRoutes } from './routes/households'
 import { categoryRoutes } from './routes/categories'
 import { budgetYearRoutes } from './routes/budgetYears'
 import { expenseRoutes } from './routes/expenses'
-import { incomeRoutes } from './routes/income'
+import { jobRoutes } from './routes/jobs'
 import { dashboardRoutes } from './routes/dashboard'
 import { compareRoutes } from './routes/compare'
 import { savingsRoutes } from './routes/savings'
 import { currencyRoutes } from './routes/currencies'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 
-const VERSION = process.env.npm_package_version ?? '0.13.0'
+const VERSION = process.env.npm_package_version ?? '0.14.0'
 
 const app = Fastify({ logger: true })
 
@@ -36,7 +36,7 @@ app.register(householdRoutes)
 app.register(categoryRoutes)
 app.register(budgetYearRoutes)
 app.register(expenseRoutes)
-app.register(incomeRoutes)
+app.register(jobRoutes)
 app.register(dashboardRoutes)
 app.register(compareRoutes)
 app.register(savingsRoutes)

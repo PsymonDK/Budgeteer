@@ -152,25 +152,67 @@ async function main() {
     ],
   })
 
-  // Alice income + allocation to Smith active + retired
-  const aliceIncome = await prisma.incomeEntry.create({
-    data: { userId: alice.id, label: 'Salary', amount: 5500, frequency: 'MONTHLY', monthlyEquivalent: 5500 },
+  // Alice: Job "Product Manager @ Acme" with 2 salary records + 1 annual bonus
+  const aliceJob = await prisma.job.create({
+    data: {
+      userId: alice.id,
+      name: 'Product Manager',
+      employer: 'Acme Corp',
+      startDate: new Date(`${currentYear - 2}-03-01`),
+    },
   })
-  await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: aliceIncome.id, budgetYearId: smithActive.id, allocationPct: 100 },
+  await prisma.salaryRecord.createMany({
+    data: [
+      { jobId: aliceJob.id, grossAmount: 7000, netAmount: 5000, effectiveFrom: new Date(`${currentYear - 2}-03-01`) },
+      { jobId: aliceJob.id, grossAmount: 7700, netAmount: 5500, effectiveFrom: new Date(`${currentYear - 1}-01-01`) },
+    ],
   })
-  await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: aliceIncome.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+  await prisma.bonus.create({
+    data: {
+      jobId: aliceJob.id,
+      label: 'Annual performance bonus',
+      grossAmount: 14000,
+      netAmount: 10000,
+      paymentDate: new Date(`${currentYear}-03-15`),
+      includeInBudget: true,
+      budgetMode: 'SPREAD_ANNUALLY',
+    },
+  })
+  await prisma.householdIncomeAllocation.createMany({
+    data: [
+      { jobId: aliceJob.id, budgetYearId: smithActive.id, allocationPct: 100 },
+      { jobId: aliceJob.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+    ],
   })
 
-  const bobIncome = await prisma.incomeEntry.create({
-    data: { userId: bob.id, label: 'Salary', amount: 4200, frequency: 'MONTHLY', monthlyEquivalent: 4200 },
+  // Bob: Job "Software Engineer @ Beta" with 1 salary record + 1 upcoming bonus
+  const bobJob = await prisma.job.create({
+    data: {
+      userId: bob.id,
+      name: 'Software Engineer',
+      employer: 'Beta Systems',
+      startDate: new Date(`${currentYear - 1}-06-01`),
+    },
   })
-  await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: bobIncome.id, budgetYearId: smithActive.id, allocationPct: 100 },
+  await prisma.salaryRecord.create({
+    data: { jobId: bobJob.id, grossAmount: 5800, netAmount: 4200, effectiveFrom: new Date(`${currentYear - 1}-06-01`) },
   })
-  await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: bobIncome.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+  await prisma.bonus.create({
+    data: {
+      jobId: bobJob.id,
+      label: 'Q2 project completion bonus',
+      grossAmount: 3000,
+      netAmount: 2200,
+      paymentDate: new Date(`${currentYear}-06-30`),
+      includeInBudget: true,
+      budgetMode: 'ONE_OFF',
+    },
+  })
+  await prisma.householdIncomeAllocation.createMany({
+    data: [
+      { jobId: bobJob.id, budgetYearId: smithActive.id, allocationPct: 100 },
+      { jobId: bobJob.id, budgetYearId: smithRetired.id, allocationPct: 100 },
+    ],
   })
 
   console.log('✓ Created Smith Family household (2 budget years + 1 simulation)')
@@ -204,18 +246,33 @@ async function main() {
     data: { budgetYearId: cdActive.id, label: 'Joint savings', amount: 500, frequency: 'MONTHLY', monthlyEquivalent: 500 },
   })
 
-  const carolIncome = await prisma.incomeEntry.create({
-    data: { userId: carol.id, label: 'Salary', amount: 6000, frequency: 'MONTHLY', monthlyEquivalent: 6000 },
+  const carolJob = await prisma.job.create({
+    data: {
+      userId: carol.id,
+      name: 'Marketing Manager',
+      employer: 'Global Media',
+      startDate: new Date(`${currentYear - 3}-01-01`),
+    },
+  })
+  await prisma.salaryRecord.create({
+    data: { jobId: carolJob.id, grossAmount: 8300, netAmount: 6000, effectiveFrom: new Date(`${currentYear - 3}-01-01`) },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: carolIncome.id, budgetYearId: cdActive.id, allocationPct: 100 },
+    data: { jobId: carolJob.id, budgetYearId: cdActive.id, allocationPct: 100 },
   })
 
-  const daveIncome = await prisma.incomeEntry.create({
-    data: { userId: dave.id, label: 'Freelance', amount: 3500, frequency: 'MONTHLY', monthlyEquivalent: 3500 },
+  const daveJob = await prisma.job.create({
+    data: {
+      userId: dave.id,
+      name: 'Freelance Developer',
+      startDate: new Date(`${currentYear - 2}-04-01`),
+    },
+  })
+  await prisma.salaryRecord.create({
+    data: { jobId: daveJob.id, grossAmount: 4800, netAmount: 3500, effectiveFrom: new Date(`${currentYear - 2}-04-01`) },
   })
   await prisma.householdIncomeAllocation.create({
-    data: { incomeEntryId: daveIncome.id, budgetYearId: cdActive.id, allocationPct: 100 },
+    data: { jobId: daveJob.id, budgetYearId: cdActive.id, allocationPct: 100 },
   })
 
   console.log('✓ Created Carol & Dave household (1 active budget year)')

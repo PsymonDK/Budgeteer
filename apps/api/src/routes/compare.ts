@@ -1,6 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
+import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 export async function compareRoutes(fastify: FastifyInstance) {
   // GET /households/:id/compare?a=budgetYearIdA&b=budgetYearIdB
@@ -50,22 +51,13 @@ export async function compareRoutes(fastify: FastifyInstance) {
       prisma.savingsEntry.findMany({ where: { budgetYearId: yearIdB } }),
     ])
 
-    // Income: sum allocations for each budget year
-    const [allocsA, allocsB] = await Promise.all([
-      prisma.householdIncomeAllocation.findMany({
-        where: { budgetYearId: yearIdA },
-        include: { incomeEntry: { select: { monthlyEquivalent: true } } },
-      }),
-      prisma.householdIncomeAllocation.findMany({
-        where: { budgetYearId: yearIdB },
-        include: { incomeEntry: { select: { monthlyEquivalent: true } } },
-      }),
+    // Income: use reference date = Dec 31 of each year for comparison
+    const [incomeResultA, incomeResultB] = await Promise.all([
+      calcIncomeForYear(yearIdA, getIncomeReferenceDate(yearA.year, yearA.status)),
+      calcIncomeForYear(yearIdB, getIncomeReferenceDate(yearB.year, yearB.status)),
     ])
-
-    const incomeA = allocsA.reduce((s, a) =>
-      s + parseFloat(a.incomeEntry.monthlyEquivalent.toString()) * parseFloat(a.allocationPct.toString()) / 100, 0)
-    const incomeB = allocsB.reduce((s, a) =>
-      s + parseFloat(a.incomeEntry.monthlyEquivalent.toString()) * parseFloat(a.allocationPct.toString()) / 100, 0)
+    const incomeA = incomeResultA.totalMonthly
+    const incomeB = incomeResultB.totalMonthly
 
     const expTotalA = expensesA.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
     const expTotalB = expensesB.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
