@@ -150,4 +150,4 @@ prisma/dev.db
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.db.claude/worktrees/
