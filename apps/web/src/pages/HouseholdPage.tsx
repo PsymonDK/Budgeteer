@@ -2,8 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { inputClass } from '../lib/styles'
 
 interface Member {
   id: string
@@ -28,9 +32,6 @@ interface UserOption {
   isProxy?: boolean
 }
 
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors'
-
 export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
   const { user: me } = useAuth()
@@ -44,6 +45,10 @@ export function HouseholdPage() {
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
   const [nameError, setNameError] = useState('')
+
+  // Confirmation dialogs
+  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null)
+  const [confirmRoleChange, setConfirmRoleChange] = useState<{ member: Member; newRole: 'ADMIN' | 'MEMBER' } | null>(null)
 
   const { data: household, isLoading } = useQuery<Household>({
     queryKey: ['household', id],
@@ -72,6 +77,7 @@ export function HouseholdPage() {
       setAddUserId('')
       setAddRole('MEMBER')
       setAddError('')
+      toast.success('Member added')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -82,13 +88,19 @@ export function HouseholdPage() {
 
   const removeMemberMutation = useMutation({
     mutationFn: (memberId: string) => api.delete(`/households/${id}/members/${memberId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      toast.success('Member removed')
+    },
   })
 
   const updateRoleMutation = useMutation({
     mutationFn: ({ memberId, role }: { memberId: string; role: 'ADMIN' | 'MEMBER' }) =>
       api.put(`/households/${id}/members/${memberId}`, { role }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household', id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      toast.success('Role updated')
+    },
   })
 
   const updateNameMutation = useMutation({
@@ -98,6 +110,7 @@ export function HouseholdPage() {
       queryClient.invalidateQueries({ queryKey: ['households'] })
       setEditingName(false)
       setNameError('')
+      toast.success('Household renamed')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -125,11 +138,7 @@ export function HouseholdPage() {
   }
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <span className="text-gray-500 text-sm">Loading…</span>
-      </div>
-    )
+    return <PageLoader />
   }
 
   if (!household) {
@@ -244,10 +253,7 @@ export function HouseholdPage() {
                         <div className="flex items-center justify-end gap-3">
                           {canToggleRole && (
                             <button
-                              onClick={() => updateRoleMutation.mutate({
-                                memberId: m.userId,
-                                role: m.role === 'ADMIN' ? 'MEMBER' : 'ADMIN',
-                              })}
+                              onClick={() => setConfirmRoleChange({ member: m, newRole: m.role === 'ADMIN' ? 'MEMBER' : 'ADMIN' })}
                               disabled={updateRoleMutation.isPending}
                               className="text-xs text-gray-400 hover:text-white transition-colors disabled:opacity-50"
                             >
@@ -256,7 +262,7 @@ export function HouseholdPage() {
                           )}
                           {canRemove && (
                             <button
-                              onClick={() => removeMemberMutation.mutate(m.userId)}
+                              onClick={() => setConfirmRemove(m)}
                               disabled={removeMemberMutation.isPending}
                               className="text-xs text-red-500 hover:text-red-400 transition-colors disabled:opacity-50"
                             >
@@ -276,62 +282,97 @@ export function HouseholdPage() {
 
       {/* Add member modal */}
       {showAddMember && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Add member</h2>
-              <button onClick={() => setShowAddMember(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title="Add member" onClose={() => setShowAddMember(false)}>
+          <form onSubmit={handleAddMember} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">User</label>
+              <select
+                value={addUserId}
+                onChange={(e) => setAddUserId(e.target.value)}
+                required
+                className={inputClass}
+              >
+                <option value="">Select a user…</option>
+                {availableUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} — {u.email}{u.isProxy ? ' (proxy)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
-            <form onSubmit={handleAddMember} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">User</label>
-                <select
-                  value={addUserId}
-                  onChange={(e) => setAddUserId(e.target.value)}
-                  required
-                  className={inputClass}
-                >
-                  <option value="">Select a user…</option>
-                  {availableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} — {u.email}{u.isProxy ? ' (proxy)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Role</label>
-                <select
-                  value={addRole}
-                  onChange={(e) => setAddRole(e.target.value as 'ADMIN' | 'MEMBER')}
-                  className={inputClass}
-                >
-                  <option value="MEMBER">Member</option>
-                  <option value="ADMIN">Admin</option>
-                </select>
-              </div>
-              {addError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{addError}</div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={addMemberMutation.isPending || !addUserId}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {addMemberMutation.isPending ? 'Adding…' : 'Add member'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddMember(false)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Role</label>
+              <select
+                value={addRole}
+                onChange={(e) => setAddRole(e.target.value as 'ADMIN' | 'MEMBER')}
+                className={inputClass}
+              >
+                <option value="MEMBER">Member</option>
+                <option value="ADMIN">Admin</option>
+              </select>
+            </div>
+            {addError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{addError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={addMemberMutation.isPending || !addUserId}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {addMemberMutation.isPending ? 'Adding…' : 'Add member'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowAddMember(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Confirm remove member */}
+      {confirmRemove && (
+        <Modal title="Remove member" onClose={() => setConfirmRemove(null)}>
+          <p className="text-gray-300 text-sm mb-6">
+            Remove <span className="font-semibold text-white">{confirmRemove.user.name}</span> from this household? They will lose access immediately.
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => { removeMemberMutation.mutate(confirmRemove.userId); setConfirmRemove(null) }}
+              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Remove
+            </button>
+            <button onClick={() => setConfirmRemove(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {/* Confirm role change */}
+      {confirmRoleChange && (
+        <Modal title="Change role" onClose={() => setConfirmRoleChange(null)}>
+          <p className="text-gray-300 text-sm mb-6">
+            Make <span className="font-semibold text-white">{confirmRoleChange.member.user.name}</span> a{' '}
+            <span className="font-semibold text-white">{confirmRoleChange.newRole === 'ADMIN' ? 'household admin' : 'regular member'}</span>?
+            {confirmRoleChange.newRole === 'ADMIN' && ' They will be able to manage members and settings.'}
+            {confirmRoleChange.newRole === 'MEMBER' && ' They will no longer be able to manage members and settings.'}
+          </p>
+          <div className="flex gap-3">
+            <button onClick={() => { updateRoleMutation.mutate({ memberId: confirmRoleChange.member.userId, role: confirmRoleChange.newRole }); setConfirmRoleChange(null) }}
+              className="flex-1 bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Confirm
+            </button>
+            <button onClick={() => setConfirmRoleChange(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </Modal>
       )}
     </>
   )

@@ -2,8 +2,13 @@ import { useState, useMemo, type FormEvent } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '../api/client'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -73,11 +78,6 @@ function calcMonthly(amount: number, freq: Frequency): number {
 function fmt(value: number): string {
   return value.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
-
-// ── Shared styles ─────────────────────────────────────────────────────────────
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
 
 // ── Expense form state ────────────────────────────────────────────────────────
 
@@ -215,6 +215,7 @@ export function ExpensesPage() {
       setShowAdd(false)
       setForm(emptyForm(baseCurrency))
       setFormError('')
+      toast.success('Expense added')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -235,6 +236,7 @@ export function ExpensesPage() {
       setEditingExpense(null)
       setForm(emptyForm(baseCurrency))
       setFormError('')
+      toast.success('Expense updated')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -249,6 +251,7 @@ export function ExpensesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
       setDeleteTarget(null)
+      toast.success('Expense deleted')
     },
   })
 
@@ -296,8 +299,10 @@ export function ExpensesPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   function SortIcon({ col }: { col: SortKey }) {
-    if (sortKey !== col) return <span className="text-gray-700 ml-1">↕</span>
-    return <span className="text-amber-400 ml-1">{sortAsc ? '↑' : '↓'}</span>
+    if (sortKey !== col) return <ChevronsUpDown size={14} className="text-gray-700 ml-1" />
+    return sortAsc
+      ? <ChevronUp size={14} className="text-amber-400 ml-1" />
+      : <ChevronDown size={14} className="text-amber-400 ml-1" />
   }
 
   return (
@@ -330,7 +335,7 @@ export function ExpensesPage() {
         )}
 
         {yearsLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : !activeBudgetYear ? (
           /* No budget year yet */
           <div className="text-center py-20">
@@ -375,7 +380,7 @@ export function ExpensesPage() {
 
             {/* Table */}
             {expensesLoading ? (
-              <div className="text-gray-500 text-sm">Loading…</div>
+              <PageLoader />
             ) : filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
                 {expenses.length === 0 ? 'No expenses yet. Add one to get started.' : 'No expenses match the filter.'}
@@ -447,7 +452,7 @@ export function ExpensesPage() {
                           <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                             <button
                               onClick={() => openEdit(e)}
                               className="text-xs text-gray-400 hover:text-white transition-colors"
@@ -485,15 +490,12 @@ export function ExpensesPage() {
 
       {/* Add / Edit modal */}
       {(showAdd || editingExpense) && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">{editingExpense ? 'Edit expense' : 'New expense'}</h2>
-              <button
-                onClick={() => { setShowAdd(false); setEditingExpense(null) }}
-                className="text-gray-500 hover:text-white text-xl leading-none"
-              >×</button>
-            </div>
+        <Modal
+          title={editingExpense ? 'Edit expense' : 'New expense'}
+          onClose={() => { setShowAdd(false); setEditingExpense(null) }}
+          maxWidth="max-w-lg"
+        >
+          <div className="max-h-[70vh] overflow-y-auto">
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
@@ -623,35 +625,32 @@ export function ExpensesPage() {
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Delete confirmation */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-2">Delete expense</h2>
-            <p className="text-gray-300 text-sm mb-1">
-              Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
-            </p>
-            <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => deleteMutation.mutate(deleteTarget.id)}
-                disabled={deleteMutation.isPending}
-                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title="Delete expense" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+          <p className="text-gray-300 text-sm mb-1">
+            Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
+          </p>
+          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )

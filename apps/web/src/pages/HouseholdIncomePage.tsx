@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { PageLoader } from '../components/LoadingSpinner'
 
 type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
 
@@ -69,7 +70,7 @@ export function HouseholdIncomePage() {
       </p>
 
       {isLoading ? (
-        <div className="text-gray-500 text-sm">Loading…</div>
+        <PageLoader />
       ) : !summary?.budgetYear ? (
         <div className="text-center py-20 text-gray-500">
           <p className="mb-2">No active budget year for this household.</p>

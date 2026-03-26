@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, type FormEvent, type ChangeEvent } from 'r
 import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ResponsiveContainer, Dot,
@@ -11,6 +12,8 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertTriangle, User, TrendingUp, Home } from 'lucide-react'
 import Avatar from '../components/Avatar'
+import { PageHeader } from '../components/PageHeader'
+import { PageLoader } from '../components/LoadingSpinner'
 
 // ── Shared styles ────────────────────────────────────────────────────────────
 
@@ -114,9 +117,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   const [email, setEmail] = useState('')
   const [currentPassword, setCurrentPassword] = useState('')
   const [profileError, setProfileError] = useState('')
-  const [profileSuccess, setProfileSuccess] = useState('')
   const [prefError, setPrefError] = useState('')
-  const [prefSuccess, setPrefSuccess] = useState('')
   const [avatarError, setAvatarError] = useState('')
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
@@ -135,9 +136,9 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
       api.put('/users/me', body),
     onSuccess: () => {
       setProfileError('')
-      setProfileSuccess('Profile updated.')
       setCurrentPassword('')
       queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      toast.success('Profile updated')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -150,8 +151,8 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     mutationFn: (body: Record<string, unknown>) => api.put('/users/me/preferences', body),
     onSuccess: () => {
       setPrefError('')
-      setPrefSuccess('Preferences saved.')
       queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      toast.success('Preferences saved')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -170,6 +171,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
       await api.post('/users/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
       queryClient.invalidateQueries({ queryKey: ['users-me'] })
       queryClient.invalidateQueries({ queryKey: ['me'] })
+      toast.success('Avatar updated')
     } catch (err) {
       if (axios.isAxiosError(err)) {
         setAvatarError((err.response?.data as { error?: string })?.error ?? 'Failed to upload avatar')
@@ -183,6 +185,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
       await api.delete('/users/me/avatar')
       queryClient.invalidateQueries({ queryKey: ['users-me'] })
       queryClient.invalidateQueries({ queryKey: ['me'] })
+      toast.success('Avatar removed')
     } catch (err) {
       if (axios.isAxiosError(err)) {
         setAvatarError((err.response?.data as { error?: string })?.error ?? 'Failed to remove avatar')
@@ -192,7 +195,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
 
   function handleProfileSubmit(e: FormEvent) {
     e.preventDefault()
-    setProfileSuccess('')
+    setProfileError('')
     const body: { name?: string; email?: string; currentPassword?: string } = {}
     if (me && name !== me.name) body.name = name
     if (me && email !== me.email) {
@@ -204,12 +207,11 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   }
 
   function handlePrefChange(field: string, value: unknown) {
-    setPrefSuccess('')
     updatePrefsMutation.mutate({ [field]: value })
   }
 
   if (isLoading || !me) {
-    return <div className="text-gray-400 text-sm">Loading…</div>
+    return <PageLoader />
   }
 
   const prefs = me.preferences
@@ -286,9 +288,6 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
           )}
           {profileError && (
             <p className="text-red-400 text-xs">{profileError}</p>
-          )}
-          {profileSuccess && (
-            <p className="text-green-400 text-xs">{profileSuccess}</p>
           )}
           <div className="flex gap-3">
             <button
@@ -369,7 +368,6 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
           </div>
 
           {prefError && <p className="text-red-400 text-xs">{prefError}</p>}
-          {prefSuccess && <p className="text-green-400 text-xs">{prefSuccess}</p>}
         </div>
       </div>
     </div>
@@ -732,7 +730,7 @@ function HouseholdsTab() {
       )}
 
       {isLoading ? (
-        <div className="text-gray-400 text-sm">Loading…</div>
+        <PageLoader />
       ) : households.length === 0 ? (
         <div className={cardClass}>
           <p className="text-gray-400 text-sm">
@@ -792,46 +790,12 @@ const TABS: { key: TabKey; label: string; icon: typeof User }[] = [
 ]
 
 export function ProfilePage() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const [tab, setTab] = useState<TabKey>('profile')
-
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm">Profile</span>
-        </div>
-        <div className="flex items-center gap-5">
-          <Link to="/" className="text-sm text-gray-400 hover:text-white transition-colors">
-            Households
-          </Link>
-          <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
-            My income
-          </Link>
-          {user?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Users
-            </Link>
-          )}
-          <button
-            onClick={handleLogout}
-            className="text-sm text-gray-400 hover:text-white transition-colors"
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+      <PageHeader />
 
       {/* Page content */}
       <main className="flex-1 px-6 py-8 max-w-4xl w-full mx-auto">

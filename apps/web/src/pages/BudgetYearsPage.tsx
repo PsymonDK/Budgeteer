@@ -2,8 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -23,9 +27,6 @@ interface Household {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
 
 function statusBadge(by: BudgetYear) {
   if (by.status === 'ACTIVE') return 'bg-green-900/50 text-green-300'
@@ -94,7 +95,12 @@ export function BudgetYearsPage() {
   const createMutation = useMutation({
     mutationFn: (year: number) =>
       api.post(`/households/${householdId}/budget-years`, { year }),
-    onSuccess: () => { invalidate(); setShowCreate(false); setCreateError('') },
+    onSuccess: () => {
+      invalidate()
+      setShowCreate(false)
+      setCreateError('')
+      toast.success('Budget year created')
+    },
     onError: (err) => {
       if (axios.isAxiosError(err)) setCreateError((err.response?.data as { error?: string })?.error ?? 'Failed to create')
     },
@@ -103,7 +109,12 @@ export function BudgetYearsPage() {
   const copyMutation = useMutation({
     mutationFn: ({ sourceId, body }: { sourceId: string; body: object }) =>
       api.post(`/households/${householdId}/budget-years/${sourceId}/copy`, body),
-    onSuccess: () => { invalidate(); setCopySource(null); setCopyError('') },
+    onSuccess: () => {
+      invalidate()
+      setCopySource(null)
+      setCopyError('')
+      toast.success('Budget year copied')
+    },
     onError: (err) => {
       if (axios.isAxiosError(err)) setCopyError((err.response?.data as { error?: string })?.error ?? 'Failed to copy')
     },
@@ -112,7 +123,12 @@ export function BudgetYearsPage() {
   const renameMutation = useMutation({
     mutationFn: ({ id, name }: { id: string; name: string }) =>
       api.patch(`/households/${householdId}/budget-years/${id}`, { simulationName: name }),
-    onSuccess: () => { invalidate(); setRenameTarget(null); setRenameError('') },
+    onSuccess: () => {
+      invalidate()
+      setRenameTarget(null)
+      setRenameError('')
+      toast.success('Budget year renamed')
+    },
     onError: (err) => {
       if (axios.isAxiosError(err)) setRenameError((err.response?.data as { error?: string })?.error ?? 'Failed to rename')
     },
@@ -121,19 +137,31 @@ export function BudgetYearsPage() {
   const retireMutation = useMutation({
     mutationFn: (id: string) =>
       api.patch(`/households/${householdId}/budget-years/${id}/retire`),
-    onSuccess: () => { invalidate(); setRetireTarget(null) },
+    onSuccess: () => {
+      invalidate()
+      setRetireTarget(null)
+      toast.success('Budget year retired')
+    },
   })
 
   const promoteMutation = useMutation({
     mutationFn: (id: string) =>
       api.patch(`/households/${householdId}/budget-years/${id}/promote`),
-    onSuccess: () => { invalidate(); setPromoteTarget(null) },
+    onSuccess: () => {
+      invalidate()
+      setPromoteTarget(null)
+      toast.success('Budget year promoted to active')
+    },
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       api.delete(`/households/${householdId}/budget-years/${id}`),
-    onSuccess: () => { invalidate(); setDeleteTarget(null) },
+    onSuccess: () => {
+      invalidate()
+      setDeleteTarget(null)
+      toast.success('Budget year deleted')
+    },
   })
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
@@ -216,7 +244,7 @@ export function BudgetYearsPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : (
           <>
             {/* Regular budget years */}
@@ -356,19 +384,77 @@ export function BudgetYearsPage() {
 
       {/* ── Create year modal ────────────────────────────────────────────────── */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">New budget year</h2>
-              <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title="New budget year" onClose={() => setShowCreate(false)} maxWidth="max-w-sm">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+              <input
+                type="number"
+                value={createYear}
+                onChange={(e) => setCreateYear(e.target.value)}
+                min="2000"
+                max="2100"
+                required
+                autoFocus
+                className={inputClass}
+              />
             </div>
-            <form onSubmit={handleCreate} className="space-y-4">
+            {createError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Copy modal ───────────────────────────────────────────────────────── */}
+      {copySource && (
+        <Modal
+          title={`Copy ${copySource.year}${copySource.simulationName ? ` — ${copySource.simulationName}` : ''}`}
+          onClose={() => setCopySource(null)}
+        >
+          <p className="text-gray-400 text-sm mb-4">Copies all expenses and savings entries. Income allocations are not copied.</p>
+          <form onSubmit={handleCopy} className="space-y-4">
+            {/* Mode toggle */}
+            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-sm font-medium">
+              <button
+                type="button"
+                onClick={() => setCopyMode('year')}
+                className={`flex-1 px-4 py-2.5 transition-colors ${copyMode === 'year' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >
+                New year
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopyMode('simulation')}
+                className={`flex-1 px-4 py-2.5 transition-colors ${copyMode === 'simulation' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >
+                Simulation
+              </button>
+            </div>
+
+            {copyMode === 'year' ? (
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Target year</label>
                 <input
                   type="number"
-                  value={createYear}
-                  onChange={(e) => setCreateYear(e.target.value)}
+                  value={copyYear}
+                  onChange={(e) => setCopyYear(e.target.value)}
                   min="2000"
                   max="2100"
                   required
@@ -376,235 +462,153 @@ export function BudgetYearsPage() {
                   className={inputClass}
                 />
               </div>
-              {createError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-              )}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {createMutation.isPending ? 'Creating…' : 'Create'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
+            ) : (
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Simulation name</label>
+                <input
+                  type="text"
+                  value={copySimName}
+                  onChange={(e) => setCopySimName(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="e.g. No car scenario"
+                  className={inputClass}
+                />
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            )}
 
-      {/* ── Copy modal ───────────────────────────────────────────────────────── */}
-      {copySource && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Copy {copySource.year}{copySource.simulationName ? ` — ${copySource.simulationName}` : ''}</h2>
-              <button onClick={() => setCopySource(null)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+            {copyError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{copyError}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={copyMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {copyMutation.isPending ? 'Copying…' : 'Copy'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopySource(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
             </div>
-            <p className="text-gray-400 text-sm mb-4">Copies all expenses and savings entries. Income allocations are not copied.</p>
-            <form onSubmit={handleCopy} className="space-y-4">
-              {/* Mode toggle */}
-              <div className="flex rounded-lg overflow-hidden border border-gray-700 text-sm font-medium">
-                <button
-                  type="button"
-                  onClick={() => setCopyMode('year')}
-                  className={`flex-1 px-4 py-2.5 transition-colors ${copyMode === 'year' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
-                >
-                  New year
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCopyMode('simulation')}
-                  className={`flex-1 px-4 py-2.5 transition-colors ${copyMode === 'simulation' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
-                >
-                  Simulation
-                </button>
-              </div>
-
-              {copyMode === 'year' ? (
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Target year</label>
-                  <input
-                    type="number"
-                    value={copyYear}
-                    onChange={(e) => setCopyYear(e.target.value)}
-                    min="2000"
-                    max="2100"
-                    required
-                    autoFocus
-                    className={inputClass}
-                  />
-                </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Simulation name</label>
-                  <input
-                    type="text"
-                    value={copySimName}
-                    onChange={(e) => setCopySimName(e.target.value)}
-                    required
-                    autoFocus
-                    placeholder="e.g. No car scenario"
-                    className={inputClass}
-                  />
-                </div>
-              )}
-
-              {copyError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{copyError}</div>
-              )}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={copyMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {copyMutation.isPending ? 'Copying…' : 'Copy'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCopySource(null)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
 
       {/* ── Rename simulation modal ──────────────────────────────────────────── */}
       {renameTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Rename simulation</h2>
-              <button onClick={() => setRenameTarget(null)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title="Rename simulation" onClose={() => setRenameTarget(null)} maxWidth="max-w-sm">
+          <form onSubmit={handleRename} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                required
+                autoFocus
+                className={inputClass}
+              />
             </div>
-            <form onSubmit={handleRename} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  required
-                  autoFocus
-                  className={inputClass}
-                />
-              </div>
-              {renameError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{renameError}</div>
-              )}
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={renameMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {renameMutation.isPending ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRenameTarget(null)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {renameError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{renameError}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={renameMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {renameMutation.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setRenameTarget(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* ── Retire confirm modal ──────────────────────────────────────────────── */}
       {retireTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-2">Retire {retireTarget.year}?</h2>
-            <p className="text-gray-300 text-sm mb-1">This budget year will become read-only.</p>
-            <p className="text-gray-500 text-xs mb-6">Expenses and savings data is preserved.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => retireMutation.mutate(retireTarget.id)}
-                disabled={retireMutation.isPending}
-                className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                {retireMutation.isPending ? 'Retiring…' : 'Retire'}
-              </button>
-              <button
-                onClick={() => setRetireTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title={`Retire ${retireTarget.year}?`} onClose={() => setRetireTarget(null)} maxWidth="max-w-sm">
+          <p className="text-gray-300 text-sm mb-1">This budget year will become read-only.</p>
+          <p className="text-gray-500 text-xs mb-6">Expenses and savings data is preserved.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => retireMutation.mutate(retireTarget.id)}
+              disabled={retireMutation.isPending}
+              className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {retireMutation.isPending ? 'Retiring…' : 'Retire'}
+            </button>
+            <button
+              onClick={() => setRetireTarget(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Promote confirm modal ─────────────────────────────────────────────── */}
       {promoteTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-2">Promote to active?</h2>
-            <p className="text-gray-300 text-sm mb-1">
-              <span className="text-purple-300 font-medium">"{promoteTarget.simulationName}"</span> will become the active budget for {promoteTarget.year}.
-            </p>
-            <p className="text-gray-500 text-xs mb-6">The current active budget year will be automatically retired.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => promoteMutation.mutate(promoteTarget.id)}
-                disabled={promoteMutation.isPending}
-                className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                {promoteMutation.isPending ? 'Promoting…' : 'Promote'}
-              </button>
-              <button
-                onClick={() => setPromoteTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title="Promote to active?" onClose={() => setPromoteTarget(null)} maxWidth="max-w-sm">
+          <p className="text-gray-300 text-sm mb-1">
+            <span className="text-purple-300 font-medium">"{promoteTarget.simulationName}"</span> will become the active budget for {promoteTarget.year}.
+          </p>
+          <p className="text-gray-500 text-xs mb-6">The current active budget year will be automatically retired.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => promoteMutation.mutate(promoteTarget.id)}
+              disabled={promoteMutation.isPending}
+              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {promoteMutation.isPending ? 'Promoting…' : 'Promote'}
+            </button>
+            <button
+              onClick={() => setPromoteTarget(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* ── Delete simulation confirm modal ───────────────────────────────────── */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-2">Delete simulation?</h2>
-            <p className="text-gray-300 text-sm mb-1">
-              <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses will be permanently deleted.
-            </p>
-            <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => deleteMutation.mutate(deleteTarget.id)}
-                disabled={deleteMutation.isPending}
-                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-              </button>
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
+        <Modal title="Delete simulation?" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+          <p className="text-gray-300 text-sm mb-1">
+            <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses will be permanently deleted.
+          </p>
+          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
-import { useAuth } from '../contexts/AuthContext'
-import HeaderUserMenu from '../components/HeaderUserMenu'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
+import { inputClass } from '../lib/styles'
 
 interface Household {
   id: string
@@ -14,7 +16,6 @@ interface Household {
 }
 
 export function HouseholdsPage() {
-  const { user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -49,18 +50,7 @@ export function HouseholdsPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <span className="text-amber-400 font-bold text-lg">☠️ Budgeteer</span>
-        <div className="flex items-center gap-4">
-          {user?.role === 'SYSTEM_ADMIN' && (
-            <>
-              <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-              <Link to="/admin/households" className="text-sm text-gray-400 hover:text-white transition-colors">All households</Link>
-            </>
-          )}
-          <HeaderUserMenu />
-        </div>
-      </header>
+      <PageHeader />
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
@@ -74,7 +64,7 @@ export function HouseholdsPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : households.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
             <p className="text-lg mb-2">No households yet</p>
@@ -110,47 +100,41 @@ export function HouseholdsPage() {
       </main>
 
       {showCreate && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">New household</h2>
-              <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title="New household" onClose={() => setShowCreate(false)}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+                className={inputClass}
+                placeholder="e.g. Family Budget"
+              />
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
-                  autoFocus
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors"
-                  placeholder="e.g. Family Budget"
-                />
-              </div>
-              {error && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {createMutation.isPending ? 'Creating…' : 'Create'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {error && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   )

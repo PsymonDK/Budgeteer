@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
+import { PageLoader } from '../components/LoadingSpinner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -107,7 +109,7 @@ export function HistoryPage() {
       <p className="text-gray-400 text-sm mb-8">Year-over-year view of all budget periods.</p>
 
       {isLoading ? (
-        <div className="text-gray-500 text-sm py-20 text-center">Loading…</div>
+        <PageLoader />
       ) : trends.length === 0 ? (
         <div className="text-center py-20 text-gray-600">
           <p>No budget years recorded yet.</p>
@@ -210,7 +212,7 @@ export function HistoryPage() {
                         <span className="text-gray-400">
                           Surplus <span className={`font-medium tabular-nums ${surplus < 0 ? 'text-red-400' : 'text-green-400'}`}>{fmt(surplus)}</span>
                         </span>
-                        <span className="text-gray-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                        {isExpanded ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
                       </div>
                     </button>
 
@@ -218,7 +220,7 @@ export function HistoryPage() {
                     {isExpanded && (
                       <div className="border-t border-gray-800 px-5 py-4">
                         {!expandedSummary ? (
-                          <p className="text-gray-500 text-sm">Loading…</p>
+                          <PageLoader />
                         ) : (
                           <>
                             <div className="grid grid-cols-2 gap-4 mb-4 sm:grid-cols-4">

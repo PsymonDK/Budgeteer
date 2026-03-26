@@ -1,10 +1,12 @@
 import { useState, type ReactNode, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import { api } from '../../api/client'
-import { useAuth } from '../../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import { Modal } from '../../components/Modal'
+import { PageLoader } from '../../components/LoadingSpinner'
+import { PageHeader } from '../../components/PageHeader'
 
 interface User {
   id: string
@@ -59,7 +61,6 @@ function roleLabel(role: string) {
 }
 
 export function AdminUsersPage() {
-  const { logout } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -87,6 +88,7 @@ export function AdminUsersPage() {
       setShowCreate(false)
       setCreateForm({ email: '', name: '', password: '', isProxy: false })
       setFormError('')
+      toast.success('User created')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -102,6 +104,7 @@ export function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: ['users'] })
       setEditingUser(null)
       setFormError('')
+      toast.success('User updated')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -118,6 +121,7 @@ export function AdminUsersPage() {
       setResetUser(null)
       setResetPassword('')
       setFormError('')
+      toast.success('Password reset')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -161,27 +165,11 @@ export function AdminUsersPage() {
     updateMutation.mutate({ id: editingUser.id, data: editForm })
   }
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
+  void navigate
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">☠️ Budgeteer</Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm">User Management</span>
-        </div>
-        <button
-          onClick={handleLogout}
-          className="text-sm text-gray-400 hover:text-white transition-colors"
-        >
-          Sign out
-        </button>
-      </header>
+      <PageHeader />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
@@ -195,7 +183,7 @@ export function AdminUsersPage() {
         </div>
 
         {isLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : (
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <table className="w-full text-sm">
@@ -427,22 +415,6 @@ export function AdminUsersPage() {
 }
 
 // ── Small shared sub-components ──────────────────────────────────────────────
-
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-      <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors text-xl leading-none">
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { PageLoader } from '../components/LoadingSpinner'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,7 @@ export function DashboardPage() {
       )}
 
       {isLoading ? (
-        <div className="text-gray-500 text-sm py-20 text-center">Loading…</div>
+        <PageLoader />
       ) : !summary?.budgetYear ? (
         <div className="text-center py-20 text-gray-500">
           <p className="mb-2">No active budget year for this household.</p>

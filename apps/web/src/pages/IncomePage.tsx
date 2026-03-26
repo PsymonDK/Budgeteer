@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ResponsiveContainer,
 } from 'recharts'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,6 +91,8 @@ interface HistoryBucket {
 const inputClass =
   'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
 
+// (kept local to avoid breaking existing usage)
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 function fmt(v: number | string) {
@@ -119,8 +125,7 @@ const emptyBonus: BonusForm = { label: '', grossAmount: '', netAmount: '', payme
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function IncomePage() {
-  const { user: me, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user: me } = useAuth()
   const queryClient = useQueryClient()
   const [params] = useSearchParams()
   const proxyUserId = params.get('proxyUserId')
@@ -154,6 +159,12 @@ export function IncomePage() {
   // Allocations
   const [pendingAllocations, setPendingAllocations] = useState<Record<string, string>>({})
   const [allocError, setAllocError] = useState('')
+  const [allocationsDirty, setAllocationsDirty] = useState(false)
+
+  // Confirmation dialogs
+  const [confirmCloseJob, setConfirmCloseJob] = useState<Job | null>(null)
+  const [confirmDeleteBonus, setConfirmDeleteBonus] = useState<{ jobId: string; bonusId: string } | null>(null)
+  const [confirmDeleteOverride, setConfirmDeleteOverride] = useState<{ jobId: string; overrideId: string } | null>(null)
 
   // History chart
   const [histFrom, setHistFrom] = useState(() => {
@@ -235,7 +246,7 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob); setJobFormError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
@@ -245,13 +256,13 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob); setJobFormError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
   const closeJobMutation = useMutation({
     mutationFn: (jobId: string) => api.delete(`/users/${targetUserId}/jobs/${jobId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); toast.success('Job closed') },
   })
 
   const addSalaryMutation = useMutation({
@@ -263,6 +274,7 @@ export function IncomePage() {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setSalaryForm(emptySalary); setSalaryError('')
+      toast.success('Salary record added')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setSalaryError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -278,6 +290,7 @@ export function IncomePage() {
       queryClient.invalidateQueries({ queryKey: ['overrides', overrideJobId] })
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
       setOverrideForm(emptyOverride); setOverrideError('')
+      toast.success('Monthly override saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setOverrideError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -287,6 +300,7 @@ export function IncomePage() {
       api.delete(`/jobs/${jobId}/overrides/${overrideId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      toast.success('Override deleted')
     },
   })
 
@@ -300,6 +314,7 @@ export function IncomePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
       setBonusJobId(null); setBonusForm(emptyBonus); setBonusError('')
+      toast.success('Bonus saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setBonusError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -314,6 +329,7 @@ export function IncomePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
       setEditingBonus(null); setBonusForm(emptyBonus); setBonusError('')
+      toast.success('Bonus saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setBonusError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -321,7 +337,7 @@ export function IncomePage() {
   const deleteBonusMutation = useMutation({
     mutationFn: ({ jobId, bonusId }: { jobId: string; bonusId: string }) =>
       api.delete(`/jobs/${jobId}/bonuses/${bonusId}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['all-bonuses'] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['all-bonuses'] }); toast.success('Bonus deleted') },
   })
 
   const allocMutation = useMutation({
@@ -329,7 +345,7 @@ export function IncomePage() {
       pct === 0
         ? api.delete(`/income/${jobId}/allocations/${householdId}`)
         : api.put(`/income/${jobId}/allocations/${householdId}`, { allocationPct: pct }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setPendingAllocations({}); setAllocError('') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setPendingAllocations({}); setAllocationsDirty(false); setAllocError(''); toast.success('Allocations saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setAllocError((err.response?.data as { error?: string })?.error ?? 'Failed to save allocation') },
   })
 
@@ -364,11 +380,6 @@ export function IncomePage() {
     else createJobMutation.mutate(jobForm)
   }
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   // ── Chart data ────────────────────────────────────────────────────────────
 
   const chartData = (historyData?.buckets ?? []).map((b) => ({
@@ -382,19 +393,7 @@ export function IncomePage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">☠️ Budgeteer</Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-400 text-sm">My Income</span>
-        </div>
-        <div className="flex items-center gap-4">
-          {me?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-          )}
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">Sign out</button>
-        </div>
-      </header>
+      <PageHeader />
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
@@ -482,7 +481,7 @@ export function IncomePage() {
               </div>
 
               {isLoading ? (
-                <div className="text-gray-500 text-sm">Loading…</div>
+                <PageLoader />
               ) : jobs.length === 0 ? (
                 <div className="text-center py-16 text-gray-500">
                   <p className="text-lg mb-2">No jobs yet</p>
@@ -518,7 +517,7 @@ export function IncomePage() {
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Salary history</button>
                           <button onClick={() => openEditJob(job)} className="text-xs text-gray-400 hover:text-white transition-colors">Edit</button>
                           {job.isActive && (
-                            <button onClick={() => { if (confirm(`Close job "${job.name}"? This sets today as the end date.`)) closeJobMutation.mutate(job.id) }}
+                            <button onClick={() => setConfirmCloseJob(job)}
                               className="text-xs text-red-500 hover:text-red-400 transition-colors">Close</button>
                           )}
                         </div>
@@ -538,7 +537,7 @@ export function IncomePage() {
                                   <span className="text-sm text-gray-300 w-44 truncate">{h.name}</span>
                                   <div className="flex items-center gap-2 flex-1">
                                     <input type="number" value={pctStr}
-                                      onChange={(e) => setPendingAllocations((prev) => ({ ...prev, [`${job.id}:${h.id}`]: e.target.value }))}
+                                      onChange={(e) => { setPendingAllocations((prev) => ({ ...prev, [`${job.id}:${h.id}`]: e.target.value })); setAllocationsDirty(true) }}
                                       min="0" max="999" step="1"
                                       className="w-20 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400 tabular-nums" />
                                     <span className="text-gray-500 text-sm">%</span>
@@ -550,20 +549,27 @@ export function IncomePage() {
                               )
                             })}
                           </div>
-                          {Object.keys(pendingAllocations).some((k) => k.startsWith(`${job.id}:`)) && (
-                            <div className="mt-3 flex items-center gap-3">
-                              <button onClick={() => saveAllocations(job)} disabled={allocMutation.isPending}
-                                className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-xs px-3 py-1.5 rounded transition-colors">
-                                {allocMutation.isPending ? 'Saving…' : 'Save allocations'}
-                              </button>
-                              <button onClick={() => setPendingAllocations((p) => {
-                                const next = { ...p }
-                                Object.keys(next).filter((k) => k.startsWith(`${job.id}:`)).forEach((k) => delete next[k])
-                                return next
-                              })} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Discard</button>
-                              {allocError && <span className="text-red-400 text-xs">{allocError}</span>}
-                            </div>
-                          )}
+                          {(() => {
+                            const totalPct = Object.entries(pendingAllocations)
+                              .filter(([k]) => k.startsWith(`${job.id}:`))
+                              .reduce((acc, [, v]) => acc + (Number(v) || 0), 0)
+                            const isOver = totalPct !== 100 && allocationsDirty && Object.keys(pendingAllocations).some((k) => k.startsWith(`${job.id}:`))
+                            return allocationsDirty && Object.keys(pendingAllocations).some((k) => k.startsWith(`${job.id}:`)) ? (
+                              <div className="mt-3 flex items-center gap-3 flex-wrap">
+                                <button onClick={() => saveAllocations(job)} disabled={allocMutation.isPending || isOver}
+                                  className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-xs px-3 py-1.5 rounded transition-colors">
+                                  {allocMutation.isPending ? 'Saving…' : 'Save allocations'}
+                                </button>
+                                <button onClick={() => { setPendingAllocations((p) => {
+                                  const next = { ...p }
+                                  Object.keys(next).filter((k) => k.startsWith(`${job.id}:`)).forEach((k) => delete next[k])
+                                  return next
+                                }); setAllocationsDirty(false) }} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Discard</button>
+                                {isOver && <span className="text-amber-400 text-xs">Total is {totalPct}% — must equal 100%</span>}
+                                {allocError && <span className="text-red-400 text-xs">{allocError}</span>}
+                              </div>
+                            ) : null
+                          })()}
                         </div>
                       )}
                     </div>
@@ -621,7 +627,7 @@ export function IncomePage() {
                                   <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(o.netAmount)}</td>
                                   <td className="py-2 pr-4 text-gray-500 text-xs">{o.note ?? '—'}</td>
                                   <td className="py-2">
-                                    <button onClick={() => deleteOverrideMutation.mutate({ jobId: job.id, overrideId: o.id })}
+                                    <button onClick={() => setConfirmDeleteOverride({ jobId: job.id, overrideId: o.id })}
                                       className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
                                   </td>
                                 </tr>
@@ -697,7 +703,7 @@ export function IncomePage() {
                                     <div className="flex gap-3">
                                       <button onClick={() => { setEditingBonus(b); setBonusForm({ label: b.label, grossAmount: b.grossAmount, netAmount: b.netAmount, paymentDate: toDateInput(b.paymentDate), includeInBudget: b.includeInBudget, budgetMode: b.budgetMode ?? '' }); setBonusError('') }}
                                         className="text-xs text-gray-400 hover:text-white transition-colors">Edit</button>
-                                      <button onClick={() => deleteBonusMutation.mutate({ jobId: job.id, bonusId: b.id })}
+                                      <button onClick={() => setConfirmDeleteBonus({ jobId: job.id, bonusId: b.id })}
                                         className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
                                     </div>
                                   </td>
@@ -718,230 +724,267 @@ export function IncomePage() {
 
       {/* ── Add/Edit Job modal ──────────────────────────────────────────────── */}
       {(showAddJob || editingJob) && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">{editingJob ? 'Edit job' : 'Add job'}</h2>
-              <button onClick={() => { setShowAddJob(false); setEditingJob(null) }} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title={editingJob ? 'Edit job' : 'Add job'} onClose={() => { setShowAddJob(false); setEditingJob(null) }}>
+          <form onSubmit={handleJobSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Job title</label>
+              <input type="text" value={jobForm.name} onChange={(e) => setJobForm({ ...jobForm, name: e.target.value })}
+                required autoFocus placeholder="e.g. Software Engineer" className={inputClass} />
             </div>
-            <form onSubmit={handleJobSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Employer <span className="text-gray-600">(optional)</span></label>
+              <input type="text" value={jobForm.employer} onChange={(e) => setJobForm({ ...jobForm, employer: e.target.value })}
+                placeholder="e.g. Acme Corp" className={inputClass} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Job title</label>
-                <input type="text" value={jobForm.name} onChange={(e) => setJobForm({ ...jobForm, name: e.target.value })}
-                  required autoFocus placeholder="e.g. Software Engineer" className={inputClass} />
+                <label className="block text-xs font-medium text-gray-400 mb-1">Start date</label>
+                <input type="date" value={jobForm.startDate} onChange={(e) => setJobForm({ ...jobForm, startDate: e.target.value })}
+                  required className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Employer <span className="text-gray-600">(optional)</span></label>
-                <input type="text" value={jobForm.employer} onChange={(e) => setJobForm({ ...jobForm, employer: e.target.value })}
-                  placeholder="e.g. Acme Corp" className={inputClass} />
+                <label className="block text-xs font-medium text-gray-400 mb-1">End date <span className="text-gray-600">(optional)</span></label>
+                <input type="date" value={jobForm.endDate} onChange={(e) => setJobForm({ ...jobForm, endDate: e.target.value })}
+                  className={inputClass} />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Start date</label>
-                  <input type="date" value={jobForm.startDate} onChange={(e) => setJobForm({ ...jobForm, startDate: e.target.value })}
-                    required className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">End date <span className="text-gray-600">(optional)</span></label>
-                  <input type="date" value={jobForm.endDate} onChange={(e) => setJobForm({ ...jobForm, endDate: e.target.value })}
-                    className={inputClass} />
-                </div>
-              </div>
-              {jobFormError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{jobFormError}</div>}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
-                  {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving…' : editingJob ? 'Save changes' : 'Add job'}
-                </button>
-                <button type="button" onClick={() => { setShowAddJob(false); setEditingJob(null) }}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
+            </div>
+            {jobFormError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{jobFormError}</div>}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving…' : editingJob ? 'Save changes' : 'Add job'}
+              </button>
+              <button type="button" onClick={() => { setShowAddJob(false); setEditingJob(null) }}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* ── Salary History modal ────────────────────────────────────────────── */}
       {salaryJobId && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-lg p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Salary history — {jobs.find((j) => j.id === salaryJobId)?.name}</h2>
-              <button onClick={() => setSalaryJobId(null)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
-            </div>
-
-            {/* Existing records */}
-            {salaryRecords.length > 0 && (
-              <table className="w-full text-sm mb-6">
-                <thead>
-                  <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
-                    <th className="pb-2 pr-4">Effective from</th>
-                    <th className="pb-2 pr-4">Gross / month</th>
-                    <th className="pb-2">Net / month</th>
+        <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => setSalaryJobId(null)} maxWidth="max-w-lg">
+          {/* Existing records */}
+          {salaryRecords.length > 0 && (
+            <table className="w-full text-sm mb-6">
+              <thead>
+                <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
+                  <th className="pb-2 pr-4">Effective from</th>
+                  <th className="pb-2 pr-4">Gross / month</th>
+                  <th className="pb-2">Net / month</th>
+                </tr>
+              </thead>
+              <tbody>
+                {salaryRecords.map((r) => (
+                  <tr key={r.id} className="border-b border-gray-800/50 last:border-0">
+                    <td className="py-2 pr-4 text-gray-300">{fmtDate(r.effectiveFrom)}</td>
+                    <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount)}</td>
+                    <td className="py-2 text-amber-400 tabular-nums">{fmt(r.netAmount)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {salaryRecords.map((r) => (
-                    <tr key={r.id} className="border-b border-gray-800/50 last:border-0">
-                      <td className="py-2 pr-4 text-gray-300">{fmtDate(r.effectiveFrom)}</td>
-                      <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount)}</td>
-                      <td className="py-2 text-amber-400 tabular-nums">{fmt(r.netAmount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                ))}
+              </tbody>
+            </table>
+          )}
 
-            {/* Add new record */}
-            <h3 className="text-sm font-medium text-gray-400 mb-3">Add salary record</h3>
-            <form onSubmit={(e) => { e.preventDefault(); addSalaryMutation.mutate(salaryForm) }} className="space-y-3">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
-                  <input type="date" value={salaryForm.effectiveFrom} onChange={(e) => setSalaryForm({ ...salaryForm, effectiveFrom: e.target.value })}
-                    required className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
-                  <input type="number" value={salaryForm.grossAmount} onChange={(e) => setSalaryForm({ ...salaryForm, grossAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
-                  <input type="number" value={salaryForm.netAmount} onChange={(e) => setSalaryForm({ ...salaryForm, netAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
+          {/* Add new record */}
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Add salary record</h3>
+          <form onSubmit={(e) => { e.preventDefault(); addSalaryMutation.mutate(salaryForm) }} className="space-y-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
+                <input type="date" value={salaryForm.effectiveFrom} onChange={(e) => setSalaryForm({ ...salaryForm, effectiveFrom: e.target.value })}
+                  required className={inputClass} />
               </div>
-              {salaryError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{salaryError}</div>}
-              <button type="submit" disabled={addSalaryMutation.isPending}
-                className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-                {addSalaryMutation.isPending ? 'Saving…' : 'Add record'}
-              </button>
-            </form>
-          </div>
-        </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
+                <input type="number" value={salaryForm.grossAmount} onChange={(e) => setSalaryForm({ ...salaryForm, grossAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
+                <input type="number" value={salaryForm.netAmount} onChange={(e) => setSalaryForm({ ...salaryForm, netAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+              </div>
+            </div>
+            {salaryError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{salaryError}</div>}
+            <button type="submit" disabled={addSalaryMutation.isPending}
+              className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+              {addSalaryMutation.isPending ? 'Saving…' : 'Add record'}
+            </button>
+          </form>
+        </Modal>
       )}
 
       {/* ── Add Override modal ──────────────────────────────────────────────── */}
       {overrideJobId && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Add monthly override — {jobs.find((j) => j.id === overrideJobId)?.name}</h2>
-              <button onClick={() => setOverrideJobId(null)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); upsertOverrideMutation.mutate(overrideForm) }} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
-                  <input type="number" value={overrideForm.year} onChange={(e) => setOverrideForm({ ...overrideForm, year: e.target.value })}
-                    required min="2000" max="2100" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Month</label>
-                  <select value={overrideForm.month} onChange={(e) => setOverrideForm({ ...overrideForm, month: e.target.value })} className={inputClass}>
-                    {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
-                  <input type="number" value={overrideForm.grossAmount} onChange={(e) => setOverrideForm({ ...overrideForm, grossAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
-                  <input type="number" value={overrideForm.netAmount} onChange={(e) => setOverrideForm({ ...overrideForm, netAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
+        <Modal title={`Add monthly override — ${jobs.find((j) => j.id === overrideJobId)?.name}`} onClose={() => setOverrideJobId(null)}>
+          <form onSubmit={(e) => { e.preventDefault(); upsertOverrideMutation.mutate(overrideForm) }} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+                <input type="number" value={overrideForm.year} onChange={(e) => setOverrideForm({ ...overrideForm, year: e.target.value })}
+                  required min="2000" max="2100" className={inputClass} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Note <span className="text-gray-600">(optional)</span></label>
-                <input type="text" value={overrideForm.note} onChange={(e) => setOverrideForm({ ...overrideForm, note: e.target.value })}
-                  placeholder="e.g. Sick leave, parental leave" className={inputClass} />
+                <label className="block text-xs font-medium text-gray-400 mb-1">Month</label>
+                <select value={overrideForm.month} onChange={(e) => setOverrideForm({ ...overrideForm, month: e.target.value })} className={inputClass}>
+                  {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+                </select>
               </div>
-              {overrideError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{overrideError}</div>}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={upsertOverrideMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
-                  {upsertOverrideMutation.isPending ? 'Saving…' : 'Save override'}
-                </button>
-                <button type="button" onClick={() => setOverrideJobId(null)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
+                <input type="number" value={overrideForm.grossAmount} onChange={(e) => setOverrideForm({ ...overrideForm, grossAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
               </div>
-            </form>
-          </div>
-        </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
+                <input type="number" value={overrideForm.netAmount} onChange={(e) => setOverrideForm({ ...overrideForm, netAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Note <span className="text-gray-600">(optional)</span></label>
+              <input type="text" value={overrideForm.note} onChange={(e) => setOverrideForm({ ...overrideForm, note: e.target.value })}
+                placeholder="e.g. Sick leave, parental leave" className={inputClass} />
+            </div>
+            {overrideError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{overrideError}</div>}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={upsertOverrideMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                {upsertOverrideMutation.isPending ? 'Saving…' : 'Save override'}
+              </button>
+              <button type="button" onClick={() => setOverrideJobId(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* ── Add/Edit Bonus modal ────────────────────────────────────────────── */}
       {(bonusJobId || editingBonus) && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">{editingBonus ? 'Edit bonus' : `Add bonus — ${jobs.find((j) => j.id === bonusJobId)?.name}`}</h2>
-              <button onClick={() => { setBonusJobId(null); setEditingBonus(null) }} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title={editingBonus ? 'Edit bonus' : `Add bonus — ${jobs.find((j) => j.id === bonusJobId)?.name}`} onClose={() => { setBonusJobId(null); setEditingBonus(null) }}>
+          <form onSubmit={(e) => { e.preventDefault(); if (editingBonus) updateBonusMutation.mutate(bonusForm); else createBonusMutation.mutate(bonusForm) }} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
+              <input type="text" value={bonusForm.label} onChange={(e) => setBonusForm({ ...bonusForm, label: e.target.value })}
+                required autoFocus placeholder="e.g. Annual bonus" className={inputClass} />
             </div>
-            <form onSubmit={(e) => { e.preventDefault(); if (editingBonus) updateBonusMutation.mutate(bonusForm); else createBonusMutation.mutate(bonusForm) }} className="space-y-4">
+            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
-                <input type="text" value={bonusForm.label} onChange={(e) => setBonusForm({ ...bonusForm, label: e.target.value })}
-                  required autoFocus placeholder="e.g. Annual bonus" className={inputClass} />
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Payment date</label>
-                  <input type="date" value={bonusForm.paymentDate} onChange={(e) => setBonusForm({ ...bonusForm, paymentDate: e.target.value })}
-                    required className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Gross amount</label>
-                  <input type="number" value={bonusForm.grossAmount} onChange={(e) => setBonusForm({ ...bonusForm, grossAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Net amount</label>
-                  <input type="number" value={bonusForm.netAmount} onChange={(e) => setBonusForm({ ...bonusForm, netAmount: e.target.value })}
-                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-                </div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Payment date</label>
+                <input type="date" value={bonusForm.paymentDate} onChange={(e) => setBonusForm({ ...bonusForm, paymentDate: e.target.value })}
+                  required className={inputClass} />
               </div>
               <div>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={bonusForm.includeInBudget} onChange={(e) => setBonusForm({ ...bonusForm, includeInBudget: e.target.checked })}
-                    className="rounded border-gray-600" />
-                  <span className="text-sm text-gray-300">Include in budget calculations</span>
-                </label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Gross amount</label>
+                <input type="number" value={bonusForm.grossAmount} onChange={(e) => setBonusForm({ ...bonusForm, grossAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
               </div>
-              {bonusForm.includeInBudget && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-2">Budget mode</label>
-                  <div className="flex gap-3">
-                    {(['ONE_OFF', 'SPREAD_ANNUALLY'] as BudgetMode[]).map((val) => {
-                      const label = val === 'ONE_OFF' ? 'One-off (appears in payment month)' : 'Spread annually (÷12 per month)'
-                      return (
-                      <label key={val} className="flex items-center gap-2 cursor-pointer">
-                        <input type="radio" value={val} checked={bonusForm.budgetMode === val} onChange={() => setBonusForm({ ...bonusForm, budgetMode: val })}
-                          className="border-gray-600" />
-                        <span className="text-sm text-gray-300">{label}</span>
-                      </label>
-                      )
-                    })}
-                  </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Net amount</label>
+                <input type="number" value={bonusForm.netAmount} onChange={(e) => setBonusForm({ ...bonusForm, netAmount: e.target.value })}
+                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={bonusForm.includeInBudget} onChange={(e) => setBonusForm({ ...bonusForm, includeInBudget: e.target.checked })}
+                  className="rounded border-gray-600" />
+                <span className="text-sm text-gray-300">Include in budget calculations</span>
+              </label>
+            </div>
+            {bonusForm.includeInBudget && (
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-2">Budget mode</label>
+                <div className="flex gap-3">
+                  {(['ONE_OFF', 'SPREAD_ANNUALLY'] as BudgetMode[]).map((val) => {
+                    const label = val === 'ONE_OFF' ? 'One-off (appears in payment month)' : 'Spread annually (÷12 per month)'
+                    return (
+                    <label key={val} className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" value={val} checked={bonusForm.budgetMode === val} onChange={() => setBonusForm({ ...bonusForm, budgetMode: val })}
+                        className="border-gray-600" />
+                      <span className="text-sm text-gray-300">{label}</span>
+                    </label>
+                    )
+                  })}
                 </div>
-              )}
-              {bonusError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{bonusError}</div>}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
-                  {createBonusMutation.isPending || updateBonusMutation.isPending ? 'Saving…' : editingBonus ? 'Save changes' : 'Add bonus'}
-                </button>
-                <button type="button" onClick={() => { setBonusJobId(null); setEditingBonus(null) }}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
               </div>
-            </form>
+            )}
+            {bonusError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{bonusError}</div>}
+            <div className="flex gap-3 pt-2">
+              <button type="submit" disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                {createBonusMutation.isPending || updateBonusMutation.isPending ? 'Saving…' : editingBonus ? 'Save changes' : 'Add bonus'}
+              </button>
+              <button type="button" onClick={() => { setBonusJobId(null); setEditingBonus(null) }}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Confirm close job ───────────────────────────────────────────────── */}
+      {confirmCloseJob && (
+        <Modal title="Close job" onClose={() => setConfirmCloseJob(null)}>
+          <p className="text-gray-300 text-sm mb-6">
+            Close <span className="font-semibold text-white">{confirmCloseJob.name}</span>? This will set today as the end date. You can re-open it by editing the job.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { closeJobMutation.mutate(confirmCloseJob.id); setConfirmCloseJob(null) }}
+              disabled={closeJobMutation.isPending}
+              className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Close job
+            </button>
+            <button onClick={() => setConfirmCloseJob(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {/* ── Confirm delete bonus ────────────────────────────────────────────── */}
+      {confirmDeleteBonus && (
+        <Modal title="Delete bonus" onClose={() => setConfirmDeleteBonus(null)}>
+          <p className="text-gray-300 text-sm mb-6">Delete this bonus? This action cannot be undone.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { deleteBonusMutation.mutate(confirmDeleteBonus); setConfirmDeleteBonus(null) }}
+              disabled={deleteBonusMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Delete
+            </button>
+            <button onClick={() => setConfirmDeleteBonus(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Confirm delete override ─────────────────────────────────────────── */}
+      {confirmDeleteOverride && (
+        <Modal title="Delete override" onClose={() => setConfirmDeleteOverride(null)}>
+          <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { deleteOverrideMutation.mutate(confirmDeleteOverride); setConfirmDeleteOverride(null) }}
+              disabled={deleteOverrideMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Delete
+            </button>
+            <button onClick={() => setConfirmDeleteOverride(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   )

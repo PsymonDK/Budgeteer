@@ -2,10 +2,14 @@ import { useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { IconPicker } from '../components/IconPicker'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { inputClass } from '../lib/styles'
 
 interface Category {
   id: string
@@ -23,9 +27,6 @@ interface Household {
   name: string
   myRole: 'ADMIN' | 'MEMBER' | null
 }
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -76,6 +77,7 @@ export function CategoriesPage() {
       setShowIconPicker(false)
       setCreateError('')
       if (res.data.warning) setCreateWarning(res.data.warning)
+      toast.success('Category created')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -92,6 +94,7 @@ export function CategoriesPage() {
       setDeleteTarget(null)
       setReplacementId('')
       setDeleteError('')
+      toast.success('Category deleted')
     },
     onError: (err) => {
       if (axios.isAxiosError(err)) {
@@ -147,7 +150,7 @@ export function CategoriesPage() {
           </div>
 
           {isLoading ? (
-            <div className="text-gray-500 text-sm">Loading…</div>
+            <PageLoader />
           ) : customCategories.length === 0 ? (
             <p className="text-gray-500 text-sm">No custom categories yet.</p>
           ) : (
@@ -243,139 +246,127 @@ export function CategoriesPage() {
 
       {/* Create category modal */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">New custom category</h2>
-              <button onClick={() => setShowCreate(false)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
+        <Modal title="New custom category" onClose={() => setShowCreate(false)} maxWidth="max-w-md">
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                required
+                autoFocus
+                className={inputClass}
+                placeholder="e.g. Pet expenses"
+              />
             </div>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  required
-                  autoFocus
-                  className={inputClass}
-                  placeholder="e.g. Pet expenses"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Icon <span className="text-gray-600 font-normal">(optional)</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  {newIcon ? (
-                    <span className="flex items-center gap-2 text-sm text-gray-300">
-                      <CategoryIcon name={newIcon} size={16} className="text-amber-400" />
-                      {newIcon}
-                    </span>
-                  ) : (
-                    <span className="text-sm text-gray-600">None selected</span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setShowIconPicker((v) => !v)}
-                    className="ml-auto text-xs text-amber-400 hover:text-amber-300 transition-colors"
-                  >
-                    {showIconPicker ? 'Close' : newIcon ? 'Change' : 'Pick icon'}
-                  </button>
-                </div>
-                {showIconPicker && (
-                  <IconPicker
-                    value={newIcon}
-                    onChange={setNewIcon}
-                    onClose={() => setShowIconPicker(false)}
-                  />
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Icon <span className="text-gray-600 font-normal">(optional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                {newIcon ? (
+                  <span className="flex items-center gap-2 text-sm text-gray-300">
+                    <CategoryIcon name={newIcon} size={16} className="text-amber-400" />
+                    {newIcon}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-600">None selected</span>
                 )}
-              </div>
-              {createError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {createMutation.isPending ? 'Creating…' : 'Create'}
-                </button>
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                  onClick={() => setShowIconPicker((v) => !v)}
+                  className="ml-auto text-xs text-amber-400 hover:text-amber-300 transition-colors"
                 >
-                  Cancel
+                  {showIconPicker ? 'Close' : newIcon ? 'Change' : 'Pick icon'}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
+              {showIconPicker && (
+                <IconPicker
+                  value={newIcon}
+                  onChange={setNewIcon}
+                  onClose={() => setShowIconPicker(false)}
+                />
+              )}
+            </div>
+            {createError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Delete / reassign modal */}
       {deleteTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Delete &ldquo;{deleteTarget.name}&rdquo;</h2>
-              <button onClick={() => setDeleteTarget(null)} className="text-gray-500 hover:text-white text-xl leading-none">×</button>
-            </div>
-            <form onSubmit={handleDelete} className="space-y-4">
-              {deleteTarget._count.expenses > 0 ? (
-                <>
-                  <p className="text-sm text-gray-300">
-                    This category is used by{' '}
-                    <span className="text-white font-medium">{deleteTarget._count.expenses}</span>{' '}
-                    {deleteTarget._count.expenses === 1 ? 'expense' : 'expenses'}.
-                    Choose a replacement category before deleting.
-                  </p>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Reassign expenses to</label>
-                    <select
-                      value={replacementId}
-                      onChange={(e) => setReplacementId(e.target.value)}
-                      required
-                      className={inputClass}
-                    >
-                      <option value="">Select a category…</option>
-                      {replacementOptions.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}{c.isSystemWide ? ' (system)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              ) : (
+        <Modal title={`Delete "${deleteTarget.name}"`} onClose={() => setDeleteTarget(null)}>
+          <form onSubmit={handleDelete} className="space-y-4">
+            {deleteTarget._count.expenses > 0 ? (
+              <>
                 <p className="text-sm text-gray-300">
-                  This category has no expenses. It will be permanently deleted.
+                  This category is used by{' '}
+                  <span className="text-white font-medium">{deleteTarget._count.expenses}</span>{' '}
+                  {deleteTarget._count.expenses === 1 ? 'expense' : 'expenses'}.
+                  Choose a replacement category before deleting.
                 </p>
-              )}
-              {deleteError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{deleteError}</div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={deleteMutation.isPending || (deleteTarget._count.expenses > 0 && !replacementId)}
-                  className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeleteTarget(null)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Reassign expenses to</label>
+                  <select
+                    value={replacementId}
+                    onChange={(e) => setReplacementId(e.target.value)}
+                    required
+                    className={inputClass}
+                  >
+                    <option value="">Select a category…</option>
+                    {replacementOptions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}{c.isSystemWide ? ' (system)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-300">
+                This category has no expenses. It will be permanently deleted.
+              </p>
+            )}
+            {deleteError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{deleteError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={deleteMutation.isPending || (deleteTarget._count.expenses > 0 && !replacementId)}
+                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </>
   )

@@ -2,7 +2,11 @@ import { useState, useMemo, type FormEvent } from 'react'
 import { useParams, Link, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
+import { toast } from 'sonner'
 import { api } from '../api/client'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,9 +57,6 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
 ]
 
 const emptyForm = (baseCurrency: string): EntryForm => ({ label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency })
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
 
 function fmt(v: number | string) {
   return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -155,7 +156,13 @@ export function SavingsPage() {
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
-    onSuccess: () => { invalidate(); setShowAdd(false); setForm(emptyForm(baseCurrency)); setFormError('') },
+    onSuccess: () => {
+      invalidate()
+      setShowAdd(false)
+      setForm(emptyForm(baseCurrency))
+      setFormError('')
+      toast.success('Savings entry saved')
+    },
     onError: (err) => {
       if (axios.isAxiosError(err))
         setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
@@ -170,7 +177,13 @@ export function SavingsPage() {
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
-    onSuccess: () => { invalidate(); setEditingEntry(null); setForm(emptyForm(baseCurrency)); setFormError('') },
+    onSuccess: () => {
+      invalidate()
+      setEditingEntry(null)
+      setForm(emptyForm(baseCurrency))
+      setFormError('')
+      toast.success('Savings entry saved')
+    },
     onError: (err) => {
       if (axios.isAxiosError(err))
         setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
@@ -180,7 +193,11 @@ export function SavingsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/savings/${id}`),
-    onSuccess: () => { invalidate(); setDeleteTarget(null) },
+    onSuccess: () => {
+      invalidate()
+      setDeleteTarget(null)
+      toast.success('Savings entry deleted')
+    },
   })
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -254,7 +271,7 @@ export function SavingsPage() {
         </div>
 
         {yearsLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : !activeBudgetYear ? (
           <div className="text-center py-20 text-gray-500">
             <p className="mb-2">No budget year exists for this household.</p>
@@ -263,7 +280,7 @@ export function SavingsPage() {
             </Link>
           </div>
         ) : entriesLoading ? (
-          <div className="text-gray-500 text-sm">Loading…</div>
+          <PageLoader />
         ) : entries.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
             <p className="mb-1">No savings entries yet.</p>
@@ -305,7 +322,7 @@ export function SavingsPage() {
                     </td>
                     {!isReadOnly && (
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                           <button onClick={() => openEdit(e)} className="text-xs text-gray-400 hover:text-white transition-colors">Edit</button>
                           <button onClick={() => setDeleteTarget(e)} className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
                         </div>
@@ -330,147 +347,138 @@ export function SavingsPage() {
 
       {/* Add / Edit modal */}
       {(showAdd || editingEntry) && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">{editingEntry ? 'Edit savings entry' : 'New savings entry'}</h2>
-              <button
-                onClick={() => { setShowAdd(false); setEditingEntry(null) }}
-                className="text-gray-500 hover:text-white text-xl leading-none"
-              >×</button>
+        <Modal
+          title={editingEntry ? 'Edit savings entry' : 'New savings entry'}
+          onClose={() => { setShowAdd(false); setEditingEntry(null) }}
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
+              <input
+                type="text"
+                value={form.label}
+                onChange={(e) => setForm({ ...form, label: e.target.value })}
+                required
+                autoFocus
+                placeholder="e.g. Emergency fund"
+                className={inputClass}
+              />
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Amount</label>
                 <input
-                  type="text"
-                  value={form.label}
-                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  type="number"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
                   required
-                  autoFocus
-                  placeholder="e.g. Emergency fund"
+                  min="0.01"
+                  step="0.01"
+                  placeholder="0.00"
                   className={inputClass}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Amount</label>
-                  <input
-                    type="number"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    required
-                    min="0.01"
-                    step="0.01"
-                    placeholder="0.00"
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Frequency</label>
-                  <select
-                    value={form.frequency}
-                    onChange={(e) => setForm({ ...form, frequency: e.target.value as Frequency })}
-                    className={inputClass}
-                  >
-                    {FREQUENCIES.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {currencies.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
-                  <select
-                    value={form.currencyCode}
-                    onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
-                    className={inputClass}
-                  >
-                    <option value={baseCurrency}>{baseCurrency} (base)</option>
-                    {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
-                      <option key={c.code} value={c.code}>{c.code}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {previewMonthly !== null && (
-                <p className="text-xs text-gray-500">
-                  Monthly equivalent:{' '}
-                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
-                  {isForeignCurrency && form.amount && (
-                    <span className="ml-2 text-gray-600">
-                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
-                    </span>
-                  )}
-                </p>
-              )}
-
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">
-                  Notes <span className="text-gray-600">(optional)</span>
-                </label>
-                <textarea
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  rows={2}
-                  placeholder="Any additional details…"
-                  className={inputClass + ' resize-none'}
-                />
-              </div>
-
-              {formError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{formError}</div>
-              )}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="submit"
-                  disabled={isMutating}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                <label className="block text-xs font-medium text-gray-400 mb-1">Frequency</label>
+                <select
+                  value={form.frequency}
+                  onChange={(e) => setForm({ ...form, frequency: e.target.value as Frequency })}
+                  className={inputClass}
                 >
-                  {isMutating ? 'Saving…' : editingEntry ? 'Save changes' : 'Add savings'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setShowAdd(false); setEditingEntry(null) }}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-                >
-                  Cancel
-                </button>
+                  {FREQUENCIES.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
 
-      {/* Delete confirm */}
-      {deleteTarget && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-900 border border-gray-800 rounded-xl w-full max-w-sm p-6">
-            <h2 className="text-lg font-semibold mb-2">Delete savings entry</h2>
-            <p className="text-gray-300 text-sm mb-1">
-              Delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
-            </p>
-            <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
-            <div className="flex gap-3">
+            {currencies.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                <select
+                  value={form.currencyCode}
+                  onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value={baseCurrency}>{baseCurrency} (base)</option>
+                  {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {previewMonthly !== null && (
+              <p className="text-xs text-gray-500">
+                Monthly equivalent:{' '}
+                <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                {isForeignCurrency && form.amount && (
+                  <span className="ml-2 text-gray-600">
+                    ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                  </span>
+                )}
+              </p>
+            )}
+
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">
+                Notes <span className="text-gray-600">(optional)</span>
+              </label>
+              <textarea
+                value={form.notes}
+                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                rows={2}
+                placeholder="Any additional details…"
+                className={inputClass + ' resize-none'}
+              />
+            </div>
+
+            {formError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{formError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
               <button
-                onClick={() => deleteMutation.mutate(deleteTarget.id)}
-                disabled={deleteMutation.isPending}
-                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                type="submit"
+                disabled={isMutating}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
               >
-                {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+                {isMutating ? 'Saving…' : editingEntry ? 'Save changes' : 'Add savings'}
               </button>
               <button
-                onClick={() => setDeleteTarget(null)}
+                type="button"
+                onClick={() => { setShowAdd(false); setEditingEntry(null) }}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
               >
                 Cancel
               </button>
             </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete confirm */}
+      {deleteTarget && (
+        <Modal title="Delete savings entry" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+          <p className="text-gray-300 text-sm mb-1">
+            Delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
+          </p>
+          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => setDeleteTarget(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   )
