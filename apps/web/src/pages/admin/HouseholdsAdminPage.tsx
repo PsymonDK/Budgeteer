@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
-import { useNavigate, Link } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
-import { useAuth } from '../../contexts/AuthContext'
 
 interface Household {
   id: string
@@ -14,37 +13,13 @@ interface Household {
 }
 
 export function HouseholdsAdminPage() {
-  const { logout } = useAuth()
-  const navigate = useNavigate()
-
   const { data: households = [], isLoading } = useQuery<Household[]>({
     queryKey: ['households', 'admin'],
     queryFn: async () => (await api.get<Household[]>('/households')).data,
   })
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm">All Households</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">
-            Sign out
-          </button>
-        </div>
-      </header>
-
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">All Households</h1>

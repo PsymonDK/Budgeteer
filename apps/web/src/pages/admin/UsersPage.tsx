@@ -3,10 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
-import { useNavigate } from 'react-router-dom'
 import { Modal } from '../../components/Modal'
 import { PageLoader } from '../../components/LoadingSpinner'
-import { PageHeader } from '../../components/PageHeader'
 
 interface User {
   id: string
@@ -61,7 +59,6 @@ function roleLabel(role: string) {
 }
 
 export function AdminUsersPage() {
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const [showCreate, setShowCreate] = useState(false)
@@ -165,12 +162,8 @@ export function AdminUsersPage() {
     updateMutation.mutate({ id: editingUser.id, data: editForm })
   }
 
-  void navigate
-
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <PageHeader />
-
       <main className="max-w-5xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Users</h1>

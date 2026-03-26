@@ -11,7 +11,6 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
-import { PageHeader } from '../components/PageHeader'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -393,8 +392,6 @@ export function IncomePage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <PageHeader />
-
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
         {/* ── Proxy banner ────────────────────────────────────────────────── */}

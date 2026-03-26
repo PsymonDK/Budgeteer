@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { PageHeader } from '../components/PageHeader'
 
 const inputClass =
   'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
@@ -49,8 +48,6 @@ export function ChangePasswordPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <PageHeader />
-
       <main className="flex-1 flex items-center justify-center px-4">
         <div className="w-full max-w-sm">
           {isMandatory && (

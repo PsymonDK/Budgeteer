@@ -12,7 +12,7 @@ import HouseholdSwitcher from '../components/HouseholdSwitcher'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '',             icon: LayoutDashboard },
-  { label: 'Income',       path: 'income',       icon: TrendingUp },
+  { label: 'Household Income', path: 'income',   icon: TrendingUp },
   { label: 'Savings',      path: 'savings',      icon: PiggyBank },
   { label: 'Expenses',     path: 'expenses',     icon: Receipt },
   { label: 'Categories',   path: 'categories',   icon: Tag },
@@ -114,7 +114,7 @@ export function HouseholdLayout() {
         </div>
         <div className="flex items-center gap-5">
           <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
-            My income
+            Personal Income
           </Link>
           {user?.role === 'SYSTEM_ADMIN' && (
             <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">

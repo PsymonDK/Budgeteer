@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
@@ -21,7 +21,10 @@ import { SavingsPage } from './pages/SavingsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { NotFoundPage } from './pages/NotFoundPage'
 import { HouseholdLayout } from './layouts/HouseholdLayout'
+import { GlobalLayout } from './layouts/GlobalLayout'
+import { AdminLayout } from './layouts/AdminLayout'
 
 const queryClient = new QueryClient()
 
@@ -60,55 +63,34 @@ function App() {
               <Route path="compare" element={<ComparePage />} />
               <Route path="settings" element={<HouseholdPage />} />
             </Route>
+            {/* Admin routes — shared AdminLayout */}
             <Route
-              path="/admin/users"
+              path="/admin"
               element={
                 <ProtectedRoute requireAdmin>
-                  <AdminUsersPage />
+                  <AdminLayout />
                 </ProtectedRoute>
               }
-            />
+            >
+              <Route path="users" element={<AdminUsersPage />} />
+              <Route path="households" element={<HouseholdsAdminPage />} />
+              <Route path="categories" element={<CategoriesAdminPage />} />
+            </Route>
+
+            {/* Standalone personal routes — shared GlobalLayout */}
             <Route
-              path="/admin/households"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <HouseholdsAdminPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/categories"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <CategoriesAdminPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/income"
               element={
                 <ProtectedRoute>
-                  <IncomePage />
+                  <GlobalLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/change-password"
-              element={
-                <ProtectedRoute>
-                  <ChangePasswordPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <ProfilePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            >
+              <Route path="/income" element={<IncomePage />} />
+              <Route path="/change-password" element={<ChangePasswordPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+            </Route>
+
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </HouseholdProvider>
         </BrowserRouter>

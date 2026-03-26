@@ -12,7 +12,6 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertTriangle, User, TrendingUp, Home } from 'lucide-react'
 import Avatar from '../components/Avatar'
-import { PageHeader } from '../components/PageHeader'
 import { PageLoader } from '../components/LoadingSpinner'
 
 // ── Shared styles ────────────────────────────────────────────────────────────
@@ -795,8 +794,6 @@ export function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <PageHeader />
-
       {/* Page content */}
       <main className="flex-1 px-6 py-8 max-w-4xl w-full mx-auto">
         <h1 className="text-2xl font-semibold mb-6">Your profile</h1>

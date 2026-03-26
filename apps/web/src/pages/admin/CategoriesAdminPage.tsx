@@ -1,7 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, Link } from 'react-router-dom'
 import { api } from '../../api/client'
-import { useAuth } from '../../contexts/AuthContext'
 
 interface Category {
   id: string
@@ -13,8 +11,6 @@ interface Category {
 }
 
 export function CategoriesAdminPage() {
-  const { logout } = useAuth()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
 
   const { data: categories = [], isLoading } = useQuery<Category[]>({
@@ -29,28 +25,8 @@ export function CategoriesAdminPage() {
 
   const customCategories = categories.filter((c) => !c.isSystemWide)
 
-  async function handleLogout() {
-    await logout()
-    navigate('/login', { replace: true })
-  }
-
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <span className="text-gray-300 text-sm">All Custom Categories</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">Users</Link>
-          <Link to="/admin/households" className="text-sm text-gray-400 hover:text-white transition-colors">Households</Link>
-          <button onClick={handleLogout} className="text-sm text-gray-400 hover:text-white transition-colors">Sign out</button>
-        </div>
-      </header>
-
       <main className="max-w-4xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Custom Categories</h1>
