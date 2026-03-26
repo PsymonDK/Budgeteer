@@ -85,6 +85,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       include: {
         category: { select: { id: true, name: true, icon: true } },
         ownedBy: { select: { id: true, name: true } },
+        customSplits: true,
       },
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
@@ -92,14 +93,22 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
     )
 
-    // Partition into shared pool vs per-member individual expenses
+    // Partition expenses by ownership mode
     const sharedPool = expenses
-      .filter((e) => e.ownedByUserId === null)
+      .filter((e) => e.ownership === 'SHARED')
       .reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
     const individualOwedMap = new Map<string, number>()
-    for (const e of expenses.filter((e) => e.ownedByUserId !== null)) {
+    for (const e of expenses.filter((e) => e.ownership === 'INDIVIDUAL')) {
       const cur = individualOwedMap.get(e.ownedByUserId!) ?? 0
       individualOwedMap.set(e.ownedByUserId!, cur + parseFloat(e.monthlyEquivalent.toString()))
+    }
+    const customExpensesMap = new Map<string, number>()
+    for (const e of expenses.filter((e) => e.ownership === 'CUSTOM')) {
+      const monthly = parseFloat(e.monthlyEquivalent.toString())
+      for (const split of e.customSplits) {
+        const cur = customExpensesMap.get(split.userId) ?? 0
+        customExpensesMap.set(split.userId, cur + monthly * parseFloat(split.pct.toString()) / 100)
+      }
     }
     const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
     for (const e of expenses) {
@@ -114,16 +123,40 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     // ── Savings ──────────────────────────────────────────────────────────────
     const savingsEntries = await prisma.savingsEntry.findMany({
       where: { budgetYearId: activeBudgetYear.id },
+      include: { customSplits: true },
     })
     const totalMonthlySavings = savingsEntries.reduce(
       (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
     )
+
+    // Partition savings by ownership mode
+    const sharedSavingsPool = savingsEntries
+      .filter((e) => e.ownership === 'SHARED')
+      .reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+    const individualSavingsMap = new Map<string, number>()
+    for (const e of savingsEntries.filter((e) => e.ownership === 'INDIVIDUAL')) {
+      const cur = individualSavingsMap.get(e.ownedByUserId!) ?? 0
+      individualSavingsMap.set(e.ownedByUserId!, cur + parseFloat(e.monthlyEquivalent.toString()))
+    }
+    const customSavingsMap = new Map<string, number>()
+    for (const e of savingsEntries.filter((e) => e.ownership === 'CUSTOM')) {
+      const monthly = parseFloat(e.monthlyEquivalent.toString())
+      for (const split of e.customSplits) {
+        const cur = customSavingsMap.get(split.userId) ?? 0
+        customSavingsMap.set(split.userId, cur + monthly * parseFloat(split.pct.toString()) / 100)
+      }
+    }
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
     const memberSplits = incomeMembers.map((m) => {
       const sharedOwed = sharedPool * parseFloat(m.sharePct) / 100
       const individualOwed = individualOwedMap.get(m.userId) ?? 0
+      const customOwed = customExpensesMap.get(m.userId) ?? 0
+      const sharedSavingsOwed = sharedSavingsPool * parseFloat(m.sharePct) / 100
+      const individualSavingsOwed = individualSavingsMap.get(m.userId) ?? 0
+      const customSavingsOwed = customSavingsMap.get(m.userId) ?? 0
+      const totalSavingsOwed = sharedSavingsOwed + individualSavingsOwed + customSavingsOwed
       return {
         userId: m.userId,
         name: m.name,
@@ -131,7 +164,12 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlyIncomeAllocated: m.monthlyAllocated,
         monthlySharedOwed: sharedOwed.toFixed(2),
         monthlyIndividualOwed: individualOwed.toFixed(2),
-        monthlyTotalOwed: (sharedOwed + individualOwed).toFixed(2),
+        monthlyCustomOwed: customOwed.toFixed(2),
+        monthlyTotalOwed: (sharedOwed + individualOwed + customOwed).toFixed(2),
+        monthlySavingsSharedOwed: sharedSavingsOwed.toFixed(2),
+        monthlySavingsIndividualOwed: individualSavingsOwed.toFixed(2),
+        monthlySavingsCustomOwed: customSavingsOwed.toFixed(2),
+        monthlySavingsTotalOwed: totalSavingsOwed.toFixed(2),
       }
     })
 
@@ -155,7 +193,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           id: e.id, label: e.label, amount: e.amount, frequency: e.frequency,
           frequencyPeriod: e.frequencyPeriod, monthlyEquivalent: e.monthlyEquivalent,
           notes: e.notes, category: e.category,
-          ownedByUserId: e.ownedByUserId, ownedBy: e.ownedBy,
+          ownership: e.ownership, ownedByUserId: e.ownedByUserId, ownedBy: e.ownedBy,
+          customSplits: e.customSplits,
         })),
         byCategory,
       },

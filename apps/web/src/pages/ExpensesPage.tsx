@@ -14,6 +14,13 @@ import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type ExpenseOwnership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
+
+interface CustomSplitInput {
+  userId: string
+  pct: string
+}
+
 interface Category {
   id: string
   name: string
@@ -38,8 +45,10 @@ interface Expense {
   currencyCode: string | null
   originalAmount: string | null
   rateUsed: string | null
+  ownership: ExpenseOwnership
   ownedByUserId: string | null
   ownedBy: { id: string; name: string } | null
+  customSplits: { userId: string; user: { id: string; name: string }; pct: string }[]
 }
 
 interface Currency {
@@ -98,11 +107,14 @@ interface ExpenseForm {
   frequencyPeriod: string
   notes: string
   currencyCode: string
+  ownership: ExpenseOwnership
   ownedByUserId: string | null
+  customSplits: CustomSplitInput[]
 }
 
 const emptyForm = (baseCurrency: string): ExpenseForm => ({
-  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '', currencyCode: baseCurrency, ownedByUserId: null,
+  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '',
+  currencyCode: baseCurrency, ownership: 'SHARED', ownedByUserId: null, customSplits: [],
 })
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -154,9 +166,9 @@ export function ExpensesPage() {
   })
 
   const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories', householdId],
+    queryKey: ['categories', householdId, 'EXPENSE'],
     queryFn: async () =>
-      (await api.get<Category[]>(`/categories?householdId=${householdId}`)).data,
+      (await api.get<Category[]>(`/categories?householdId=${householdId}&type=EXPENSE`)).data,
     enabled: !!householdId,
   })
 
@@ -226,6 +238,11 @@ export function ExpensesPage() {
         ...data,
         amount: parseFloat(data.amount),
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
+        ownership: data.ownership,
+        ownedByUserId: data.ownership === 'INDIVIDUAL' ? data.ownedByUserId : undefined,
+        customSplits: data.ownership === 'CUSTOM'
+          ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
+          : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
@@ -247,6 +264,11 @@ export function ExpensesPage() {
         ...data,
         amount: parseFloat(data.amount),
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
+        ownership: data.ownership,
+        ownedByUserId: data.ownership === 'INDIVIDUAL' ? data.ownedByUserId : undefined,
+        customSplits: data.ownership === 'CUSTOM'
+          ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
+          : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
@@ -289,7 +311,9 @@ export function ExpensesPage() {
       frequencyPeriod: expense.frequencyPeriod ?? '',
       notes: expense.notes ?? '',
       currencyCode: expense.currencyCode ?? baseCurrency,
+      ownership: expense.ownership ?? 'SHARED',
       ownedByUserId: expense.ownedByUserId ?? null,
+      customSplits: expense.customSplits?.map((s) => ({ userId: s.userId, pct: s.pct })) ?? [],
     })
     setFormError('')
     setEditingExpense(expense)
@@ -303,6 +327,13 @@ export function ExpensesPage() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setFormError('')
+    if (form.ownership === 'CUSTOM') {
+      const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
+      if (Math.abs(total - 100) > 0.01) {
+        setFormError('Custom split percentages must sum to 100%')
+        return
+      }
+    }
     const payload = {
       ...form,
       frequencyPeriod: form.frequencyPeriod || undefined,
@@ -433,9 +464,14 @@ export function ExpensesPage() {
                         <td className="px-4 py-3 text-white">
                           <div className="flex items-center gap-2 flex-wrap">
                             {e.label}
-                            {e.ownedBy && (
+                            {e.ownership === 'INDIVIDUAL' && e.ownedBy && (
                               <span className="text-xs bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full">
                                 {e.ownedBy.name}
+                              </span>
+                            )}
+                            {e.ownership === 'CUSTOM' && (
+                              <span className="text-xs bg-purple-900/60 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full">
+                                Custom split
                               </span>
                             )}
                             {e.notes && (
@@ -596,19 +632,74 @@ export function ExpensesPage() {
                 </select>
               </div>
               {members.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Assigned to</label>
-                  <select
-                    value={form.ownedByUserId ?? ''}
-                    onChange={(e) => setForm({ ...form, ownedByUserId: e.target.value || null })}
-                    className={inputClass}
-                  >
-                    <option value="">Shared (split by income %)</option>
-                    {members.map((m) => (
-                      <option key={m.userId} value={m.userId}>{m.user.name}</option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Ownership</label>
+                    <select
+                      value={form.ownership}
+                      onChange={(e) => setForm({ ...form, ownership: e.target.value as ExpenseOwnership, ownedByUserId: null, customSplits: [] })}
+                      className={inputClass}
+                    >
+                      <option value="SHARED">Shared (split by income %)</option>
+                      <option value="INDIVIDUAL">Individual (one member)</option>
+                      <option value="CUSTOM">Custom split</option>
+                    </select>
+                  </div>
+                  {form.ownership === 'INDIVIDUAL' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Assigned to</label>
+                      <select
+                        value={form.ownedByUserId ?? ''}
+                        onChange={(e) => setForm({ ...form, ownedByUserId: e.target.value || null })}
+                        required
+                        className={inputClass}
+                      >
+                        <option value="">Select member…</option>
+                        {members.map((m) => (
+                          <option key={m.userId} value={m.userId}>{m.user.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {form.ownership === 'CUSTOM' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-2">Custom split %</label>
+                      <div className="space-y-2">
+                        {members.map((m) => {
+                          const split = form.customSplits.find((s) => s.userId === m.userId)
+                          return (
+                            <div key={m.userId} className="flex items-center gap-3">
+                              <span className="text-sm text-gray-300 flex-1">{m.user.name}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={split?.pct ?? ''}
+                                onChange={(ev) => {
+                                  const next = form.customSplits.filter((s) => s.userId !== m.userId)
+                                  if (ev.target.value) next.push({ userId: m.userId, pct: ev.target.value })
+                                  setForm({ ...form, customSplits: next })
+                                }}
+                                placeholder="0"
+                                className={inputClass + ' w-24 text-right'}
+                              />
+                              <span className="text-xs text-gray-500 w-4">%</span>
+                            </div>
+                          )
+                        })}
+                        {(() => {
+                          const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
+                          return (
+                            <p className={`text-xs text-right ${Math.abs(total - 100) < 0.01 ? 'text-green-400' : 'text-amber-400'}`}>
+                              Total: {total.toFixed(1)}%{Math.abs(total - 100) < 0.01 ? '' : ' (must equal 100%)'}
+                            </p>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">

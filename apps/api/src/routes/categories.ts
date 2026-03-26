@@ -7,6 +7,7 @@ const CreateCategorySchema = z.object({
   name: z.string().min(1).max(100),
   householdId: z.string(),
   icon: z.string().optional(),
+  categoryType: z.enum(['EXPENSE', 'SAVINGS']).default('EXPENSE'),
 })
 
 const DeleteCategorySchema = z
@@ -17,23 +18,27 @@ const categorySelect = {
   id: true,
   name: true,
   icon: true,
+  categoryType: true,
   isSystemWide: true,
   householdId: true,
   createdAt: true,
   createdBy: { select: { id: true, name: true } },
-  _count: { select: { expenses: true } },
+  _count: { select: { expenses: true, savingsEntries: true } },
 } as const
 
 export async function categoryRoutes(fastify: FastifyInstance) {
-  // GET /categories?householdId=:id
+  // GET /categories?householdId=:id&type=EXPENSE|SAVINGS
   // System-wide categories always returned.
   // If householdId given: also includes that household's custom categories.
   // System admin with no householdId: all categories across system.
+  // Optional ?type filter restricts to EXPENSE or SAVINGS categories.
   fastify.get('/categories', { preHandler: authenticate }, async (request, reply) => {
-    const { householdId } = request.query as { householdId?: string }
+    const { householdId, type } = request.query as { householdId?: string; type?: string }
     const { role } = request.user
 
-    let where = {}
+    const typeFilter = type === 'EXPENSE' || type === 'SAVINGS' ? { categoryType: type as 'EXPENSE' | 'SAVINGS' } : {}
+
+    let where: Record<string, unknown> = { ...typeFilter }
 
     if (householdId) {
       // Verify requester is a member of this household (or system admin)
@@ -43,14 +48,14 @@ export async function categoryRoutes(fastify: FastifyInstance) {
         })
         if (!membership) return reply.status(403).send({ error: 'Forbidden' })
       }
-      where = { OR: [{ isSystemWide: true }, { householdId }] }
+      where = { ...typeFilter, OR: [{ isSystemWide: true }, { householdId }] }
     } else if (role === 'SYSTEM_ADMIN') {
-      where = {} // all categories
+      where = { ...typeFilter } // all categories (optionally filtered by type)
     } else {
-      where = { isSystemWide: true }
+      where = { ...typeFilter, isSystemWide: true }
     }
 
-    const categories = await prisma.expenseCategory.findMany({
+    const categories = await prisma.category.findMany({
       where,
       select: categorySelect,
       orderBy: [{ isSystemWide: 'desc' }, { name: 'asc' }],
@@ -65,7 +70,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
-    const { name, householdId, icon } = result.data
+    const { name, householdId, icon, categoryType } = result.data
     const { sub: userId, role } = request.user
 
     // Requester must be a member of the household
@@ -76,22 +81,22 @@ export async function categoryRoutes(fastify: FastifyInstance) {
       if (!membership) return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    // Name must be unique within the household
-    const duplicate = await prisma.expenseCategory.findFirst({
-      where: { householdId, name: { equals: name, mode: 'insensitive' } },
+    // Name must be unique within the household for the same type
+    const duplicate = await prisma.category.findFirst({
+      where: { householdId, categoryType, name: { equals: name, mode: 'insensitive' } },
     })
     if (duplicate) {
       return reply.status(409).send({ error: 'A category with this name already exists in this household' })
     }
 
-    const category = await prisma.expenseCategory.create({
-      data: { name, householdId, icon, isSystemWide: false, createdByUserId: userId },
+    const category = await prisma.category.create({
+      data: { name, householdId, icon, categoryType, isSystemWide: false, createdByUserId: userId },
       select: categorySelect,
     })
 
-    // Warn if name matches an existing system-wide category
-    const systemMatch = await prisma.expenseCategory.findFirst({
-      where: { isSystemWide: true, name: { equals: name, mode: 'insensitive' } },
+    // Warn if name matches an existing system-wide category of the same type
+    const systemMatch = await prisma.category.findFirst({
+      where: { isSystemWide: true, categoryType, name: { equals: name, mode: 'insensitive' } },
     })
 
     return reply.status(201).send({
@@ -104,11 +109,11 @@ export async function categoryRoutes(fastify: FastifyInstance) {
   fastify.post('/categories/:id/promote', { preHandler: requireAdmin }, async (request, reply) => {
     const { id } = request.params as { id: string }
 
-    const category = await prisma.expenseCategory.findUnique({ where: { id } })
+    const category = await prisma.category.findUnique({ where: { id } })
     if (!category) return reply.status(404).send({ error: 'Category not found' })
     if (category.isSystemWide) return reply.status(400).send({ error: 'Category is already system-wide' })
 
-    const promoted = await prisma.expenseCategory.update({
+    const promoted = await prisma.category.update({
       where: { id },
       data: { isSystemWide: true, householdId: null },
       select: categorySelect,
@@ -118,7 +123,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /categories/:id
-  // Body { replacementId? } — if provided, reassigns all expenses before deleting.
+  // Body { replacementId? } — if provided, reassigns all expenses/savings before deleting.
   // Without replacement: fails with 409 if category is in use.
   fastify.delete('/categories/:id', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string }
@@ -127,7 +132,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     const bodyResult = DeleteCategorySchema.safeParse(request.body)
     const replacementId = bodyResult.success ? bodyResult.data?.replacementId : undefined
 
-    const category = await prisma.expenseCategory.findUnique({
+    const category = await prisma.category.findUnique({
       where: { id },
       select: { ...categorySelect, householdId: true, isSystemWide: true },
     })
@@ -148,28 +153,29 @@ export async function categoryRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const expenseCount = category._count.expenses
+    const totalInUse = category._count.expenses + category._count.savingsEntries
 
-    if (expenseCount > 0) {
+    if (totalInUse > 0) {
       if (!replacementId) {
         return reply.status(409).send({
           error: 'Category is in use',
-          count: expenseCount,
-          message: 'Provide a replacementId to reassign expenses before deletion',
+          count: totalInUse,
+          message: 'Provide a replacementId to reassign entries before deletion',
         })
       }
 
       // Validate replacement exists
-      const replacement = await prisma.expenseCategory.findUnique({ where: { id: replacementId } })
+      const replacement = await prisma.category.findUnique({ where: { id: replacementId } })
       if (!replacement) return reply.status(400).send({ error: 'Replacement category not found' })
 
-      // Reassign all expenses then delete in a transaction
+      // Reassign all expenses and savings entries then delete in a transaction
       await prisma.$transaction([
         prisma.expense.updateMany({ where: { categoryId: id }, data: { categoryId: replacementId } }),
-        prisma.expenseCategory.delete({ where: { id } }),
+        prisma.savingsEntry.updateMany({ where: { categoryId: id }, data: { categoryId: replacementId } }),
+        prisma.category.delete({ where: { id } }),
       ])
     } else {
-      await prisma.expenseCategory.delete({ where: { id } })
+      await prisma.category.delete({ where: { id } })
     }
 
     return reply.status(204).send()

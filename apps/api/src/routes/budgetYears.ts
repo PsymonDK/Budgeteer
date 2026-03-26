@@ -106,7 +106,10 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const source = await prisma.budgetYear.findFirst({
       where: { id: yearId, householdId },
-      include: { expenses: true, savingsEntries: true },
+      include: {
+        expenses: { include: { customSplits: true } },
+        savingsEntries: { include: { customSplits: true } },
+      },
     })
     if (!source) return reply.status(404).send({ error: 'Budget year not found' })
 
@@ -126,31 +129,50 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         })
 
         if (source.expenses.length > 0) {
-          await tx.expense.createMany({
-            data: source.expenses.map((e) => ({
-              budgetYearId: created.id,
-              label: e.label,
-              amount: e.amount,
-              frequency: e.frequency,
-              frequencyPeriod: e.frequencyPeriod,
-              monthlyEquivalent: e.monthlyEquivalent,
-              notes: e.notes,
-              categoryId: e.categoryId,
-            })),
-          })
+          for (const e of source.expenses) {
+            const newExpense = await tx.expense.create({
+              data: {
+                budgetYearId: created.id,
+                label: e.label,
+                amount: e.amount,
+                frequency: e.frequency,
+                frequencyPeriod: e.frequencyPeriod,
+                monthlyEquivalent: e.monthlyEquivalent,
+                notes: e.notes,
+                categoryId: e.categoryId,
+                ownership: e.ownership,
+                ownedByUserId: e.ownedByUserId,
+              },
+            })
+            if (e.customSplits.length > 0) {
+              await tx.expenseCustomSplit.createMany({
+                data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
+              })
+            }
+          }
         }
 
         if (source.savingsEntries.length > 0) {
-          await tx.savingsEntry.createMany({
-            data: source.savingsEntries.map((s) => ({
-              budgetYearId: created.id,
-              label: s.label,
-              amount: s.amount,
-              frequency: s.frequency,
-              monthlyEquivalent: s.monthlyEquivalent,
-              notes: s.notes,
-            })),
-          })
+          for (const s of source.savingsEntries) {
+            const newEntry = await tx.savingsEntry.create({
+              data: {
+                budgetYearId: created.id,
+                label: s.label,
+                amount: s.amount,
+                frequency: s.frequency,
+                monthlyEquivalent: s.monthlyEquivalent,
+                notes: s.notes,
+                ownership: s.ownership,
+                ownedByUserId: s.ownedByUserId,
+                categoryId: s.categoryId,
+              },
+            })
+            if (s.customSplits.length > 0) {
+              await tx.savingsCustomSplit.createMany({
+                data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
+              })
+            }
+          }
         }
 
         return tx.budgetYear.findUnique({
@@ -173,31 +195,50 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         })
 
         if (source.expenses.length > 0) {
-          await tx.expense.createMany({
-            data: source.expenses.map((e) => ({
-              budgetYearId: created.id,
-              label: e.label,
-              amount: e.amount,
-              frequency: e.frequency,
-              frequencyPeriod: e.frequencyPeriod,
-              monthlyEquivalent: e.monthlyEquivalent,
-              notes: e.notes,
-              categoryId: e.categoryId,
-            })),
-          })
+          for (const e of source.expenses) {
+            const newExpense = await tx.expense.create({
+              data: {
+                budgetYearId: created.id,
+                label: e.label,
+                amount: e.amount,
+                frequency: e.frequency,
+                frequencyPeriod: e.frequencyPeriod,
+                monthlyEquivalent: e.monthlyEquivalent,
+                notes: e.notes,
+                categoryId: e.categoryId,
+                ownership: e.ownership,
+                ownedByUserId: e.ownedByUserId,
+              },
+            })
+            if (e.customSplits.length > 0) {
+              await tx.expenseCustomSplit.createMany({
+                data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
+              })
+            }
+          }
         }
 
         if (source.savingsEntries.length > 0) {
-          await tx.savingsEntry.createMany({
-            data: source.savingsEntries.map((s) => ({
-              budgetYearId: created.id,
-              label: s.label,
-              amount: s.amount,
-              frequency: s.frequency,
-              monthlyEquivalent: s.monthlyEquivalent,
-              notes: s.notes,
-            })),
-          })
+          for (const s of source.savingsEntries) {
+            const newEntry = await tx.savingsEntry.create({
+              data: {
+                budgetYearId: created.id,
+                label: s.label,
+                amount: s.amount,
+                frequency: s.frequency,
+                monthlyEquivalent: s.monthlyEquivalent,
+                notes: s.notes,
+                ownership: s.ownership,
+                ownedByUserId: s.ownedByUserId,
+                categoryId: s.categoryId,
+              },
+            })
+            if (s.customSplits.length > 0) {
+              await tx.savingsCustomSplit.createMany({
+                data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
+              })
+            }
+          }
         }
 
         return tx.budgetYear.findUnique({

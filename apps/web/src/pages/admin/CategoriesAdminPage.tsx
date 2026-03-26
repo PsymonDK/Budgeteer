@@ -6,8 +6,9 @@ interface Category {
   name: string
   isSystemWide: boolean
   householdId: string | null
+  categoryType: 'EXPENSE' | 'SAVINGS'
   createdBy: { id: string; name: string }
-  _count: { expenses: number }
+  _count: { expenses: number; savingsEntries: number }
 }
 
 export function CategoriesAdminPage() {
@@ -47,8 +48,9 @@ export function CategoriesAdminPage() {
               <thead>
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Created by</th>
-                  <th className="px-4 py-3 font-medium">Expenses</th>
+                  <th className="px-4 py-3 font-medium">In use</th>
                   <th className="px-4 py-3 font-medium sr-only">Actions</th>
                 </tr>
               </thead>
@@ -56,8 +58,17 @@ export function CategoriesAdminPage() {
                 {customCategories.map((c) => (
                   <tr key={c.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
                     <td className="px-4 py-3 text-white font-medium">{c.name}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        c.categoryType === 'SAVINGS'
+                          ? 'bg-emerald-900/50 text-emerald-300'
+                          : 'bg-gray-800 text-gray-400'
+                      }`}>
+                        {c.categoryType === 'SAVINGS' ? 'Savings' : 'Expense'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-gray-300">{c.createdBy.name}</td>
-                    <td className="px-4 py-3 text-gray-400">{c._count.expenses}</td>
+                    <td className="px-4 py-3 text-gray-400">{c._count.expenses + c._count.savingsEntries}</td>
                     <td className="px-4 py-3 text-right">
                       <button
                         onClick={() => promoteMutation.mutate(c.id)}

@@ -38,6 +38,23 @@ enum BudgetMode {
   SPREAD_ANNUALLY
 }
 
+enum CategoryType {
+  EXPENSE
+  SAVINGS
+}
+
+enum ExpenseOwnership {
+  SHARED
+  INDIVIDUAL
+  CUSTOM
+}
+
+enum SavingsOwnership {
+  SHARED
+  INDIVIDUAL
+  CUSTOM
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -56,9 +73,12 @@ model User {
   households                HouseholdMember[]
   jobs                      Job[]
   refreshTokens             RefreshToken[]
-  createdCategories         ExpenseCategory[]
+  createdCategories         Category[]
   preferences               UserPreferences?
-  ownedExpenses             Expense[]         @relation("OwnedExpenses")
+  ownedExpenses             Expense[]              @relation("OwnedExpenses")
+  expenseCustomSplits       ExpenseCustomSplit[]   @relation("ExpenseCustomSplits")
+  ownedSavings              SavingsEntry[]         @relation("OwnedSavings")
+  savingsCustomSplits       SavingsCustomSplit[]   @relation("SavingsCustomSplits")
 }
 
 model UserPreferences {
@@ -188,57 +208,91 @@ model HouseholdIncomeAllocation {
   @@unique([jobId, budgetYearId])
 }
 
-model ExpenseCategory {
-  id              String     @id @default(cuid())
+model Category {
+  id              String       @id @default(cuid())
   name            String
   icon            String?
-  isSystemWide    Boolean    @default(false)
+  categoryType    CategoryType @default(EXPENSE)
+  isSystemWide    Boolean      @default(false)
   householdId     String?
-  createdBy       User       @relation(fields: [createdByUserId], references: [id])
+  createdBy       User         @relation(fields: [createdByUserId], references: [id])
   createdByUserId String
-  createdAt       DateTime   @default(now())
+  createdAt       DateTime     @default(now())
 
   expenses        Expense[]
+  savingsEntries  SavingsEntry[]
+
+  @@map("ExpenseCategory")
 }
 
 model Expense {
-  id                String          @id @default(cuid())
-  budgetYear        BudgetYear      @relation(fields: [budgetYearId], references: [id])
+  id                String           @id @default(cuid())
+  budgetYear        BudgetYear       @relation(fields: [budgetYearId], references: [id])
   budgetYearId      String
-  category          ExpenseCategory @relation(fields: [categoryId], references: [id])
+  category          Category         @relation(fields: [categoryId], references: [id])
   categoryId        String
   label             String
-  amount            Decimal         @db.Decimal(10, 2)
+  amount            Decimal          @db.Decimal(10, 2)
   frequency         Frequency
   frequencyPeriod   String?
-  monthlyEquivalent Decimal         @db.Decimal(10, 2)
+  monthlyEquivalent Decimal          @db.Decimal(10, 2)
   notes             String?
   currencyCode      String?
-  originalAmount    Decimal?        @db.Decimal(10, 2)
-  rateUsed          Decimal?        @db.Decimal(18, 6)
+  originalAmount    Decimal?         @db.Decimal(10, 2)
+  rateUsed          Decimal?         @db.Decimal(18, 6)
   rateDate          DateTime?
+  ownership         ExpenseOwnership @default(SHARED)
   ownedByUserId     String?
-  ownedBy           User?           @relation("OwnedExpenses", fields: [ownedByUserId], references: [id], onDelete: SetNull)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  ownedBy           User?            @relation("OwnedExpenses", fields: [ownedByUserId], references: [id], onDelete: SetNull)
+  customSplits      ExpenseCustomSplit[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ExpenseCustomSplit {
+  id        String  @id @default(cuid())
+  expenseId String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation("ExpenseCustomSplits", fields: [userId], references: [id], onDelete: Cascade)
+  pct       Decimal @db.Decimal(5, 2)
+
+  @@unique([expenseId, userId])
 }
 
 model SavingsEntry {
-  id                String     @id @default(cuid())
-  budgetYear        BudgetYear @relation(fields: [budgetYearId], references: [id])
+  id                String           @id @default(cuid())
+  budgetYear        BudgetYear       @relation(fields: [budgetYearId], references: [id])
   budgetYearId      String
   label             String
-  amount            Decimal    @db.Decimal(10, 2)
+  amount            Decimal          @db.Decimal(10, 2)
   frequency         Frequency
   frequencyPeriod   String?
-  monthlyEquivalent Decimal    @db.Decimal(10, 2)
+  monthlyEquivalent Decimal          @db.Decimal(10, 2)
   notes             String?
   currencyCode      String?
-  originalAmount    Decimal?   @db.Decimal(10, 2)
-  rateUsed          Decimal?   @db.Decimal(18, 6)
+  originalAmount    Decimal?         @db.Decimal(10, 2)
+  rateUsed          Decimal?         @db.Decimal(18, 6)
   rateDate          DateTime?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
+  ownership         SavingsOwnership @default(SHARED)
+  ownedByUserId     String?
+  ownedBy           User?            @relation("OwnedSavings", fields: [ownedByUserId], references: [id], onDelete: SetNull)
+  categoryId        String?
+  category          Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  customSplits      SavingsCustomSplit[]
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model SavingsCustomSplit {
+  id             String       @id @default(cuid())
+  savingsEntryId String
+  savingsEntry   SavingsEntry @relation(fields: [savingsEntryId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation("SavingsCustomSplits", fields: [userId], references: [id], onDelete: Cascade)
+  pct            Decimal      @db.Decimal(5, 2)
+
+  @@unique([savingsEntryId, userId])
 }
 
 model CurrencyRate {

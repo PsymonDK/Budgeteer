@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
+import { CategoryIcon } from '../components/CategoryIcon'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
@@ -12,6 +13,25 @@ import { inputClass } from '../lib/styles'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
+type SavingsOwnership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
+
+interface CustomSplitInput {
+  userId: string
+  pct: string
+}
+
+interface SavingsCategory {
+  id: string
+  name: string
+  icon: string | null
+  isSystemWide: boolean
+  categoryType: 'EXPENSE' | 'SAVINGS'
+}
+
+interface HouseholdMember {
+  userId: string
+  user: { id: string; name: string }
+}
 
 interface SavingsEntry {
   id: string
@@ -23,6 +43,12 @@ interface SavingsEntry {
   currencyCode: string | null
   originalAmount: string | null
   rateUsed: string | null
+  ownership: SavingsOwnership
+  ownedByUserId: string | null
+  ownedBy: { id: string; name: string } | null
+  categoryId: string | null
+  category: SavingsCategory | null
+  customSplits: { userId: string; user: { id: string; name: string }; pct: string }[]
 }
 
 interface Currency {
@@ -44,6 +70,10 @@ interface EntryForm {
   frequency: Frequency
   notes: string
   currencyCode: string
+  ownership: SavingsOwnership
+  ownedByUserId: string | null
+  categoryId: string
+  customSplits: CustomSplitInput[]
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -57,7 +87,10 @@ const FREQUENCIES: { value: Frequency; label: string }[] = [
   { value: 'ANNUAL',      label: 'Annually' },
 ]
 
-const emptyForm = (baseCurrency: string): EntryForm => ({ label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency })
+const emptyForm = (baseCurrency: string): EntryForm => ({
+  label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency,
+  ownership: 'SHARED', ownedByUserId: null, categoryId: '', customSplits: [],
+})
 
 function fmt(v: number | string) {
   return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -127,6 +160,20 @@ export function SavingsPage() {
     queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
   })
 
+  const { data: householdData } = useQuery<{ members: HouseholdMember[] }>({
+    queryKey: ['household', householdId],
+    queryFn: async () => (await api.get(`/households/${householdId}`)).data,
+    enabled: !!householdId,
+  })
+  const members = householdData?.members ?? []
+
+  const { data: savingsCategories = [] } = useQuery<SavingsCategory[]>({
+    queryKey: ['categories', householdId, 'SAVINGS'],
+    queryFn: async () =>
+      (await api.get<SavingsCategory[]>(`/categories?householdId=${householdId}&type=SAVINGS`)).data,
+    enabled: !!householdId,
+  })
+
   const baseCurrency = config?.baseCurrency ?? 'DKK'
 
   // ── Derived ───────────────────────────────────────────────────────────────────
@@ -152,10 +199,17 @@ export function SavingsPage() {
   const createMutation = useMutation({
     mutationFn: (data: EntryForm) =>
       api.post(`/budget-years/${activeBudgetYear!.id}/savings`, {
-        ...data,
+        label: data.label,
         amount: parseFloat(data.amount),
+        frequency: data.frequency,
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
+        ownership: data.ownership,
+        ownedByUserId: data.ownership === 'INDIVIDUAL' ? data.ownedByUserId : undefined,
+        categoryId: data.categoryId || undefined,
+        customSplits: data.ownership === 'CUSTOM'
+          ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
+          : undefined,
       }),
     onSuccess: () => {
       invalidate()
@@ -173,10 +227,17 @@ export function SavingsPage() {
   const updateMutation = useMutation({
     mutationFn: (data: EntryForm) =>
       api.put(`/budget-years/${activeBudgetYear!.id}/savings/${editingEntry!.id}`, {
-        ...data,
+        label: data.label,
         amount: parseFloat(data.amount),
+        frequency: data.frequency,
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
+        ownership: data.ownership,
+        ownedByUserId: data.ownership === 'INDIVIDUAL' ? data.ownedByUserId : undefined,
+        categoryId: data.categoryId || null,
+        customSplits: data.ownership === 'CUSTOM'
+          ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
+          : undefined,
       }),
     onSuccess: () => {
       invalidate()
@@ -206,7 +267,17 @@ export function SavingsPage() {
   function openAdd() { setForm(emptyForm(baseCurrency)); setFormError(''); setShowAdd(true) }
 
   function openEdit(e: SavingsEntry) {
-    setForm({ label: e.label, amount: e.originalAmount ?? e.amount, frequency: e.frequency, notes: e.notes ?? '', currencyCode: e.currencyCode ?? baseCurrency })
+    setForm({
+      label: e.label,
+      amount: e.originalAmount ?? e.amount,
+      frequency: e.frequency,
+      notes: e.notes ?? '',
+      currencyCode: e.currencyCode ?? baseCurrency,
+      ownership: e.ownership ?? 'SHARED',
+      ownedByUserId: e.ownedByUserId ?? null,
+      categoryId: e.categoryId ?? '',
+      customSplits: e.customSplits?.map((s) => ({ userId: s.userId, pct: s.pct })) ?? [],
+    })
     setFormError('')
     setEditingEntry(e)
   }
@@ -214,6 +285,13 @@ export function SavingsPage() {
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setFormError('')
+    if (form.ownership === 'CUSTOM') {
+      const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
+      if (Math.abs(total - 100) > 0.01) {
+        setFormError('Custom split percentages must sum to 100%')
+        return
+      }
+    }
     if (editingEntry) updateMutation.mutate(form)
     else createMutation.mutate(form)
   }
@@ -221,6 +299,8 @@ export function SavingsPage() {
   const isMutating = createMutation.isPending || updateMutation.isPending
 
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  const colSpan = isReadOnly ? 5 : 6
 
   return (
     <>
@@ -293,6 +373,7 @@ export function SavingsPage() {
               <thead>
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3 font-medium">Label</th>
+                  <th className="px-4 py-3 font-medium">Category</th>
                   <th className="px-4 py-3 font-medium">Frequency</th>
                   <th className="px-4 py-3 font-medium text-right">Amount</th>
                   <th className="px-4 py-3 font-medium text-right">/ month</th>
@@ -303,8 +384,32 @@ export function SavingsPage() {
                 {entries.map((e) => (
                   <tr key={e.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group">
                     <td className="px-4 py-3 text-white">
-                      {e.label}
-                      {e.notes && <span className="ml-2 text-gray-600 text-xs" title={e.notes}>📝</span>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {e.label}
+                        {e.ownership === 'INDIVIDUAL' && e.ownedBy && (
+                          <span className="text-xs bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full">
+                            {e.ownedBy.name}
+                          </span>
+                        )}
+                        {e.ownership === 'CUSTOM' && (
+                          <span className="text-xs bg-purple-900/60 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full">
+                            Custom split
+                          </span>
+                        )}
+                        {e.notes && <span className="ml-1 text-gray-600 text-xs" title={e.notes}>📝</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-300">
+                      {e.category ? (
+                        <span className="flex items-center gap-1.5">
+                          {e.category.icon && (
+                            <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />
+                          )}
+                          {e.category.name}
+                        </span>
+                      ) : (
+                        <span className="text-gray-600">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-gray-300">
                       {FREQUENCIES.find((f) => f.value === e.frequency)?.label}
@@ -330,7 +435,7 @@ export function SavingsPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-gray-700 bg-gray-800/50">
-                  <td colSpan={3} className="px-4 py-3 text-sm text-gray-400 font-medium">
+                  <td colSpan={colSpan - 1} className="px-4 py-3 text-sm text-gray-400 font-medium">
                     Total — {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
                   </td>
                   <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">{fmt(totalMonthly)}</td>
@@ -347,109 +452,201 @@ export function SavingsPage() {
         <Modal
           title={editingEntry ? 'Edit savings entry' : 'New savings entry'}
           onClose={() => { setShowAdd(false); setEditingEntry(null) }}
+          size="lg"
         >
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
-              <input
-                type="text"
-                value={form.label}
-                onChange={(e) => setForm({ ...form, label: e.target.value })}
-                required
-                autoFocus
-                placeholder="e.g. Emergency fund"
-                className={inputClass}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
+          <div className="max-h-[70vh] overflow-y-auto">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Amount</label>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
                 <input
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  type="text"
+                  value={form.label}
+                  onChange={(e) => setForm({ ...form, label: e.target.value })}
                   required
-                  min="0.01"
-                  step="0.01"
-                  placeholder="0.00"
+                  autoFocus
+                  placeholder="e.g. Emergency fund"
                   className={inputClass}
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Frequency</label>
-                <select
-                  value={form.frequency}
-                  onChange={(e) => setForm({ ...form, frequency: e.target.value as Frequency })}
-                  className={inputClass}
-                >
-                  {FREQUENCIES.map((f) => (
-                    <option key={f.value} value={f.value}>{f.label}</option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Amount</label>
+                  <input
+                    type="number"
+                    value={form.amount}
+                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    required
+                    min="0.01"
+                    step="0.01"
+                    placeholder="0.00"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Frequency</label>
+                  <select
+                    value={form.frequency}
+                    onChange={(e) => setForm({ ...form, frequency: e.target.value as Frequency })}
+                    className={inputClass}
+                  >
+                    {FREQUENCIES.map((f) => (
+                      <option key={f.value} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-            </div>
 
-            {currencies.length > 0 && (
+              {currencies.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                  <select
+                    value={form.currencyCode}
+                    onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value={baseCurrency}>{baseCurrency} (base)</option>
+                    {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
+                      <option key={c.code} value={c.code}>{c.code}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {previewMonthly !== null && (
+                <p className="text-xs text-gray-500">
+                  Monthly equivalent:{' '}
+                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                  {isForeignCurrency && form.amount && (
+                    <span className="ml-2 text-gray-600">
+                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                    </span>
+                  )}
+                </p>
+              )}
+
+              {savingsCategories.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Category <span className="text-gray-600">(optional)</span>
+                  </label>
+                  <select
+                    value={form.categoryId}
+                    onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">No category</option>
+                    {savingsCategories.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}{c.isSystemWide ? '' : ' (custom)'}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {members.length > 0 && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Ownership</label>
+                    <select
+                      value={form.ownership}
+                      onChange={(e) => setForm({ ...form, ownership: e.target.value as SavingsOwnership, ownedByUserId: null, customSplits: [] })}
+                      className={inputClass}
+                    >
+                      <option value="SHARED">Shared (split by income %)</option>
+                      <option value="INDIVIDUAL">Individual (one member)</option>
+                      <option value="CUSTOM">Custom split</option>
+                    </select>
+                  </div>
+                  {form.ownership === 'INDIVIDUAL' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Assigned to</label>
+                      <select
+                        value={form.ownedByUserId ?? ''}
+                        onChange={(e) => setForm({ ...form, ownedByUserId: e.target.value || null })}
+                        required
+                        className={inputClass}
+                      >
+                        <option value="">Select member…</option>
+                        {members.map((m) => (
+                          <option key={m.userId} value={m.userId}>{m.user.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {form.ownership === 'CUSTOM' && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-2">Custom split %</label>
+                      <div className="space-y-2">
+                        {members.map((m) => {
+                          const split = form.customSplits.find((s) => s.userId === m.userId)
+                          return (
+                            <div key={m.userId} className="flex items-center gap-3">
+                              <span className="text-sm text-gray-300 flex-1">{m.user.name}</span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.1"
+                                value={split?.pct ?? ''}
+                                onChange={(ev) => {
+                                  const next = form.customSplits.filter((s) => s.userId !== m.userId)
+                                  if (ev.target.value) next.push({ userId: m.userId, pct: ev.target.value })
+                                  setForm({ ...form, customSplits: next })
+                                }}
+                                placeholder="0"
+                                className={inputClass + ' w-24 text-right'}
+                              />
+                              <span className="text-xs text-gray-500 w-4">%</span>
+                            </div>
+                          )
+                        })}
+                        {(() => {
+                          const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
+                          return (
+                            <p className={`text-xs text-right ${Math.abs(total - 100) < 0.01 ? 'text-green-400' : 'text-amber-400'}`}>
+                              Total: {total.toFixed(1)}%{Math.abs(total - 100) < 0.01 ? '' : ' (must equal 100%)'}
+                            </p>
+                          )
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
-                <select
-                  value={form.currencyCode}
-                  onChange={(e) => setForm({ ...form, currencyCode: e.target.value })}
-                  className={inputClass}
-                >
-                  <option value={baseCurrency}>{baseCurrency} (base)</option>
-                  {currencies.filter((c) => c.code !== baseCurrency).sort((a, b) => a.code.localeCompare(b.code)).map((c) => (
-                    <option key={c.code} value={c.code}>{c.code}</option>
-                  ))}
-                </select>
+                <label className="block text-xs font-medium text-gray-400 mb-1">
+                  Notes <span className="text-gray-600">(optional)</span>
+                </label>
+                <textarea
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Any additional details…"
+                  className={inputClass + ' resize-none'}
+                />
               </div>
-            )}
 
-            {previewMonthly !== null && (
-              <p className="text-xs text-gray-500">
-                Monthly equivalent:{' '}
-                <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
-                {isForeignCurrency && form.amount && (
-                  <span className="ml-2 text-gray-600">
-                    ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
-                  </span>
-                )}
-              </p>
-            )}
-
-            <div>
-              <label className="block text-xs font-medium text-gray-400 mb-1">
-                Notes <span className="text-gray-600">(optional)</span>
-              </label>
-              <textarea
-                value={form.notes}
-                onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                rows={2}
-                placeholder="Any additional details…"
-                className={inputClass + ' resize-none'}
-              />
-            </div>
-
-            {formError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{formError}</div>
-            )}
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                disabled={isMutating}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                {isMutating ? 'Saving…' : editingEntry ? 'Save changes' : 'Add savings'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAdd(false); setEditingEntry(null) }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
+              {formError && (
+                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{formError}</div>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={isMutating}
+                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                >
+                  {isMutating ? 'Saving…' : editingEntry ? 'Save changes' : 'Add savings'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowAdd(false); setEditingEntry(null) }}
+                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
         </Modal>
       )}
 

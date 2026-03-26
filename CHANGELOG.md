@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.25.0] - 2026-03-26 — Savings ownership, custom splits & savings categories
+
+### Added
+- **Custom percentage split for expenses** — expenses now support a third ownership mode ("Custom split") where each household member is assigned an explicit percentage; the split inputs show a live sum indicator that turns green when the total reaches 100 %
+- **Custom percentage split for savings** — savings entries have the same three ownership modes: Shared (income-% pool), Individual (single member), and Custom split (per-member %)
+- **Savings ownership** — savings entries now carry an `ownership` field (`SHARED` / `INDIVIDUAL` / `CUSTOM`) with the same semantics as expenses; individual savings show the owner's name as a blue chip in the table
+- **Savings categories** — savings entries can be assigned an optional category (Vacation, Renovation, Rainy Day Fund, General) displayed as an icon + name badge in the table
+- **Unified Category model** — `ExpenseCategory` is generalised into a single `Category` table with a `categoryType` discriminator (`EXPENSE` | `SAVINGS`); new category types can be added in future without a new table
+- **Default savings categories** — four system-wide savings categories seeded on first boot: Vacation (Plane), Renovation (Hammer), Rainy Day Fund (Umbrella), General (PiggyBank)
+- **CategoriesPage split by type** — the household categories page now renders two sections (Expense categories / Savings categories); the "New category" button in each section defaults to the correct type
+- **Dashboard savings splits** — `memberSplits` in the summary API now includes `monthlySavingsSharedOwed`, `monthlySavingsIndividualOwed`, `monthlySavingsCustomOwed`, and `monthlySavingsTotalOwed`
+- **"Custom split" badge on expense and savings rows** — purple pill shown in the table for entries using custom % split
+
+### Changed
+- `Expense` schema: added `ownership ExpenseOwnership @default(SHARED)` and `customSplits ExpenseCustomSplit[]`
+- `SavingsEntry` schema: added `ownership`, `ownedByUserId`, `categoryId`, and `customSplits SavingsCustomSplit[]`
+- Dashboard `memberSplits`: added `monthlyCustomOwed` for expenses alongside existing `monthlySharedOwed` / `monthlyIndividualOwed` / `monthlyTotalOwed`
+- Budget-year copy preserves custom splits for both expense and savings entries
+- Categories API: `GET /categories` accepts optional `?type=EXPENSE|SAVINGS` query parameter; `_count` now covers both `expenses` and `savingsEntries`
+
+---
+
 ## [0.24.0] - 2026-03-26 — Individual expenses
 
 ### Added

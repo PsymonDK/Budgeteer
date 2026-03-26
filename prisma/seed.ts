@@ -12,8 +12,14 @@ const DEFAULT_CATEGORIES: { name: string; icon: string }[] = [
   { name: 'Insurance',       icon: 'Shield' },
   { name: 'Subscriptions',   icon: 'RefreshCw' },
   { name: 'Healthcare',      icon: 'Heart' },
-  { name: 'Savings',         icon: 'PiggyBank' },
   { name: 'Other',           icon: 'Tag' },
+]
+
+const DEFAULT_SAVINGS_CATEGORIES: { name: string; icon: string }[] = [
+  { name: 'Vacation',       icon: 'Plane' },
+  { name: 'Renovation',     icon: 'Hammer' },
+  { name: 'Rainy Day Fund', icon: 'Umbrella' },
+  { name: 'General',        icon: 'PiggyBank' },
 ]
 
 async function main() {
@@ -36,26 +42,47 @@ async function main() {
     console.log(`  Change this on first login.`)
   }
 
-  // ── Default system-wide categories (idempotent, with icons) ───────────────
+  // ── Default system-wide expense categories (idempotent) ───────────────────
   let seeded = 0
   for (const { name: categoryName, icon } of DEFAULT_CATEGORIES) {
-    const existing = await prisma.expenseCategory.findFirst({
-      where: { name: categoryName, isSystemWide: true },
+    const existing = await prisma.category.findFirst({
+      where: { name: categoryName, isSystemWide: true, categoryType: 'EXPENSE' },
     })
     if (!existing) {
-      await prisma.expenseCategory.create({
-        data: { name: categoryName, icon, isSystemWide: true, createdByUserId: admin.id },
+      await prisma.category.create({
+        data: { name: categoryName, icon, categoryType: 'EXPENSE', isSystemWide: true, createdByUserId: admin.id },
       })
       seeded++
     } else if (existing.icon !== icon) {
-      await prisma.expenseCategory.update({
+      await prisma.category.update({
         where: { id: existing.id },
         data: { icon },
       })
     }
   }
   if (seeded > 0) console.log(`✓ Seeded ${seeded} default expense categories.`)
-  else console.log(`Default categories already exist, skipping.`)
+  else console.log(`Default expense categories already exist, skipping.`)
+
+  // ── Default system-wide savings categories (idempotent) ────────────────────
+  let savingsSeeded = 0
+  for (const { name: categoryName, icon } of DEFAULT_SAVINGS_CATEGORIES) {
+    const existing = await prisma.category.findFirst({
+      where: { name: categoryName, isSystemWide: true, categoryType: 'SAVINGS' },
+    })
+    if (!existing) {
+      await prisma.category.create({
+        data: { name: categoryName, icon, categoryType: 'SAVINGS', isSystemWide: true, createdByUserId: admin.id },
+      })
+      savingsSeeded++
+    } else if (existing.icon !== icon) {
+      await prisma.category.update({
+        where: { id: existing.id },
+        data: { icon },
+      })
+    }
+  }
+  if (savingsSeeded > 0) console.log(`✓ Seeded ${savingsSeeded} default savings categories.`)
+  else console.log(`Default savings categories already exist, skipping.`)
 
   // ── Demo data (only when SEED_DEMO_DATA=true) ──────────────────────────────
   if (process.env.SEED_DEMO_DATA !== 'true') return
@@ -84,7 +111,7 @@ async function main() {
   ])
   console.log('✓ Created 4 demo users (password: demo1234)')
 
-  const categories = await prisma.expenseCategory.findMany({ where: { isSystemWide: true } })
+  const categories = await prisma.category.findMany({ where: { isSystemWide: true } })
   const cat = (name: string) => categories.find((c) => c.name === name)!
 
   const currentYear = new Date().getFullYear()

@@ -11,18 +11,33 @@ import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 
+const CustomSplitSchema = z.object({
+  userId: z.string(),
+  pct: z.number().min(0).max(100),
+})
+
 const CreateSavingsSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
   frequency: FrequencyEnum,
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
+  ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
+  ownedByUserId: z.string().nullable().optional(),
+  categoryId: z.string().optional(),
+  customSplits: z.array(CustomSplitSchema).optional(),
 })
 
 const UpdateSavingsSchema = CreateSavingsSchema.partial().refine(
   (d) => Object.keys(d).length > 0,
   { message: 'At least one field is required' }
 )
+
+const savingsInclude = {
+  category: { select: { id: true, name: true, icon: true, categoryType: true } },
+  ownedBy: { select: { id: true, name: true } },
+  customSplits: { include: { user: { select: { id: true, name: true } } } },
+} as const
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -38,6 +53,43 @@ async function assertBudgetYearAccess(budgetYearId: string, userId: string, syst
   return budgetYear
 }
 
+async function assertHouseholdMember(householdId: string, userId: string) {
+  const member = await prisma.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId } },
+  })
+  return member !== null
+}
+
+async function validateOwnership(
+  ownership: 'SHARED' | 'INDIVIDUAL' | 'CUSTOM',
+  ownedByUserId: string | null | undefined,
+  customSplits: { userId: string; pct: number }[] | undefined,
+  householdId: string,
+): Promise<string | null> {
+  if (ownership === 'SHARED') return null
+
+  if (ownership === 'INDIVIDUAL') {
+    if (!ownedByUserId) return 'ownedByUserId is required for INDIVIDUAL ownership'
+    const isMember = await assertHouseholdMember(householdId, ownedByUserId)
+    if (!isMember) return 'Assigned user is not a member of this household'
+    return null
+  }
+
+  // CUSTOM
+  if (!customSplits || customSplits.length === 0) {
+    return 'customSplits are required for CUSTOM ownership'
+  }
+  for (const split of customSplits) {
+    const isMember = await assertHouseholdMember(householdId, split.userId)
+    if (!isMember) return `User ${split.userId} is not a member of this household`
+  }
+  const total = customSplits.reduce((s, c) => s + c.pct, 0)
+  if (Math.abs(total - 100) > 0.01) {
+    return `Custom split percentages must sum to 100 (got ${total.toFixed(2)})`
+  }
+  return null
+}
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export async function savingsRoutes(fastify: FastifyInstance) {
@@ -51,6 +103,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const entries = await prisma.savingsEntry.findMany({
       where: { budgetYearId: id },
+      include: savingsInclude,
       orderBy: { label: 'asc' },
     })
 
@@ -71,7 +124,11 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { label, amount, frequency, notes, currencyCode } = result.data
+    const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits } = result.data
+
+    const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
+    if (ownershipError) return reply.status(400).send({ error: ownershipError })
+
     const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
     const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
     if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
@@ -79,18 +136,37 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const amountInBase = amount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
 
-    const entry = await prisma.savingsEntry.create({
-      data: {
-        budgetYearId: id,
-        label,
-        amount: new Decimal(amount),
-        frequency,
-        monthlyEquivalent,
-        notes,
-        currencyCode: currency !== BASE_CURRENCY ? currency : null,
-        originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
-        rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
-      },
+    const entry = await prisma.$transaction(async (tx) => {
+      const created = await tx.savingsEntry.create({
+        data: {
+          budgetYearId: id,
+          label,
+          amount: new Decimal(amount),
+          frequency,
+          monthlyEquivalent,
+          notes,
+          currencyCode: currency !== BASE_CURRENCY ? currency : null,
+          originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
+          rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          ownership,
+          ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
+          categoryId: categoryId ?? null,
+        },
+        include: savingsInclude,
+      })
+
+      if (ownership === 'CUSTOM' && customSplits?.length) {
+        await tx.savingsCustomSplit.createMany({
+          data: customSplits.map((s) => ({
+            savingsEntryId: created.id,
+            userId: s.userId,
+            pct: new Decimal(s.pct),
+          })),
+        })
+        return tx.savingsEntry.findUniqueOrThrow({ where: { id: created.id }, include: savingsInclude })
+      }
+
+      return created
     })
 
     return reply.status(201).send(entry)
@@ -113,7 +189,19 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const data = result.data
+    const { ownership, ownedByUserId, categoryId, customSplits, ...data } = result.data
+
+    const newOwnership = ownership ?? existing.ownership
+    const newOwnedByUserId = ownedByUserId !== undefined ? ownedByUserId : existing.ownedByUserId
+
+    const ownershipError = await validateOwnership(
+      newOwnership,
+      newOwnedByUserId,
+      customSplits,
+      budgetYear.householdId,
+    )
+    if (ownershipError) return reply.status(400).send({ error: ownershipError })
+
     const newCurrency = data.currencyCode ? data.currencyCode.toUpperCase()
       : (existing.currencyCode ?? BASE_CURRENCY)
     let rate: number
@@ -132,18 +220,40 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const amountInBase = newAmount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
 
-    const updated = await prisma.savingsEntry.update({
-      where: { id: entryId },
-      data: {
-        label: data.label,
-        amount: new Decimal(newAmount),
-        frequency: newFrequency,
-        monthlyEquivalent,
-        notes: data.notes,
-        currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
-        originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
-        rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      // Always replace custom splits when ownership fields are touched
+      await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: entryId } })
+
+      const savedEntry = await tx.savingsEntry.update({
+        where: { id: entryId },
+        data: {
+          label: data.label,
+          amount: new Decimal(newAmount),
+          frequency: newFrequency,
+          monthlyEquivalent,
+          notes: data.notes,
+          currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
+          originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
+          rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          ownership: newOwnership,
+          ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
+          ...(categoryId !== undefined && { categoryId: categoryId ?? null }),
+        },
+        include: savingsInclude,
+      })
+
+      if (newOwnership === 'CUSTOM' && customSplits?.length) {
+        await tx.savingsCustomSplit.createMany({
+          data: customSplits.map((s) => ({
+            savingsEntryId: entryId,
+            userId: s.userId,
+            pct: new Decimal(s.pct),
+          })),
+        })
+        return tx.savingsEntry.findUniqueOrThrow({ where: { id: entryId }, include: savingsInclude })
+      }
+
+      return savedEntry
     })
 
     return reply.send(updated)

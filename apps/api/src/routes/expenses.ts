@@ -8,6 +8,11 @@ import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 
+const CustomSplitSchema = z.object({
+  userId: z.string(),
+  pct: z.number().min(0).max(100),
+})
+
 const CreateExpenseSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
@@ -16,7 +21,9 @@ const CreateExpenseSchema = z.object({
   frequencyPeriod: z.string().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
+  ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
   ownedByUserId: z.string().nullable().optional(),
+  customSplits: z.array(CustomSplitSchema).optional(),
 })
 
 const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
@@ -25,8 +32,9 @@ const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
 )
 
 const expenseInclude = {
-  category: { select: { id: true, name: true, icon: true, isSystemWide: true } },
+  category: { select: { id: true, name: true, icon: true, isSystemWide: true, categoryType: true } },
   ownedBy: { select: { id: true, name: true } },
+  customSplits: { include: { user: { select: { id: true, name: true } } } },
 } as const
 
 // Verify that a user is a member of a household
@@ -50,6 +58,42 @@ async function assertBudgetYearAccess(budgetYearId: string, userId: string, syst
   if (!budgetYear) return null
   if (!systemAdmin && budgetYear.household.members.length === 0) return null
   return budgetYear
+}
+
+type OwnershipInput = {
+  ownership: 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
+  ownedByUserId?: string | null
+  customSplits?: { userId: string; pct: number }[]
+}
+
+async function validateOwnership(
+  ownership: OwnershipInput['ownership'],
+  ownedByUserId: string | null | undefined,
+  customSplits: OwnershipInput['customSplits'],
+  householdId: string,
+): Promise<string | null> {
+  if (ownership === 'SHARED') {
+    return null
+  }
+  if (ownership === 'INDIVIDUAL') {
+    if (!ownedByUserId) return 'ownedByUserId is required for INDIVIDUAL ownership'
+    const isMember = await assertHouseholdMember(householdId, ownedByUserId)
+    if (!isMember) return 'Assigned user is not a member of this household'
+    return null
+  }
+  // CUSTOM
+  if (!customSplits || customSplits.length === 0) {
+    return 'customSplits are required for CUSTOM ownership'
+  }
+  for (const split of customSplits) {
+    const isMember = await assertHouseholdMember(householdId, split.userId)
+    if (!isMember) return `User ${split.userId} is not a member of this household`
+  }
+  const total = customSplits.reduce((s, c) => s + c.pct, 0)
+  if (Math.abs(total - 100) > 0.01) {
+    return `Custom split percentages must sum to 100 (got ${total.toFixed(2)})`
+  }
+  return null
 }
 
 export async function expenseRoutes(fastify: FastifyInstance) {
@@ -83,15 +127,13 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode, ownedByUserId } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode, ownership, ownedByUserId, customSplits } = result.data
 
-    const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
+    const category = await prisma.category.findUnique({ where: { id: categoryId } })
     if (!category) return reply.status(400).send({ error: 'Category not found' })
 
-    if (ownedByUserId) {
-      const isMember = await assertHouseholdMember(budgetYear.householdId, ownedByUserId)
-      if (!isMember) return reply.status(400).send({ error: 'Assigned user is not a member of this household' })
-    }
+    const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
+    if (ownershipError) return reply.status(400).send({ error: ownershipError })
 
     const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
     const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
@@ -100,22 +142,38 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const amountInBase = amount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
 
-    const expense = await prisma.expense.create({
-      data: {
-        budgetYearId: id,
-        label,
-        amount: new Decimal(amount),
-        frequency,
-        categoryId,
-        frequencyPeriod: frequencyPeriod ?? null,
-        notes: notes ?? null,
-        monthlyEquivalent,
-        currencyCode: currency !== BASE_CURRENCY ? currency : null,
-        originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
-        rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
-        ownedByUserId: ownedByUserId ?? null,
-      },
-      include: expenseInclude,
+    const expense = await prisma.$transaction(async (tx) => {
+      const created = await tx.expense.create({
+        data: {
+          budgetYearId: id,
+          label,
+          amount: new Decimal(amount),
+          frequency,
+          categoryId,
+          frequencyPeriod: frequencyPeriod ?? null,
+          notes: notes ?? null,
+          monthlyEquivalent,
+          currencyCode: currency !== BASE_CURRENCY ? currency : null,
+          originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
+          rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          ownership,
+          ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
+        },
+        include: expenseInclude,
+      })
+
+      if (ownership === 'CUSTOM' && customSplits?.length) {
+        await tx.expenseCustomSplit.createMany({
+          data: customSplits.map((s) => ({
+            expenseId: created.id,
+            userId: s.userId,
+            pct: new Decimal(s.pct),
+          })),
+        })
+        return tx.expense.findUniqueOrThrow({ where: { id: created.id }, include: expenseInclude })
+      }
+
+      return created
     })
 
     return reply.status(201).send(expense)
@@ -139,17 +197,23 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    const { amount, frequency, categoryId, currencyCode, ownedByUserId, ...rest } = result.data
+    const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, ...rest } = result.data
 
     if (categoryId) {
-      const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
+      const category = await prisma.category.findUnique({ where: { id: categoryId } })
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
-    if (ownedByUserId !== undefined && ownedByUserId !== null) {
-      const isMember = await assertHouseholdMember(budgetYear.householdId, ownedByUserId)
-      if (!isMember) return reply.status(400).send({ error: 'Assigned user is not a member of this household' })
-    }
+    const newOwnership = ownership ?? existing.ownership
+    const newOwnedByUserId = ownedByUserId !== undefined ? ownedByUserId : existing.ownedByUserId
+
+    const ownershipError = await validateOwnership(
+      newOwnership,
+      newOwnedByUserId,
+      customSplits,
+      budgetYear.householdId,
+    )
+    if (ownershipError) return reply.status(400).send({ error: ownershipError })
 
     // Determine currency and rate — respect locked rate if rateDate is set
     const newCurrency = currencyCode ? currencyCode.toUpperCase()
@@ -170,20 +234,39 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const amountInBase = newAmount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
 
-    const expense = await prisma.expense.update({
-      where: { id: expenseId },
-      data: {
-        ...rest,
-        ...(amount !== undefined && { amount: new Decimal(amount) }),
-        ...(frequency !== undefined && { frequency }),
-        ...(categoryId !== undefined && { categoryId }),
-        ...(ownedByUserId !== undefined && { ownedByUserId }),
-        monthlyEquivalent,
-        currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
-        originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
-        rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
-      },
-      include: expenseInclude,
+    const expense = await prisma.$transaction(async (tx) => {
+      // Always replace custom splits when ownership fields are touched
+      await tx.expenseCustomSplit.deleteMany({ where: { expenseId } })
+
+      const updated = await tx.expense.update({
+        where: { id: expenseId },
+        data: {
+          ...rest,
+          ...(amount !== undefined && { amount: new Decimal(amount) }),
+          ...(frequency !== undefined && { frequency }),
+          ...(categoryId !== undefined && { categoryId }),
+          ownership: newOwnership,
+          ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
+          monthlyEquivalent,
+          currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
+          originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
+          rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+        },
+        include: expenseInclude,
+      })
+
+      if (newOwnership === 'CUSTOM' && customSplits?.length) {
+        await tx.expenseCustomSplit.createMany({
+          data: customSplits.map((s) => ({
+            expenseId,
+            userId: s.userId,
+            pct: new Decimal(s.pct),
+          })),
+        })
+        return tx.expense.findUniqueOrThrow({ where: { id: expenseId }, include: expenseInclude })
+      }
+
+      return updated
     })
 
     return reply.send(expense)
