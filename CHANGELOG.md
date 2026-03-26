@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.22.0] - 2026-03-26 — Sprint 22: Visual Identity & Polish
+
+### Added
+- **Design tokens in `tailwind.config.js`** — registered semantic color tokens (`brand.primary`, `brand.primary-hover`, `surface.base`, `surface.raised`, `surface.overlay`) with inline comments; existing Tailwind class names remain valid, tokens can be adopted incrementally (UX-018)
+- **Favicon** — SVG skull-and-crossbones favicon at `apps/web/public/favicon.svg` displayed in the browser tab (UX-019)
+- **Open Graph meta tags** — `og:title` and `og:description` added to `index.html` for link previews (UX-019)
+
+### Changed
+- **Browser tab title** — changed from "Personal Budgeteer" to "Budgeteer" in `index.html` (UX-019)
+- **On-brand empty state copy** — replaced generic placeholder text across 10+ locations with pirate-flavored alternatives (UX-020):
+  - "No households yet" → "No crews assembled yet"
+  - "No savings entries yet" → "No gold stashed yet"
+  - "No budget years yet" → "Your treasure chest is empty — no budget years yet"
+  - "No simulations." → "No simulations charted."
+  - "No custom categories yet" → "Uncharted territory — no custom categories yet" (CategoriesPage & CategoriesAdminPage)
+  - "No expenses yet." → "No plunder recorded yet." (ExpensesPage & DashboardPage)
+  - "No expenses match the filter" → "No plunder matches the filter" (ExpensesPage & ComparePage)
+  - "No budget years recorded yet" → "No voyages logged yet" (HistoryPage)
+  - "No jobs yet" → "No work on the horizon yet" (IncomePage)
+  - "No households yet." → "No crews on the seas yet." (HouseholdsAdminPage)
+
+---
+
 ## [0.21.0] - 2026-03-26 — Sprint 21: Consistency Pass
 
 ### Added

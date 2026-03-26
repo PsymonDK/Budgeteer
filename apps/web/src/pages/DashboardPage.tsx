@@ -366,7 +366,7 @@ export function DashboardPage() {
 
             {summary.expenses.items.length === 0 ? (
               <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
-                No expenses yet.{' '}
+                No plunder recorded yet.{' '}
                 <Link to={`/households/${householdId}/expenses`} className="text-amber-400 hover:text-amber-300">
                   Add expenses →
                 </Link>

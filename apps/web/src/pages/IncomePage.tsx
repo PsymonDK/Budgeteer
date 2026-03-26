@@ -479,7 +479,7 @@ export function IncomePage() {
                 <PageLoader />
               ) : jobs.length === 0 ? (
                 <div className="text-center py-16 text-gray-500">
-                  <p className="text-lg mb-2">No jobs yet</p>
+                  <p className="text-lg mb-2">No work on the horizon yet</p>
                   <p className="text-sm">Add a job to start tracking your salary history.</p>
                 </div>
               ) : (

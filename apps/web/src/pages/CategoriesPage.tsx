@@ -154,7 +154,7 @@ export function CategoriesPage() {
           {isLoading ? (
             <PageLoader />
           ) : customCategories.length === 0 ? (
-            <p className="text-gray-500 text-sm">No custom categories yet.</p>
+            <p className="text-gray-500 text-sm">Uncharted territory — no custom categories yet.</p>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
               <table className="w-full text-sm">

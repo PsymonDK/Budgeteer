@@ -68,8 +68,8 @@ export function HouseholdsPage() {
           <PageLoader />
         ) : households.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
-            <p className="text-lg mb-2">No households yet</p>
-            <p className="text-sm">Create one to get started.</p>
+            <p className="text-lg mb-2">No crews assembled yet</p>
+            <p className="text-sm">Create a household to get started.</p>
           </div>
         ) : (
           <div className="grid gap-3">

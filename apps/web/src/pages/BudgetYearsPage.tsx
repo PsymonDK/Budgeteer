@@ -253,7 +253,7 @@ export function BudgetYearsPage() {
               <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Budget Years</h2>
               {regularYears.length === 0 ? (
                 <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
-                  No budget years yet.
+                  Your treasure chest is empty — no budget years yet.
                 </div>
               ) : (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -319,7 +319,7 @@ export function BudgetYearsPage() {
               </div>
               {simulations.length === 0 ? (
                 <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
-                  No simulations. Copy a budget year and choose "Simulation" to create one.
+                  No simulations charted. Copy a budget year and choose "Simulation" to create one.
                 </div>
               ) : (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">

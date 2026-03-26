@@ -280,7 +280,7 @@ export function SavingsPage() {
           <PageLoader />
         ) : entries.length === 0 ? (
           <div className="text-center py-20 text-gray-500">
-            <p className="mb-1">No savings entries yet.</p>
+            <p className="mb-1">No gold stashed yet.</p>
             {!isReadOnly && (
               <p className="text-sm">
                 <button onClick={openAdd} className="text-amber-400 hover:text-amber-300">Add your first savings entry →</button>

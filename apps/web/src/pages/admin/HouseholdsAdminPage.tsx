@@ -29,7 +29,7 @@ export function HouseholdsAdminPage() {
         {isLoading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : households.length === 0 ? (
-          <div className="text-center py-20 text-gray-500">No households yet.</div>
+          <div className="text-center py-20 text-gray-500">No crews on the seas yet.</div>
         ) : (
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
             <table className="w-full text-sm">

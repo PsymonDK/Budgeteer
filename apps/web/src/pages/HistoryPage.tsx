@@ -112,7 +112,7 @@ export function HistoryPage() {
         <PageLoader />
       ) : trends.length === 0 ? (
         <div className="text-center py-20 text-gray-600">
-          <p>No budget years recorded yet.</p>
+          <p>No voyages logged yet.</p>
         </div>
       ) : (
         <>

@@ -376,7 +376,7 @@ export function ExpensesPage() {
               <PageLoader />
             ) : filtered.length === 0 ? (
               <div className="text-center py-20 text-gray-500">
-                {expenses.length === 0 ? 'No expenses yet. Add one to get started.' : 'No expenses match the filter.'}
+                {expenses.length === 0 ? 'No plunder recorded yet. Add one to get started.' : 'No plunder matches the filter.'}
               </div>
             ) : (
               <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">

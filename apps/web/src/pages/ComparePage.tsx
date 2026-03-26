@@ -348,7 +348,7 @@ export function ComparePage() {
                 {filteredExpenses.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-gray-600">
-                      No expenses match the current filters.
+                      No plunder matches the current filters.
                     </td>
                   </tr>
                 ) : (
