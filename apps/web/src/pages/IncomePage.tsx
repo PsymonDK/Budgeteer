@@ -24,6 +24,8 @@ interface SalaryRecord {
   grossAmount: string
   netAmount: string
   effectiveFrom: string
+  currencyCode: string | null
+  rateUsed: string | null
   createdAt: string
 }
 
@@ -47,7 +49,15 @@ interface Bonus {
   paymentDate: string
   includeInBudget: boolean
   budgetMode: BudgetMode | null
+  currencyCode: string | null
+  rateUsed: string | null
   createdAt: string
+}
+
+interface Currency {
+  code: string
+  rate: number
+  baseCurrency: string
 }
 
 interface JobAllocation {
@@ -109,14 +119,14 @@ type Granularity = 'monthly' | 'quarterly' | 'yearly'
 // ── Sub-forms ─────────────────────────────────────────────────────────────────
 
 interface JobForm { name: string; employer: string; startDate: string; endDate: string }
-interface SalaryForm { grossAmount: string; netAmount: string; effectiveFrom: string }
+interface SalaryForm { grossAmount: string; netAmount: string; effectiveFrom: string; currencyCode: string }
 interface OverrideForm { year: string; month: string; grossAmount: string; netAmount: string; note: string }
-interface BonusForm { label: string; grossAmount: string; netAmount: string; paymentDate: string; includeInBudget: boolean; budgetMode: BudgetMode | '' }
+interface BonusForm { label: string; grossAmount: string; netAmount: string; paymentDate: string; includeInBudget: boolean; budgetMode: BudgetMode | ''; currencyCode: string }
 
 const emptyJob: JobForm = { name: '', employer: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' }
-const emptySalary: SalaryForm = { grossAmount: '', netAmount: '', effectiveFrom: new Date().toISOString().slice(0, 10) }
+const emptySalary = (baseCurrency: string): SalaryForm => ({ grossAmount: '', netAmount: '', effectiveFrom: new Date().toISOString().slice(0, 10), currencyCode: baseCurrency })
 const emptyOverride: OverrideForm = { year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1), grossAmount: '', netAmount: '', note: '' }
-const emptyBonus: BonusForm = { label: '', grossAmount: '', netAmount: '', paymentDate: new Date().toISOString().slice(0, 10), includeInBudget: true, budgetMode: 'ONE_OFF' }
+const emptyBonus = (baseCurrency: string): BonusForm => ({ label: '', grossAmount: '', netAmount: '', paymentDate: new Date().toISOString().slice(0, 10), includeInBudget: true, budgetMode: 'ONE_OFF', currencyCode: baseCurrency })
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -138,8 +148,9 @@ export function IncomePage() {
 
   // Salary modal
   const [salaryJobId, setSalaryJobId] = useState<string | null>(null)
-  const [salaryForm, setSalaryForm] = useState<SalaryForm>(emptySalary)
+  const [salaryForm, setSalaryForm] = useState<SalaryForm>(emptySalary(''))
   const [salaryError, setSalaryError] = useState('')
+  const [editingSalary, setEditingSalary] = useState<SalaryRecord | null>(null)
 
   // Override modal
   const [overrideJobId, setOverrideJobId] = useState<string | null>(null)
@@ -149,7 +160,7 @@ export function IncomePage() {
   // Bonus modal
   const [bonusJobId, setBonusJobId] = useState<string | null>(null)
   const [editingBonus, setEditingBonus] = useState<Bonus | null>(null)
-  const [bonusForm, setBonusForm] = useState<BonusForm>(emptyBonus)
+  const [bonusForm, setBonusForm] = useState<BonusForm>(emptyBonus(''))
   const [bonusError, setBonusError] = useState('')
 
   // Allocations
@@ -179,6 +190,17 @@ export function IncomePage() {
     enabled: isProxy,
   })
   const proxyUserName = isProxy ? allUsers.find((u) => u.id === proxyUserId)?.name : undefined
+
+  const { data: config } = useQuery<{ baseCurrency: string }>({
+    queryKey: ['config'],
+    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
+  })
+  const baseCurrency = config?.baseCurrency ?? 'DKK'
+
+  const { data: currencies = [] } = useQuery<Currency[]>({
+    queryKey: ['currencies'],
+    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
+  })
 
   const { data: jobs = [], isLoading } = useQuery<Job[]>({
     queryKey: ['jobs', targetUserId],
@@ -265,14 +287,39 @@ export function IncomePage() {
     mutationFn: (data: SalaryForm) =>
       api.post(`/jobs/${salaryJobId}/salary`, {
         grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount), effectiveFrom: data.effectiveFrom,
+        ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      setSalaryForm(emptySalary); setSalaryError('')
+      setSalaryForm(emptySalary(baseCurrency)); setSalaryError('')
       toast.success('Salary record added')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setSalaryError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
+  })
+
+  const updateSalaryMutation = useMutation({
+    mutationFn: (data: SalaryForm) =>
+      api.put(`/jobs/${salaryJobId}/salary/${editingSalary!.id}`, {
+        grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount), effectiveFrom: data.effectiveFrom,
+        ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('')
+      toast.success('Salary record updated')
+    },
+    onError: (err) => { if (axios.isAxiosError(err)) setSalaryError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
+  })
+
+  const deleteSalaryMutation = useMutation({
+    mutationFn: (salaryId: string) => api.delete(`/jobs/${salaryJobId}/salary/${salaryId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      toast.success('Salary record deleted')
+    },
   })
 
   const upsertOverrideMutation = useMutation({
@@ -306,10 +353,11 @@ export function IncomePage() {
         label: data.label, grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount),
         paymentDate: data.paymentDate, includeInBudget: data.includeInBudget,
         budgetMode: data.includeInBudget && data.budgetMode ? data.budgetMode : undefined,
+        ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
-      setBonusJobId(null); setBonusForm(emptyBonus); setBonusError('')
+      setBonusJobId(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setBonusError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
@@ -321,10 +369,11 @@ export function IncomePage() {
         label: data.label, grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount),
         paymentDate: data.paymentDate, includeInBudget: data.includeInBudget,
         budgetMode: data.includeInBudget && data.budgetMode ? data.budgetMode : undefined,
+        currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
-      setEditingBonus(null); setBonusForm(emptyBonus); setBonusError('')
+      setEditingBonus(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setBonusError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
@@ -508,7 +557,7 @@ export function IncomePage() {
                           )}
                         </div>
                         <div className="flex items-center gap-3">
-                          <button onClick={() => { setSalaryJobId(job.id); setSalaryForm(emptySalary); setSalaryError('') }}
+                          <button onClick={() => { setSalaryJobId(job.id); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('') }}
                             className="text-xs text-blue-400 hover:text-blue-300 transition-colors">Salary history</button>
                           <button onClick={() => openEditJob(job)} className="text-xs text-gray-400 hover:text-white transition-colors">Edit</button>
                           {job.isActive && (
@@ -659,7 +708,7 @@ export function IncomePage() {
                             <h3 className="text-white font-medium">{job.name}</h3>
                             {job.employer && <p className="text-gray-500 text-xs">{job.employer}</p>}
                           </div>
-                          <button onClick={() => { setBonusJobId(job.id); setBonusForm(emptyBonus); setBonusError('') }}
+                          <button onClick={() => { setBonusJobId(job.id); setBonusForm(emptyBonus(baseCurrency)); setBonusError('') }}
                             className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
                             + Add bonus
                           </button>
@@ -696,7 +745,7 @@ export function IncomePage() {
                                   </td>
                                   <td className="py-2">
                                     <div className="flex gap-3">
-                                      <button onClick={() => { setEditingBonus(b); setBonusForm({ label: b.label, grossAmount: b.grossAmount, netAmount: b.netAmount, paymentDate: toDateInput(b.paymentDate), includeInBudget: b.includeInBudget, budgetMode: b.budgetMode ?? '' }); setBonusError('') }}
+                                      <button onClick={() => { setEditingBonus(b); setBonusForm({ label: b.label, grossAmount: b.grossAmount, netAmount: b.netAmount, paymentDate: toDateInput(b.paymentDate), includeInBudget: b.includeInBudget, budgetMode: b.budgetMode ?? '', currencyCode: b.currencyCode ?? baseCurrency }); setBonusError('') }}
                                         className="text-xs text-gray-400 hover:text-white transition-colors">Edit</button>
                                       <button onClick={() => setConfirmDeleteBonus({ jobId: job.id, bonusId: b.id })}
                                         className="text-xs text-red-500 hover:text-red-400 transition-colors">Delete</button>
@@ -758,7 +807,7 @@ export function IncomePage() {
 
       {/* ── Salary History modal ────────────────────────────────────────────── */}
       {salaryJobId && (
-        <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => setSalaryJobId(null)} size="lg">
+        <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => { setSalaryJobId(null); setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('') }} size="lg">
           {/* Existing records */}
           {salaryRecords.length > 0 && (
             <table className="w-full text-sm mb-6">
@@ -766,7 +815,9 @@ export function IncomePage() {
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
                   <th className="pb-2 pr-4">Effective from</th>
                   <th className="pb-2 pr-4">Gross / month</th>
-                  <th className="pb-2">Net / month</th>
+                  <th className="pb-2 pr-4">Net / month</th>
+                  <th className="pb-2 pr-4">Currency</th>
+                  <th className="pb-2" />
                 </tr>
               </thead>
               <tbody>
@@ -774,17 +825,29 @@ export function IncomePage() {
                   <tr key={r.id} className="border-b border-gray-800/50 last:border-0">
                     <td className="py-2 pr-4 text-gray-300">{fmtDate(r.effectiveFrom)}</td>
                     <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount)}</td>
-                    <td className="py-2 text-amber-400 tabular-nums">{fmt(r.netAmount)}</td>
+                    <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(r.netAmount)}</td>
+                    <td className="py-2 pr-4 text-gray-500 text-xs">{r.currencyCode ?? baseCurrency}</td>
+                    <td className="py-2 pl-4 text-right whitespace-nowrap">
+                      <button
+                        onClick={() => { setEditingSalary(r); setSalaryForm({ grossAmount: r.grossAmount, netAmount: r.netAmount, effectiveFrom: r.effectiveFrom.slice(0, 10), currencyCode: r.currencyCode ?? baseCurrency }); setSalaryError('') }}
+                        className="text-xs text-gray-400 hover:text-white transition-colors mr-3"
+                      >Edit</button>
+                      <button
+                        onClick={() => deleteSalaryMutation.mutate(r.id)}
+                        disabled={deleteSalaryMutation.isPending}
+                        className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                      >Delete</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
 
-          {/* Add new record */}
-          <h3 className="text-sm font-medium text-gray-400 mb-3">Add salary record</h3>
-          <form onSubmit={(e) => { e.preventDefault(); addSalaryMutation.mutate(salaryForm) }} className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+          {/* Add / Edit record */}
+          <h3 className="text-sm font-medium text-gray-400 mb-3">{editingSalary ? 'Edit salary record' : 'Add salary record'}</h3>
+          <form onSubmit={(e) => { e.preventDefault(); editingSalary ? updateSalaryMutation.mutate(salaryForm) : addSalaryMutation.mutate(salaryForm) }} className="space-y-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
                 <input type="date" value={salaryForm.effectiveFrom} onChange={(e) => setSalaryForm({ ...salaryForm, effectiveFrom: e.target.value })}
@@ -800,12 +863,33 @@ export function IncomePage() {
                 <input type="number" value={salaryForm.netAmount} onChange={(e) => setSalaryForm({ ...salaryForm, netAmount: e.target.value })}
                   required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                <select value={salaryForm.currencyCode} onChange={(e) => setSalaryForm({ ...salaryForm, currencyCode: e.target.value })}
+                  className={inputClass}>
+                  <option value={baseCurrency}>{baseCurrency}</option>
+                  {currencies.filter((c) => c.code !== baseCurrency).map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {salaryForm.currencyCode && salaryForm.currencyCode !== baseCurrency && salaryForm.netAmount && (
+              <p className="text-xs text-gray-500">
+                ≈ {(parseFloat(salaryForm.netAmount) * (currencies.find((c) => c.code === salaryForm.currencyCode)?.rate ?? 1)).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency} / month net
+              </p>
+            )}
             {salaryError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{salaryError}</div>}
-            <button type="submit" disabled={addSalaryMutation.isPending}
-              className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
-              {addSalaryMutation.isPending ? 'Saving…' : 'Add record'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button type="submit" disabled={addSalaryMutation.isPending || updateSalaryMutation.isPending}
+                className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                {addSalaryMutation.isPending || updateSalaryMutation.isPending ? 'Saving…' : editingSalary ? 'Save changes' : 'Add record'}
+              </button>
+              {editingSalary && (
+                <button type="button" onClick={() => { setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('') }}
+                  className="text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
+              )}
+            </div>
           </form>
         </Modal>
       )}
@@ -866,7 +950,7 @@ export function IncomePage() {
               <input type="text" value={bonusForm.label} onChange={(e) => setBonusForm({ ...bonusForm, label: e.target.value })}
                 required autoFocus placeholder="e.g. Annual bonus" className={inputClass} />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Payment date</label>
                 <input type="date" value={bonusForm.paymentDate} onChange={(e) => setBonusForm({ ...bonusForm, paymentDate: e.target.value })}
@@ -882,7 +966,22 @@ export function IncomePage() {
                 <input type="number" value={bonusForm.netAmount} onChange={(e) => setBonusForm({ ...bonusForm, netAmount: e.target.value })}
                   required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
               </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
+                <select value={bonusForm.currencyCode} onChange={(e) => setBonusForm({ ...bonusForm, currencyCode: e.target.value })}
+                  className={inputClass}>
+                  <option value={baseCurrency}>{baseCurrency}</option>
+                  {currencies.filter((c) => c.code !== baseCurrency).map((c) => (
+                    <option key={c.code} value={c.code}>{c.code}</option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {bonusForm.currencyCode && bonusForm.currencyCode !== baseCurrency && bonusForm.netAmount && (
+              <p className="text-xs text-gray-500">
+                ≈ {(parseFloat(bonusForm.netAmount) * (currencies.find((c) => c.code === bonusForm.currencyCode)?.rate ?? 1)).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency} net
+              </p>
+            )}
             <div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={bonusForm.includeInBudget} onChange={(e) => setBonusForm({ ...bonusForm, includeInBudget: e.target.checked })}
