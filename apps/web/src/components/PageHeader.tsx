@@ -1,42 +1,17 @@
-import { Link, useLocation } from 'react-router-dom'
-import HeaderUserMenu from './HeaderUserMenu'
-import { useAuth } from '../contexts/AuthContext'
+interface PageHeaderProps {
+  title: string
+  subtitle?: string
+  action?: React.ReactNode
+}
 
-export function PageHeader() {
-  const { user } = useAuth()
-  const location = useLocation()
-  const isAdmin = user?.role === 'SYSTEM_ADMIN'
-
+export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
   return (
-    <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-      <Link to="/" className="text-lg font-bold text-white hover:text-amber-400 transition-colors">
-        Budgeteer
-      </Link>
-      <div className="flex items-center gap-4">
-        {isAdmin && (
-          <>
-            <Link
-              to="/admin/users"
-              className={`text-sm transition-colors ${location.pathname.startsWith('/admin/users') ? 'text-amber-400' : 'text-gray-400 hover:text-white'}`}
-            >
-              Users
-            </Link>
-            <Link
-              to="/admin/households"
-              className={`text-sm transition-colors ${location.pathname.startsWith('/admin/households') ? 'text-amber-400' : 'text-gray-400 hover:text-white'}`}
-            >
-              Households
-            </Link>
-            <Link
-              to="/admin/categories"
-              className={`text-sm transition-colors ${location.pathname.startsWith('/admin/categories') ? 'text-amber-400' : 'text-gray-400 hover:text-white'}`}
-            >
-              Categories
-            </Link>
-          </>
-        )}
-        <HeaderUserMenu />
+    <div className="flex items-start justify-between mb-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{title}</h1>
+        {subtitle && <p className="text-sm text-gray-400 mt-1">{subtitle}</p>}
       </div>
-    </header>
+      {action && <div className="flex-shrink-0">{action}</div>}
+    </div>
   )
 }

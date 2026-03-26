@@ -7,6 +7,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
+import { AppFooter } from '../components/AppFooter'
 
 interface Household {
   id: string
@@ -49,19 +50,19 @@ export function HouseholdsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <PageHeader />
-
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Your households</h1>
-          <button
-            onClick={() => { setShowCreate(true); setError('') }}
-            className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            + New household
-          </button>
-        </div>
+    <div className="flex-1 flex flex-col">
+      <main className="flex-1 max-w-4xl w-full mx-auto px-6 py-8">
+        <PageHeader
+          title="Your households"
+          action={
+            <button
+              onClick={() => { setShowCreate(true); setError('') }}
+              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+            >
+              + New household
+            </button>
+          }
+        />
 
         {isLoading ? (
           <PageLoader />
@@ -98,7 +99,7 @@ export function HouseholdsPage() {
           </div>
         )}
       </main>
-
+      <AppFooter />
       {showCreate && (
         <Modal title="New household" onClose={() => setShowCreate(false)}>
           <form onSubmit={handleSubmit} className="space-y-4">

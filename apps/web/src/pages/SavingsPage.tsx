@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { api } from '../api/client'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -253,22 +254,18 @@ export function SavingsPage() {
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">Savings</h1>
-            <p className="text-gray-400 text-sm mt-1">
-              Planned savings entries for this budget year.
-            </p>
-          </div>
-          {!isReadOnly && activeBudgetYear && (
+        <PageHeader
+          title="Savings"
+          subtitle="Planned savings entries for this budget year."
+          action={!isReadOnly && activeBudgetYear ? (
             <button
               onClick={openAdd}
               className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
             >
               + Add savings
             </button>
-          )}
-        </div>
+          ) : undefined}
+        />
 
         {yearsLoading ? (
           <PageLoader />
@@ -458,7 +455,7 @@ export function SavingsPage() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <Modal title="Delete savings entry" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+        <Modal title="Delete savings entry" onClose={() => setDeleteTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">
             Delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
           </p>

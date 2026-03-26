@@ -13,11 +13,8 @@ import { useAuth } from '../contexts/AuthContext'
 import { AlertTriangle, User, TrendingUp, Home } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import { PageLoader } from '../components/LoadingSpinner'
-
-// ── Shared styles ────────────────────────────────────────────────────────────
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
+import { PageHeader } from '../components/PageHeader'
+import { inputClass } from '../lib/styles'
 
 const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
 
@@ -796,7 +793,7 @@ export function ProfilePage() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
       {/* Page content */}
       <main className="flex-1 px-6 py-8 max-w-4xl w-full mx-auto">
-        <h1 className="text-2xl font-semibold mb-6">Your profile</h1>
+        <PageHeader title="Your profile" />
 
         {/* Tab bar */}
         <div className="border-b border-gray-800 mb-6">

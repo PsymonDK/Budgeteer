@@ -3,9 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
+import { inputClass } from '../lib/styles'
 
 export function ChangePasswordPage() {
   const { user, updateUser } = useAuth()

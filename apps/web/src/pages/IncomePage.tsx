@@ -11,6 +11,8 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
+import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -86,11 +88,6 @@ interface HistoryBucket {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors text-sm'
-
-// (kept local to avoid breaking existing usage)
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -393,6 +390,7 @@ export function IncomePage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+        <PageHeader title="Personal Income" subtitle="Manage your income sources and household allocations." />
 
         {/* ── Proxy banner ────────────────────────────────────────────────── */}
         {isProxy && proxyUserName && (
@@ -760,7 +758,7 @@ export function IncomePage() {
 
       {/* ── Salary History modal ────────────────────────────────────────────── */}
       {salaryJobId && (
-        <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => setSalaryJobId(null)} maxWidth="max-w-lg">
+        <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => setSalaryJobId(null)} size="lg">
           {/* Existing records */}
           {salaryRecords.length > 0 && (
             <table className="w-full text-sm mb-6">
@@ -924,7 +922,7 @@ export function IncomePage() {
 
       {/* ── Confirm close job ───────────────────────────────────────────────── */}
       {confirmCloseJob && (
-        <Modal title="Close job" onClose={() => setConfirmCloseJob(null)}>
+        <Modal title="Close job" onClose={() => setConfirmCloseJob(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">
             Close <span className="font-semibold text-white">{confirmCloseJob.name}</span>? This will set today as the end date. You can re-open it by editing the job.
           </p>
@@ -946,7 +944,7 @@ export function IncomePage() {
 
       {/* ── Confirm delete bonus ────────────────────────────────────────────── */}
       {confirmDeleteBonus && (
-        <Modal title="Delete bonus" onClose={() => setConfirmDeleteBonus(null)}>
+        <Modal title="Delete bonus" onClose={() => setConfirmDeleteBonus(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">Delete this bonus? This action cannot be undone.</p>
           <div className="flex gap-3">
             <button
@@ -966,7 +964,7 @@ export function IncomePage() {
 
       {/* ── Confirm delete override ─────────────────────────────────────────── */}
       {confirmDeleteOverride && (
-        <Modal title="Delete override" onClose={() => setConfirmDeleteOverride(null)}>
+        <Modal title="Delete override" onClose={() => setConfirmDeleteOverride(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>
           <div className="flex gap-3">
             <button

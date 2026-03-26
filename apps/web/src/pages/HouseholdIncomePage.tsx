@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 
 type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
 
@@ -64,10 +65,10 @@ export function HouseholdIncomePage() {
         </div>
       )}
 
-      <h1 className="text-2xl font-semibold mb-2">Household Income</h1>
-      <p className="text-gray-400 text-sm mb-8">
-        Income allocated to this household, used to calculate each member's share of expenses.
-      </p>
+      <PageHeader
+        title="Household Income"
+        subtitle="Income allocated to this household, used to calculate each member's share of expenses."
+      />
 
       {isLoading ? (
         <PageLoader />

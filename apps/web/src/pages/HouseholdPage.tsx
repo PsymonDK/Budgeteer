@@ -336,7 +336,7 @@ export function HouseholdPage() {
 
       {/* Confirm remove member */}
       {confirmRemove && (
-        <Modal title="Remove member" onClose={() => setConfirmRemove(null)}>
+        <Modal title="Remove member" onClose={() => setConfirmRemove(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">
             Remove <span className="font-semibold text-white">{confirmRemove.user.name}</span> from this household? They will lose access immediately.
           </p>
@@ -355,7 +355,7 @@ export function HouseholdPage() {
 
       {/* Confirm role change */}
       {confirmRoleChange && (
-        <Modal title="Change role" onClose={() => setConfirmRoleChange(null)}>
+        <Modal title="Change role" onClose={() => setConfirmRoleChange(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">
             Make <span className="font-semibold text-white">{confirmRoleChange.member.user.name}</span> a{' '}
             <span className="font-semibold text-white">{confirmRoleChange.newRole === 'ADMIN' ? 'household admin' : 'regular member'}</span>?

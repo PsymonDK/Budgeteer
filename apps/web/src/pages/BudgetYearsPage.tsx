@@ -7,6 +7,7 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -220,28 +221,28 @@ export function BudgetYearsPage() {
   return (
     <>
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">Budget Years</h1>
-            <p className="text-gray-400 text-sm mt-1">Manage budget years and planning simulations.</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              to={`/households/${householdId}/compare`}
-              className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
-            >
-              Compare →
-            </Link>
-            {isAdmin && (
-              <button
-                onClick={() => { setShowCreate(true); setCreateError('') }}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+        <PageHeader
+          title="Budget Years"
+          subtitle="Manage budget years and planning simulations."
+          action={
+            <div className="flex items-center gap-3">
+              <Link
+                to={`/households/${householdId}/compare`}
+                className="bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm px-4 py-2 rounded-lg transition-colors"
               >
-                + New year
-              </button>
-            )}
-          </div>
-        </div>
+                Compare →
+              </Link>
+              {isAdmin && (
+                <button
+                  onClick={() => { setShowCreate(true); setCreateError('') }}
+                  className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                >
+                  + New year
+                </button>
+              )}
+            </div>
+          }
+        />
 
         {isLoading ? (
           <PageLoader />
@@ -384,7 +385,7 @@ export function BudgetYearsPage() {
 
       {/* ── Create year modal ────────────────────────────────────────────────── */}
       {showCreate && (
-        <Modal title="New budget year" onClose={() => setShowCreate(false)} maxWidth="max-w-sm">
+        <Modal title="New budget year" onClose={() => setShowCreate(false)} size="sm">
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
@@ -502,7 +503,7 @@ export function BudgetYearsPage() {
 
       {/* ── Rename simulation modal ──────────────────────────────────────────── */}
       {renameTarget && (
-        <Modal title="Rename simulation" onClose={() => setRenameTarget(null)} maxWidth="max-w-sm">
+        <Modal title="Rename simulation" onClose={() => setRenameTarget(null)} size="sm">
           <form onSubmit={handleRename} className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
@@ -540,7 +541,7 @@ export function BudgetYearsPage() {
 
       {/* ── Retire confirm modal ──────────────────────────────────────────────── */}
       {retireTarget && (
-        <Modal title={`Retire ${retireTarget.year}?`} onClose={() => setRetireTarget(null)} maxWidth="max-w-sm">
+        <Modal title={`Retire ${retireTarget.year}?`} onClose={() => setRetireTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">This budget year will become read-only.</p>
           <p className="text-gray-500 text-xs mb-6">Expenses and savings data is preserved.</p>
           <div className="flex gap-3">
@@ -563,7 +564,7 @@ export function BudgetYearsPage() {
 
       {/* ── Promote confirm modal ─────────────────────────────────────────────── */}
       {promoteTarget && (
-        <Modal title="Promote to active?" onClose={() => setPromoteTarget(null)} maxWidth="max-w-sm">
+        <Modal title="Promote to active?" onClose={() => setPromoteTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">
             <span className="text-purple-300 font-medium">"{promoteTarget.simulationName}"</span> will become the active budget for {promoteTarget.year}.
           </p>
@@ -588,7 +589,7 @@ export function BudgetYearsPage() {
 
       {/* ── Delete simulation confirm modal ───────────────────────────────────── */}
       {deleteTarget && (
-        <Modal title="Delete simulation?" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+        <Modal title="Delete simulation?" onClose={() => setDeleteTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">
             <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses will be permanently deleted.
           </p>

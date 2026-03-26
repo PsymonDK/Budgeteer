@@ -8,6 +8,8 @@ import { api } from '../api/client'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
+import { CategoryFilter } from '../components/CategoryFilter'
 import { inputClass } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -111,7 +113,7 @@ export function ExpensesPage() {
   // Sort / filter state
   const [sortKey, setSortKey] = useState<SortKey>('category')
   const [sortAsc, setSortAsc] = useState(true)
-  const [filterCategoryId, setFilterCategoryId] = useState('')
+  const [filterCategories, setFilterCategories] = useState<Set<string>>(new Set())
 
   // Modal state
   const [showAdd, setShowAdd] = useState(false)
@@ -165,8 +167,8 @@ export function ExpensesPage() {
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const filtered = useMemo(() => {
-    let list = filterCategoryId
-      ? expenses.filter((e) => e.category.id === filterCategoryId)
+    let list = filterCategories.size > 0
+      ? expenses.filter((e) => filterCategories.has(e.category.id))
       : expenses
 
     return [...list].sort((a, b) => {
@@ -180,7 +182,7 @@ export function ExpensesPage() {
       }
       return sortAsc ? cmp : -cmp
     })
-  }, [expenses, filterCategoryId, sortKey, sortAsc])
+  }, [expenses, filterCategories, sortKey, sortAsc])
 
   const totalMonthly = useMemo(
     () => filtered.reduce((sum, e) => sum + parseFloat(e.monthlyEquivalent), 0),
@@ -308,6 +310,7 @@ export function ExpensesPage() {
   return (
     <>
       <main className="max-w-5xl mx-auto px-6 py-8">
+        <PageHeader title="Expenses" />
         {/* Budget year selector */}
         {budgetYears.length > 0 && (
           <div className="mb-6 flex items-center gap-3">
@@ -352,30 +355,20 @@ export function ExpensesPage() {
         ) : (
           <>
             {/* Controls */}
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div className="flex items-center gap-3">
-                <select
-                  value={filterCategoryId}
-                  onChange={(e) => setFilterCategoryId(e.target.value)}
-                  className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+            <div className="flex flex-col gap-3 mb-4">
+              <div className="flex items-center justify-between gap-4">
+                <CategoryFilter
+                  categories={categories}
+                  selected={filterCategories}
+                  onChange={setFilterCategories}
+                />
+                <button
+                  onClick={openAdd}
+                  className="flex-shrink-0 bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
                 >
-                  <option value="">All categories</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
-                {filterCategoryId && (
-                  <button onClick={() => setFilterCategoryId('')} className="text-xs text-gray-500 hover:text-gray-300">
-                    Clear
-                  </button>
-                )}
+                  + Add expense
+                </button>
               </div>
-              <button
-                onClick={openAdd}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-              >
-                + Add expense
-              </button>
             </div>
 
             {/* Table */}
@@ -473,7 +466,7 @@ export function ExpensesPage() {
                   <tfoot>
                     <tr className="border-t border-gray-700 bg-gray-800/50">
                       <td colSpan={4} className="px-4 py-3 text-sm text-gray-400 font-medium">
-                        Total{filterCategoryId ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
+                        Total{filterCategories.size > 0 ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
                       </td>
                       <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">
                         {fmt(totalMonthly)}
@@ -493,7 +486,7 @@ export function ExpensesPage() {
         <Modal
           title={editingExpense ? 'Edit expense' : 'New expense'}
           onClose={() => { setShowAdd(false); setEditingExpense(null) }}
-          maxWidth="max-w-lg"
+          size="lg"
         >
           <div className="max-h-[70vh] overflow-y-auto">
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -630,7 +623,7 @@ export function ExpensesPage() {
 
       {/* Delete confirmation */}
       {deleteTarget && (
-        <Modal title="Delete expense" onClose={() => setDeleteTarget(null)} maxWidth="max-w-sm">
+        <Modal title="Delete expense" onClose={() => setDeleteTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">
             Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
           </p>

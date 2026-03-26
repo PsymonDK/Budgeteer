@@ -7,6 +7,7 @@ import {
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -105,8 +106,7 @@ export function HistoryPage() {
 
   return (
     <main className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="text-2xl font-semibold mb-1">Budget History</h1>
-      <p className="text-gray-400 text-sm mb-8">Year-over-year view of all budget periods.</p>
+      <PageHeader title="Budget History" subtitle="Year-over-year view of all budget periods." />
 
       {isLoading ? (
         <PageLoader />

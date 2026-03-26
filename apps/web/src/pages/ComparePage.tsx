@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { CategoryIcon } from '../components/CategoryIcon'
+import { PageHeader } from '../components/PageHeader'
+import { CategoryFilter } from '../components/CategoryFilter'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -152,14 +154,6 @@ export function ComparePage() {
     })
   }, [result, filterCategories, filterFrequencies])
 
-  function toggleCategory(id: string) {
-    setFilterCategories((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
-  }
-
   function toggleFrequency(f: string) {
     setFilterFrequencies((prev) => {
       const next = new Set(prev)
@@ -188,8 +182,7 @@ export function ComparePage() {
 
   return (
     <main className="max-w-6xl mx-auto px-6 py-8">
-      <h1 className="text-2xl font-semibold mb-1">Compare Budgets</h1>
-      <p className="text-gray-400 text-sm mb-6">Select two budget years or simulations to compare side by side.</p>
+      <PageHeader title="Compare Budgets" subtitle="Select two budget years or simulations to compare side by side." />
 
       {/* COMP-001: Year selectors */}
       <div className="grid grid-cols-2 gap-4 mb-6">
@@ -295,30 +288,11 @@ export function ComparePage() {
               {allCategories.length > 0 && (
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">Categories</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {allCategories.map(({ id, name, icon }) => (
-                      <button
-                        key={id}
-                        onClick={() => toggleCategory(id)}
-                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
-                          filterCategories.has(id)
-                            ? 'bg-amber-400 text-gray-950 border-amber-400'
-                            : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
-                        }`}
-                      >
-                        {icon && <CategoryIcon name={icon} size={12} />}
-                        {name}
-                      </button>
-                    ))}
-                    {filterCategories.size > 0 && (
-                      <button
-                        onClick={() => setFilterCategories(new Set())}
-                        className="text-xs px-2 text-gray-600 hover:text-gray-400 transition-colors"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
+                  <CategoryFilter
+                    categories={allCategories}
+                    selected={filterCategories}
+                    onChange={setFilterCategories}
+                  />
                 </div>
               )}
 

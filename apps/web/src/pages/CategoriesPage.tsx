@@ -9,6 +9,7 @@ import { CategoryIcon } from '../components/CategoryIcon'
 import { IconPicker } from '../components/IconPicker'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
+import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 
 interface Category {
@@ -128,6 +129,7 @@ export function CategoriesPage() {
   return (
     <>
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <PageHeader title="Categories" />
         {createWarning && (
           <div className="mb-6 bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
             <span>{createWarning}</span>
@@ -246,7 +248,7 @@ export function CategoriesPage() {
 
       {/* Create category modal */}
       {showCreate && (
-        <Modal title="New custom category" onClose={() => setShowCreate(false)} maxWidth="max-w-md">
+        <Modal title="New custom category" onClose={() => setShowCreate(false)}>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>

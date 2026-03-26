@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { api } from '../../api/client'
 import { Modal } from '../../components/Modal'
 import { PageLoader } from '../../components/LoadingSpinner'
+import { inputClass } from '../../lib/styles'
 
 interface User {
   id: string
@@ -425,9 +426,6 @@ function ErrorMsg({ children }: { children: ReactNode }) {
     </div>
   )
 }
-
-const inputClass =
-  'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors'
 
 const submitClass =
   'flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors'
