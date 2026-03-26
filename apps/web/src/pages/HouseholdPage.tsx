@@ -25,6 +25,7 @@ interface UserOption {
   name: string
   email: string
   isActive: boolean
+  isProxy?: boolean
 }
 
 const inputClass =
@@ -214,16 +215,21 @@ export function HouseholdPage() {
                 return (
                   <tr key={m.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
                     <td className="px-4 py-3 text-white">
-                      {m.user.name}
-                      {isMe && <span className="ml-2 text-xs text-gray-500">(you)</span>}
-                      {m.user.isProxy && (me?.role === 'SYSTEM_ADMIN' || me?.role === 'BOOKKEEPER') && (
-                        <Link
-                          to={`/income?proxyUserId=${m.userId}`}
-                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors ml-2"
-                        >
-                          Manage income →
-                        </Link>
-                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {m.user.name}
+                        {isMe && <span className="text-xs text-gray-500">(you)</span>}
+                        {m.user.isProxy && (
+                          <span className="text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">Proxy</span>
+                        )}
+                        {m.user.isProxy && (me?.role === 'SYSTEM_ADMIN' || me?.role === 'BOOKKEEPER') && (
+                          <Link
+                            to={`/income?proxyUserId=${m.userId}`}
+                            className="text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                          >
+                            Manage income →
+                          </Link>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-300">{m.user.email}</td>
                     <td className="px-4 py-3">
@@ -287,7 +293,9 @@ export function HouseholdPage() {
                 >
                   <option value="">Select a user…</option>
                   {availableUsers.map((u) => (
-                    <option key={u.id} value={u.id}>{u.name} — {u.email}</option>
+                    <option key={u.id} value={u.id}>
+                      {u.name} — {u.email}{u.isProxy ? ' (proxy)' : ''}
+                    </option>
                   ))}
                 </select>
               </div>

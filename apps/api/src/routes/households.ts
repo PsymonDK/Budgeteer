@@ -21,7 +21,7 @@ const UpdateMemberSchema = z.object({
 })
 
 const memberInclude = {
-  user: { select: { id: true, name: true, email: true, isActive: true } },
+  user: { select: { id: true, name: true, email: true, isActive: true, isProxy: true } },
 } as const
 
 // Returns the membership record for userId in householdId, or null if not a member
