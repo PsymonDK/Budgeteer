@@ -19,6 +19,7 @@ import { savingsRoutes } from './routes/savings'
 import { currencyRoutes } from './routes/currencies'
 import { profileRoutes } from './routes/profile'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
+import { prisma } from './lib/prisma'
 
 const VERSION = process.env.npm_package_version ?? '0.14.0'
 
@@ -74,6 +75,17 @@ const start = async () => {
     const port = Number(process.env.API_PORT) || 3001
     await app.listen({ port, host: '0.0.0.0' })
     console.log(`API v${VERSION} running on port ${port}`)
+
+    // Seed currency rates on first boot if table is empty
+    const rateCount = await prisma.currencyRate.count()
+    if (rateCount === 0) {
+      try {
+        const count = await syncRates()
+        app.log.info(`Initial currency rate sync: ${count} currencies loaded`)
+      } catch (err) {
+        app.log.warn({ err }, 'Initial currency sync failed — rates will load on next daily sync')
+      }
+    }
 
     // Daily currency rate sync at 06:00
     cron.schedule('0 6 * * *', async () => {

@@ -28,7 +28,7 @@ export async function fetchRates(): Promise<CurrencyEntry[]> {
 
   for (const c of currencies) {
     const code = (c['@_code'] as string).toUpperCase()
-    const unit = parseFloat(c['@_unit'] as string) || 1
+    const unit = parseFloat(c['@_unit'] as string) || 100
     const rate = parseFloat((c['@_rate'] as string).replace(',', '.'))
     dkkRates.set(code, rate / unit)
   }

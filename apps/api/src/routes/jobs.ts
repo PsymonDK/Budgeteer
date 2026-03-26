@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { getJobMonthlyIncome, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ const CreateSalarySchema = z.object({
   grossAmount: z.number().positive(),
   netAmount: z.number().positive(),
   effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  currencyCode: z.string().length(3).toUpperCase().optional(),
 })
 
 const OverrideSchema = z.object({
@@ -40,6 +42,7 @@ const CreateBonusSchema = z.object({
   paymentDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   includeInBudget: z.boolean(),
   budgetMode: z.enum(['ONE_OFF', 'SPREAD_ANNUALLY']).optional(),
+  currencyCode: z.string().length(3).toUpperCase().optional(),
 })
 
 const UpdateBonusSchema = CreateBonusSchema.partial().refine(
@@ -234,17 +237,78 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { grossAmount, netAmount, effectiveFrom } = result.data
+    const { grossAmount, netAmount, effectiveFrom, currencyCode } = result.data
+    const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
+    const rate = currency ? await getLatestRate(currency) : null
+    if (currency && rate === null) {
+      return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    }
+
     const record = await prisma.salaryRecord.create({
       data: {
         jobId,
         grossAmount: new Decimal(grossAmount),
         netAmount: new Decimal(netAmount),
         effectiveFrom: new Date(effectiveFrom),
+        currencyCode: currency,
+        rateUsed: rate !== null ? new Decimal(rate) : null,
       },
     })
 
     return reply.status(201).send(record)
+  })
+
+  // PUT /jobs/:id/salary/:salaryId
+  fastify.put('/jobs/:id/salary/:salaryId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId, salaryId } = request.params as { id: string; salaryId: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const result = CreateSalarySchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
+    if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
+
+    const { grossAmount, netAmount, effectiveFrom, currencyCode } = result.data
+    const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
+    const rate = currency ? await getLatestRate(currency) : null
+    if (currency && rate === null) {
+      return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    }
+
+    const record = await prisma.salaryRecord.update({
+      where: { id: salaryId },
+      data: {
+        grossAmount: new Decimal(grossAmount),
+        netAmount: new Decimal(netAmount),
+        effectiveFrom: new Date(effectiveFrom),
+        currencyCode: currency,
+        rateUsed: rate !== null ? new Decimal(rate) : null,
+      },
+    })
+
+    return reply.send(record)
+  })
+
+  // DELETE /jobs/:id/salary/:salaryId
+  fastify.delete('/jobs/:id/salary/:salaryId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId, salaryId } = request.params as { id: string; salaryId: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
+    if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
+
+    await prisma.salaryRecord.delete({ where: { id: salaryId } })
+
+    return reply.status(204).send()
   })
 
   // ── Monthly overrides ─────────────────────────────────────────────────────────
@@ -335,7 +399,13 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { label, grossAmount, netAmount, paymentDate, includeInBudget, budgetMode } = result.data
+    const { label, grossAmount, netAmount, paymentDate, includeInBudget, budgetMode, currencyCode } = result.data
+    const bonusCurrency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
+    const bonusRate = bonusCurrency ? await getLatestRate(bonusCurrency) : null
+    if (bonusCurrency && bonusRate === null) {
+      return reply.status(400).send({ error: `No exchange rate found for ${bonusCurrency}` })
+    }
+
     const bonus = await prisma.bonus.create({
       data: {
         jobId,
@@ -345,6 +415,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
         paymentDate: new Date(paymentDate),
         includeInBudget,
         budgetMode: includeInBudget ? (budgetMode ?? null) : null,
+        currencyCode: bonusCurrency,
+        rateUsed: bonusRate !== null ? new Decimal(bonusRate) : null,
       },
     })
 
@@ -369,6 +441,19 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const data = result.data
     const newInclude = data.includeInBudget ?? existing.includeInBudget
+
+    let bonusCurrency: string | null = existing.currencyCode
+    let bonusRate: number | null = existing.rateUsed ? parseFloat(existing.rateUsed.toString()) : null
+    if (data.currencyCode !== undefined) {
+      bonusCurrency = data.currencyCode && data.currencyCode !== BASE_CURRENCY ? data.currencyCode : null
+      if (bonusCurrency) {
+        bonusRate = await getLatestRate(bonusCurrency)
+        if (bonusRate === null) return reply.status(400).send({ error: `No exchange rate found for ${bonusCurrency}` })
+      } else {
+        bonusRate = null
+      }
+    }
+
     const updated = await prisma.bonus.update({
       where: { id: bonusId },
       data: {
@@ -378,6 +463,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
         ...(data.paymentDate !== undefined && { paymentDate: new Date(data.paymentDate) }),
         includeInBudget: newInclude,
         budgetMode: newInclude ? (data.budgetMode ?? existing.budgetMode) : null,
+        currencyCode: bonusCurrency,
+        rateUsed: bonusRate !== null ? new Decimal(bonusRate) : null,
       },
     })
 

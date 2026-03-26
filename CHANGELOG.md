@@ -21,6 +21,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.23.0] - 2026-03-26 — Currency selection for expenses, salary & bonuses
+
+### Added
+- **Currency selector for salary records** — salary form now has a currency dropdown; gross/net amounts are stored in the chosen currency alongside the exchange rate; `getJobMonthlyIncome` converts to base currency for all income calculations
+- **Currency selector for bonuses** — bonus form has the same currency dropdown with a live base-currency preview
+- **Auto-sync currencies on first boot** — API syncs 31 currencies from Danmarks Nationalbank on startup if the `CurrencyRate` table is empty, so the expense/savings/income currency dropdowns have options without requiring a manual admin trigger
+- **Edit & delete salary records** — each salary record in the history modal now has Edit and Delete buttons; editing pre-fills the form inline with a Cancel action
+
+### Changed
+- `SalaryRecord` schema: added `currencyCode String?` and `rateUsed Decimal?(18,6)`
+- `Bonus` schema: added `currencyCode String?` and `rateUsed Decimal?(18,6)`
+- Salary history table shows a Currency column
+- Both salary and bonus forms show a "≈ X {base} " live preview when a foreign currency is selected
+
+---
+
 ## [0.22.0] - 2026-03-26 — Sprint 22: Visual Identity & Polish
 
 ### Added

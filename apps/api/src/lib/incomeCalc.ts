@@ -23,7 +23,10 @@ export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<
     where: { jobId, effectiveFrom: { lte: atDate } },
     orderBy: { effectiveFrom: 'desc' },
   })
-  return salary ? parseFloat(salary.netAmount.toString()) : 0
+  if (!salary) return 0
+  const net = parseFloat(salary.netAmount.toString())
+  const rate = salary.rateUsed ? parseFloat(salary.rateUsed.toString()) : 1
+  return net * rate
 }
 
 /**
