@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.21.0] - 2026-03-26 — Sprint 21: Consistency Pass
+
+### Added
+- **`CategoryFilter` component** — reusable pill-based multi-select for category filtering (`apps/web/src/components/CategoryFilter.tsx`); replaces the single `<select>` dropdown on ExpensesPage and extracts the inline pill filter from ComparePage (UX-017)
+- **`PageHeader` in-page title component** — repurposed from nav bar to a title section with `title`, `subtitle`, and `action` slot; applied to all feature pages: Expenses, Categories, Budget Years, Savings, Household Income, Compare, History, Personal Income, Profile, and Households (UX-014)
+
+### Changed
+- **`Modal` size prop** — replaced freeform `maxWidth` string with typed `size` enum (`sm | md | lg`); confirmation dialogs use `sm`, standard forms use `md`, complex forms use `lg`; all modal usages across 7 pages updated (UX-016)
+- **`inputClass` consolidated** — added `text-sm` to shared definition in `lib/styles.ts`; removed local redeclarations from LoginPage, ProfilePage, ChangePasswordPage, IncomePage, UsersPage (UX-015)
+- `HouseholdsPage` (root `/`) now wrapped in `GlobalLayout` for a consistent header with logo and user menu
+- ExpensesPage category filter upgraded from single-select dropdown to multi-select `CategoryFilter` pills
+
+---
+
+## [0.20.0] - 2026-03-26 — Sprint 20: Navigation Clarity & Routing
+
+### Added
+- **`GlobalLayout`** — shared header (logo + "← Back to household" link using `HouseholdContext` + user menu) wrapping `/`, `/income`, `/profile`, `/change-password`; replaces per-page `<PageHeader />` nav bars (UX-011)
+- **`AdminLayout`** — shared admin header (logo + nav: Users / Households / Categories with active states) wrapping all 3 admin pages; consolidates the 3 different inline headers that existed before (UX-012)
+- **`NotFoundPage`** — pirate-themed 404 page replacing the silent `<Navigate to="/" replace />` catch-all; includes a link back to home (UX-013)
+
+### Changed
+- Sidebar nav label: `Income` → `Household Income`; header link: `My income` → `Personal Income` to distinguish the two income pages (UX-010)
+- Admin pages (`UsersPage`, `HouseholdsAdminPage`, `CategoriesAdminPage`) — inline headers removed; now rendered by `AdminLayout`
+- Standalone personal pages — `<PageHeader />` nav bar removed from `IncomePage`, `ProfilePage`, `ChangePasswordPage`; header provided by `GlobalLayout`
+
+---
+
+## [0.19.0] - 2026-03-26 — Sprint 19: UX/UI Polish & Consistency
+
+### Added
+- **Shared style primitives** — `lib/styles.ts` exports `inputClass`, `selectClass`, `primaryBtn`, `secondaryBtn`, `dangerBtn` for consistent form and button styling across pages (UX-002)
+- **`LoadingSpinner` / `PageLoader`** — shared spinner component; replaces all inline "Loading…" text across the app (UX-004)
+- **`Modal` portal component** — shared `<Modal>` with Escape-to-close and click-outside-to-close; all inline modals replaced (UX-003)
+- **`PageHeader` component** (later evolved in Sprint 21) — initial extraction for standalone pages (UX-006)
+- **Sonner toast notifications** — `<Toaster>` wired in `App.tsx`; `toast.success` added to all create/update/delete mutations (UX-002)
+- **Mobile sidebar hamburger** — `HouseholdLayout` gains a `<Menu>` button and overlay drawer on small screens (UX-008)
+
+### Changed
+- All destructive actions in HouseholdPage and IncomePage (close job, delete bonus/override, remove member) now show a confirmation dialog before proceeding (UX-001)
+- Hover-only action buttons (ExpensesPage, SavingsPage) fixed to use `opacity-0 md:group-hover:opacity-100` (UX-005)
+- Sort icons in HistoryPage and ExpensesPage replaced from `▲▼` characters to Lucide `ChevronUp`/`ChevronDown` (UX-007)
+- Allocation dirty-state tracking, Save button, and 100% cap validation added to IncomePage allocation grid (UX-009)
+
+---
+
 ## [0.17.0] - 2026-03-25 — Avatar, Bookkeeper Role & Household Switcher
 
 ### Added
