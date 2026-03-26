@@ -4,6 +4,120 @@ import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
+  // ── GET /me/summary ──────────────────────────────────────────────────────────
+  // Aggregated overview across all households the user belongs to
+  fastify.get('/me/summary', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+
+    const memberships = await prisma.householdMember.findMany({
+      where: { userId },
+      include: {
+        household: {
+          include: { _count: { select: { members: true } } },
+        },
+      },
+      orderBy: { joinedAt: 'asc' },
+    })
+
+    const householdSummaries = await Promise.all(
+      memberships.map(async (m) => {
+        const h = m.household
+
+        const activeBY = await prisma.budgetYear.findFirst({
+          where: { householdId: h.id, status: { in: ['ACTIVE', 'FUTURE'] } },
+          orderBy: [{ status: 'asc' }, { year: 'asc' }],
+        })
+
+        if (!activeBY) {
+          return {
+            id: h.id, name: h.name, myRole: m.role, memberCount: h._count.members,
+            monthlyIncome: '0.00', monthlyExpenses: '0.00', monthlySavings: '0.00', monthlySurplus: '0.00',
+            budgetYear: null,
+            warnings: { expensesExceedIncome: false, noSavings: false },
+            previousYear: null,
+          }
+        }
+
+        const refDate = getIncomeReferenceDate(activeBY.year, activeBY.status)
+        const incomeResult = await calcIncomeForYear(activeBY.id, refDate)
+        const totalIncome = incomeResult.totalMonthly
+
+        const [expenses, savingsEntries] = await Promise.all([
+          prisma.expense.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
+          prisma.savingsEntry.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
+        ])
+        const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+        const totalSavings = savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+
+        // Previous retired budget year for period comparison
+        const previousBY = await prisma.budgetYear.findFirst({
+          where: { householdId: h.id, status: 'RETIRED', year: { lt: activeBY.year } },
+          orderBy: { year: 'desc' },
+        })
+
+        let previousYear = null
+        if (previousBY) {
+          const prevRef = getIncomeReferenceDate(previousBY.year, previousBY.status)
+          const prevIncome = await calcIncomeForYear(previousBY.id, prevRef)
+          const [prevExp, prevSav] = await Promise.all([
+            prisma.expense.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
+            prisma.savingsEntry.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
+          ])
+          const prevTotalExpenses = prevExp.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+          const prevTotalSavings = prevSav.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+          previousYear = {
+            year: previousBY.year,
+            monthlyIncome: prevIncome.totalMonthly.toFixed(2),
+            monthlyExpenses: prevTotalExpenses.toFixed(2),
+            monthlySavings: prevTotalSavings.toFixed(2),
+            monthlySurplus: (prevIncome.totalMonthly - prevTotalExpenses - prevTotalSavings).toFixed(2),
+          }
+        }
+
+        return {
+          id: h.id, name: h.name, myRole: m.role, memberCount: h._count.members,
+          monthlyIncome: totalIncome.toFixed(2),
+          monthlyExpenses: totalExpenses.toFixed(2),
+          monthlySavings: totalSavings.toFixed(2),
+          monthlySurplus: (totalIncome - totalExpenses - totalSavings).toFixed(2),
+          budgetYear: { id: activeBY.id, year: activeBY.year, status: activeBY.status },
+          warnings: {
+            expensesExceedIncome: totalExpenses > totalIncome && totalIncome > 0,
+            noSavings: savingsEntries.length === 0,
+          },
+          previousYear,
+        }
+      })
+    )
+
+    // Aggregate totals across all households
+    const totalIncome = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlyIncome), 0)
+    const totalExpenses = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlyExpenses), 0)
+    const totalSavings = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlySavings), 0)
+
+    const withPrev = householdSummaries.filter((h) => h.previousYear !== null)
+    const prevTotalIncome = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlyIncome), 0)
+    const prevTotalExpenses = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlyExpenses), 0)
+    const prevTotalSavings = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlySavings), 0)
+
+    return reply.send({
+      totals: {
+        monthlyIncome: totalIncome.toFixed(2),
+        monthlyExpenses: totalExpenses.toFixed(2),
+        monthlySavings: totalSavings.toFixed(2),
+        monthlySurplus: (totalIncome - totalExpenses - totalSavings).toFixed(2),
+      },
+      previousTotals: withPrev.length > 0 ? {
+        monthlyIncome: prevTotalIncome.toFixed(2),
+        monthlyExpenses: prevTotalExpenses.toFixed(2),
+        monthlySavings: prevTotalSavings.toFixed(2),
+        monthlySurplus: (prevTotalIncome - prevTotalExpenses - prevTotalSavings).toFixed(2),
+      } : null,
+      householdCount: householdSummaries.length,
+      households: householdSummaries,
+    })
+  })
+
   // ── GET /households/:id/summary ─────────────────────────────────────────────
   // Optional ?budgetYearId= to view any year (including retired) as read-only
   fastify.get('/households/:id/summary', { preHandler: authenticate }, async (request, reply) => {

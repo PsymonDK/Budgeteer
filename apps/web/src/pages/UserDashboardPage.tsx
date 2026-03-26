@@ -1,0 +1,351 @@
+import { useState, type FormEvent } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import axios from 'axios'
+import { TrendingUp, TrendingDown, Minus, ArrowRight, AlertTriangle, PiggyBank } from 'lucide-react'
+import { api } from '../api/client'
+import { Modal } from '../components/Modal'
+import { PageLoader } from '../components/LoadingSpinner'
+import { AppFooter } from '../components/AppFooter'
+import { inputClass } from '../lib/styles'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface PreviousYear {
+  year: number
+  monthlyIncome: string
+  monthlyExpenses: string
+  monthlySavings: string
+  monthlySurplus: string
+}
+
+interface HouseholdSummary {
+  id: string
+  name: string
+  myRole: 'ADMIN' | 'MEMBER'
+  memberCount: number
+  monthlyIncome: string
+  monthlyExpenses: string
+  monthlySavings: string
+  monthlySurplus: string
+  budgetYear: { id: string; year: number; status: string } | null
+  warnings: { expensesExceedIncome: boolean; noSavings: boolean }
+  previousYear: PreviousYear | null
+}
+
+interface Totals {
+  monthlyIncome: string
+  monthlyExpenses: string
+  monthlySavings: string
+  monthlySurplus: string
+}
+
+interface UserSummary {
+  totals: Totals
+  previousTotals: Totals | null
+  householdCount: number
+  households: HouseholdSummary[]
+}
+
+interface NewHousehold {
+  id: string
+  name: string
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmt(v: number | string) {
+  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function delta(current: string, previous: string) {
+  const cur = parseFloat(current)
+  const prev = parseFloat(previous)
+  if (prev === 0) return null
+  return ((cur - prev) / prev) * 100
+}
+
+type DeltaMode = 'higher-good' | 'lower-good'
+
+function DeltaBadge({ current, previous, mode }: { current: string; previous: string; mode: DeltaMode }) {
+  const pct = delta(current, previous)
+  if (pct === null) return null
+  const abs = Math.abs(pct)
+  if (abs < 0.05) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-gray-500">
+        <Minus size={12} /> No change vs prev year
+      </span>
+    )
+  }
+  const up = pct > 0
+  const good = mode === 'higher-good' ? up : !up
+  const color = good ? 'text-emerald-400' : 'text-red-400'
+  const Icon = up ? TrendingUp : TrendingDown
+  return (
+    <span className={`flex items-center gap-1 text-xs ${color}`}>
+      <Icon size={12} />
+      {up ? '+' : ''}{pct.toFixed(1)}% vs prev year
+    </span>
+  )
+}
+
+const STATUS_STYLES: Record<string, string> = {
+  ACTIVE: 'bg-green-900/50 text-green-300',
+  FUTURE: 'bg-blue-900/50 text-blue-300',
+  RETIRED: 'bg-gray-800 text-gray-400',
+  SIMULATION: 'bg-purple-900/50 text-purple-300',
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function UserDashboardPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [showCreate, setShowCreate] = useState(false)
+  const [name, setName] = useState('')
+  const [createError, setCreateError] = useState('')
+
+  const { data: summary, isLoading } = useQuery<UserSummary>({
+    queryKey: ['me', 'summary'],
+    queryFn: async () => (await api.get<UserSummary>('/me/summary')).data,
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (householdName: string) => api.post<NewHousehold>('/households', { name: householdName }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['me', 'summary'] })
+      setShowCreate(false)
+      setName('')
+      navigate(`/households/${res.data.id}`)
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        setCreateError((err.response?.data as { error?: string })?.error ?? 'Failed to create household')
+      }
+    },
+  })
+
+  function handleSubmit(e: FormEvent) {
+    e.preventDefault()
+    setCreateError('')
+    createMutation.mutate(name)
+  }
+
+  const { totals, previousTotals, households = [] } = summary ?? {}
+
+  return (
+    <div className="flex-1 flex flex-col">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-6 py-8">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Your financial overview across all households</p>
+          </div>
+          <button
+            onClick={() => { setShowCreate(true); setCreateError('') }}
+            className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+          >
+            + New household
+          </button>
+        </div>
+
+        {isLoading ? (
+          <PageLoader />
+        ) : (
+          <>
+            {/* Summary cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+              <SummaryCard
+                label="Monthly income"
+                value={totals?.monthlyIncome ?? '0.00'}
+                previous={previousTotals?.monthlyIncome}
+                mode="higher-good"
+                accent="text-emerald-400"
+              />
+              <SummaryCard
+                label="Monthly expenses"
+                value={totals?.monthlyExpenses ?? '0.00'}
+                previous={previousTotals?.monthlyExpenses}
+                mode="lower-good"
+                accent="text-red-400"
+              />
+              <SummaryCard
+                label="Monthly savings"
+                value={totals?.monthlySavings ?? '0.00'}
+                previous={previousTotals?.monthlySavings}
+                mode="higher-good"
+                accent="text-blue-400"
+              />
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Households</p>
+                <p className="text-2xl font-semibold text-white">{summary?.householdCount ?? 0}</p>
+                <p className="text-xs text-gray-600 mt-1">active budget periods</p>
+              </div>
+            </div>
+
+            {/* Households */}
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-200">Your households</h2>
+            </div>
+
+            {households.length === 0 ? (
+              <div className="text-center py-20 text-gray-500">
+                <PiggyBank size={40} className="mx-auto mb-4 opacity-30" />
+                <p className="text-lg mb-2">No crews assembled yet</p>
+                <p className="text-sm">Create a household to get started.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {households.map((h) => (
+                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      <AppFooter />
+
+      {showCreate && (
+        <Modal title="New household" onClose={() => setShowCreate(false)}>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+                className={inputClass}
+                placeholder="e.g. Family Budget"
+              />
+            </div>
+            {createError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={createMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label, value, previous, mode, accent,
+}: {
+  label: string
+  value: string
+  previous?: string
+  mode: DeltaMode
+  accent: string
+}) {
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{label}</p>
+      <p className={`text-2xl font-semibold ${accent}`}>{fmt(value)}</p>
+      <div className="mt-2">
+        {previous !== undefined ? (
+          <DeltaBadge current={value} previous={previous} mode={mode} />
+        ) : (
+          <span className="text-xs text-gray-600">No previous year data</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary; onClick: () => void }) {
+  const surplus = parseFloat(h.monthlySurplus)
+  const surplusColor = surplus >= 0 ? 'text-emerald-400' : 'text-red-400'
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-5 text-left transition-colors group"
+    >
+      <div className="flex items-start justify-between gap-4">
+        {/* Left: name + meta */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-3">
+            <h3 className="text-base font-semibold text-white truncate">{h.name}</h3>
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              h.myRole === 'ADMIN' ? 'bg-amber-900/50 text-amber-300' : 'bg-gray-800 text-gray-400'
+            }`}>
+              {h.myRole === 'ADMIN' ? 'Admin' : 'Member'}
+            </span>
+            {h.budgetYear && (
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[h.budgetYear.status] ?? 'bg-gray-800 text-gray-400'}`}>
+                {h.budgetYear.year} · {h.budgetYear.status}
+              </span>
+            )}
+            {!h.budgetYear && (
+              <span className="text-xs text-gray-600">No active budget</span>
+            )}
+          </div>
+
+          {/* Mini stats grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
+            <Stat label="Income" value={h.monthlyIncome} color="text-gray-200" />
+            <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" />
+            <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" />
+            <Stat label="Surplus" value={h.monthlySurplus} color={surplusColor} />
+          </div>
+
+          {/* Warning badges */}
+          {(h.warnings.expensesExceedIncome || h.warnings.noSavings) && (
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {h.warnings.expensesExceedIncome && (
+                <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded-full px-2 py-0.5">
+                  <AlertTriangle size={10} /> Expenses exceed income
+                </span>
+              )}
+              {h.warnings.noSavings && (
+                <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-800/50 border border-gray-700/30 rounded-full px-2 py-0.5">
+                  <AlertTriangle size={10} /> No savings
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Right: members + arrow */}
+        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+          <ArrowRight size={16} className="text-gray-600 group-hover:text-gray-400 transition-colors mt-1" />
+          <span className="text-xs text-gray-500">{h.memberCount} {h.memberCount === 1 ? 'member' : 'members'}</span>
+        </div>
+      </div>
+    </button>
+  )
+}
+
+function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={`text-sm font-medium ${color}`}>{fmt(value)}</p>
+    </div>
+  )
+}

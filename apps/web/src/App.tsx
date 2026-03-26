@@ -5,7 +5,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { HouseholdProvider } from './contexts/HouseholdContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
-import { HouseholdsPage } from './pages/HouseholdsPage'
+import { UserDashboardPage } from './pages/UserDashboardPage'
 import { HouseholdPage } from './pages/HouseholdPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { AdminUsersPage } from './pages/admin/UsersPage'
@@ -77,7 +77,7 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route path="/" element={<HouseholdsPage />} />
+              <Route path="/" element={<UserDashboardPage />} />
               <Route path="/income" element={<IncomePage />} />
               <Route path="/change-password" element={<ChangePasswordPage />} />
               <Route path="/profile" element={<ProfilePage />} />
