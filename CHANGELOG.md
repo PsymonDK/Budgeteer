@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.26.0] - 2026-03-26 — User dashboard overview (DASH-004)
+
+### Added
+- **User dashboard** — new landing page at `/` replaces the plain household list; shows four summary cards (Monthly Income, Monthly Expenses, Monthly Savings, Household count) with ↑/↓ % delta vs the previous budget year
+- **`GET /me/summary` API** — aggregates income, expenses and savings across all of the user's active household budget years; includes `previousTotals` for period comparison and a per-household breakdown
+- **Household overview cards** — each household is shown as a rich card with role badge (Admin/Member), budget year status badge, a mini stats grid (income/expenses/savings/surplus), warning indicators (expenses exceed income, no savings) and member count
+
+### Changed
+- Default landing page after login is now the user dashboard instead of the plain households list; the "New household" button and create modal are embedded in the dashboard
+
+---
+
 ## [0.25.0] - 2026-03-26 — Savings ownership, custom splits & savings categories
 
 ### Added
