@@ -82,12 +82,25 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     // ── Expenses ─────────────────────────────────────────────────────────────
     const expenses = await prisma.expense.findMany({
       where: { budgetYearId: activeBudgetYear.id },
-      include: { category: { select: { id: true, name: true, icon: true } } },
+      include: {
+        category: { select: { id: true, name: true, icon: true } },
+        ownedBy: { select: { id: true, name: true } },
+      },
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
     const totalMonthlyExpenses = expenses.reduce(
       (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
     )
+
+    // Partition into shared pool vs per-member individual expenses
+    const sharedPool = expenses
+      .filter((e) => e.ownedByUserId === null)
+      .reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+    const individualOwedMap = new Map<string, number>()
+    for (const e of expenses.filter((e) => e.ownedByUserId !== null)) {
+      const cur = individualOwedMap.get(e.ownedByUserId!) ?? 0
+      individualOwedMap.set(e.ownedByUserId!, cur + parseFloat(e.monthlyEquivalent.toString()))
+    }
     const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
     for (const e of expenses) {
       const existing = byCategoryMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
@@ -108,13 +121,19 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
-    const memberSplits = incomeMembers.map((m) => ({
-      userId: m.userId,
-      name: m.name,
-      sharePct: m.sharePct,
-      monthlyIncomeAllocated: m.monthlyAllocated,
-      monthlyExpensesOwed: (totalMonthlyExpenses * parseFloat(m.sharePct) / 100).toFixed(2),
-    }))
+    const memberSplits = incomeMembers.map((m) => {
+      const sharedOwed = sharedPool * parseFloat(m.sharePct) / 100
+      const individualOwed = individualOwedMap.get(m.userId) ?? 0
+      return {
+        userId: m.userId,
+        name: m.name,
+        sharePct: m.sharePct,
+        monthlyIncomeAllocated: m.monthlyAllocated,
+        monthlySharedOwed: sharedOwed.toFixed(2),
+        monthlyIndividualOwed: individualOwed.toFixed(2),
+        monthlyTotalOwed: (sharedOwed + individualOwed).toFixed(2),
+      }
+    })
 
     // ── Warnings (only relevant for active/future, not historical views) ──────
     const unnamedSimulations = requestedYearId ? 0 : await prisma.budgetYear.count({
@@ -136,6 +155,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           id: e.id, label: e.label, amount: e.amount, frequency: e.frequency,
           frequencyPeriod: e.frequencyPeriod, monthlyEquivalent: e.monthlyEquivalent,
           notes: e.notes, category: e.category,
+          ownedByUserId: e.ownedByUserId, ownedBy: e.ownedBy,
         })),
         byCategory,
       },

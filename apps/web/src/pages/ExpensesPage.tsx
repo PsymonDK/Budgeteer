@@ -21,6 +21,11 @@ interface Category {
   isSystemWide: boolean
 }
 
+interface HouseholdMember {
+  userId: string
+  user: { id: string; name: string }
+}
+
 interface Expense {
   id: string
   label: string
@@ -33,6 +38,8 @@ interface Expense {
   currencyCode: string | null
   originalAmount: string | null
   rateUsed: string | null
+  ownedByUserId: string | null
+  ownedBy: { id: string; name: string } | null
 }
 
 interface Currency {
@@ -91,10 +98,11 @@ interface ExpenseForm {
   frequencyPeriod: string
   notes: string
   currencyCode: string
+  ownedByUserId: string | null
 }
 
 const emptyForm = (baseCurrency: string): ExpenseForm => ({
-  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '', currencyCode: baseCurrency,
+  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '', currencyCode: baseCurrency, ownedByUserId: null,
 })
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -161,6 +169,13 @@ export function ExpensesPage() {
     queryKey: ['currencies'],
     queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
   })
+
+  const { data: householdData } = useQuery<{ members: HouseholdMember[] }>({
+    queryKey: ['household', householdId],
+    queryFn: async () => (await api.get(`/households/${householdId}`)).data,
+    enabled: !!householdId,
+  })
+  const members = householdData?.members ?? []
 
   const baseCurrency = config?.baseCurrency ?? 'DKK'
 
@@ -274,6 +289,7 @@ export function ExpensesPage() {
       frequencyPeriod: expense.frequencyPeriod ?? '',
       notes: expense.notes ?? '',
       currencyCode: expense.currencyCode ?? baseCurrency,
+      ownedByUserId: expense.ownedByUserId ?? null,
     })
     setFormError('')
     setEditingExpense(expense)
@@ -415,10 +431,17 @@ export function ExpensesPage() {
                     {filtered.map((e) => (
                       <tr key={e.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group">
                         <td className="px-4 py-3 text-white">
-                          {e.label}
-                          {e.notes && (
-                            <span className="ml-2 text-gray-600 text-xs" title={e.notes}>📝</span>
-                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {e.label}
+                            {e.ownedBy && (
+                              <span className="text-xs bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full">
+                                {e.ownedBy.name}
+                              </span>
+                            )}
+                            {e.notes && (
+                              <span className="text-gray-600 text-xs" title={e.notes}>📝</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3 text-gray-300">
                           <span className="flex items-center gap-1.5">
@@ -572,6 +595,21 @@ export function ExpensesPage() {
                   ))}
                 </select>
               </div>
+              {members.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Assigned to</label>
+                  <select
+                    value={form.ownedByUserId ?? ''}
+                    onChange={(e) => setForm({ ...form, ownedByUserId: e.target.value || null })}
+                    className={inputClass}
+                  >
+                    <option value="">Shared (split by income %)</option>
+                    {members.map((m) => (
+                      <option key={m.userId} value={m.userId}>{m.user.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">
                   Frequency period <span className="text-gray-600">(optional)</span>

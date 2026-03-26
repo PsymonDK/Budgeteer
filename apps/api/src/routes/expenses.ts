@@ -16,6 +16,7 @@ const CreateExpenseSchema = z.object({
   frequencyPeriod: z.string().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
+  ownedByUserId: z.string().nullable().optional(),
 })
 
 const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
@@ -25,7 +26,16 @@ const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
 
 const expenseInclude = {
   category: { select: { id: true, name: true, icon: true, isSystemWide: true } },
+  ownedBy: { select: { id: true, name: true } },
 } as const
+
+// Verify that a user is a member of a household
+async function assertHouseholdMember(householdId: string, userId: string) {
+  const member = await prisma.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId } },
+  })
+  return member !== null
+}
 
 // Verify the caller is a member of the household that owns the budget year
 async function assertBudgetYearAccess(budgetYearId: string, userId: string, systemAdmin: boolean) {
@@ -73,10 +83,15 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode, ownedByUserId } = result.data
 
     const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
     if (!category) return reply.status(400).send({ error: 'Category not found' })
+
+    if (ownedByUserId) {
+      const isMember = await assertHouseholdMember(budgetYear.householdId, ownedByUserId)
+      if (!isMember) return reply.status(400).send({ error: 'Assigned user is not a member of this household' })
+    }
 
     const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
     const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
@@ -98,6 +113,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
         currencyCode: currency !== BASE_CURRENCY ? currency : null,
         originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
         rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+        ownedByUserId: ownedByUserId ?? null,
       },
       include: expenseInclude,
     })
@@ -123,11 +139,16 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    const { amount, frequency, categoryId, currencyCode, ...rest } = result.data
+    const { amount, frequency, categoryId, currencyCode, ownedByUserId, ...rest } = result.data
 
     if (categoryId) {
       const category = await prisma.expenseCategory.findUnique({ where: { id: categoryId } })
       if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
+    if (ownedByUserId !== undefined && ownedByUserId !== null) {
+      const isMember = await assertHouseholdMember(budgetYear.householdId, ownedByUserId)
+      if (!isMember) return reply.status(400).send({ error: 'Assigned user is not a member of this household' })
     }
 
     // Determine currency and rate — respect locked rate if rateDate is set
@@ -156,6 +177,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
         ...(amount !== undefined && { amount: new Decimal(amount) }),
         ...(frequency !== undefined && { frequency }),
         ...(categoryId !== undefined && { categoryId }),
+        ...(ownedByUserId !== undefined && { ownedByUserId }),
         monthlyEquivalent,
         currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
         originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,

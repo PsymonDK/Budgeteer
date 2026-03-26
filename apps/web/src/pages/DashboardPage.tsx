@@ -51,7 +51,9 @@ interface MemberSplit {
   name: string
   sharePct: string
   monthlyIncomeAllocated: string
-  monthlyExpensesOwed: string
+  monthlySharedOwed: string
+  monthlyIndividualOwed: string
+  monthlyTotalOwed: string
 }
 
 interface Warnings {
@@ -312,7 +314,9 @@ export function DashboardPage() {
                       <th className="px-4 py-3 font-medium">Member</th>
                       <th className="px-4 py-3 font-medium text-right">Income / mo</th>
                       <th className="px-4 py-3 font-medium text-right">Share</th>
-                      <th className="px-4 py-3 font-medium text-right">Expenses owed</th>
+                      <th className="px-4 py-3 font-medium text-right">Shared owed</th>
+                      <th className="px-4 py-3 font-medium text-right">Individual</th>
+                      <th className="px-4 py-3 font-medium text-right">Total owed</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -334,7 +338,9 @@ export function DashboardPage() {
                             <span className="text-gray-300 tabular-nums w-10 text-right">{m.sharePct}%</span>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">{fmt(m.monthlyExpensesOwed)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300 tabular-nums">{fmt(m.monthlySharedOwed)}</td>
+                        <td className="px-4 py-3 text-right text-gray-300 tabular-nums">{fmt(m.monthlyIndividualOwed)}</td>
+                        <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">{fmt(m.monthlyTotalOwed)}</td>
                       </tr>
                     ))}
                   </tbody>

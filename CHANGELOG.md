@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.24.0] - 2026-03-26 — Individual expenses
+
+### Added
+- **Individual expense ownership** — expenses can now be assigned to a specific household member via an optional "Assigned to" dropdown in the add/edit form; unassigned expenses remain shared (split by income %)
+- **Owner badge on expense rows** — individual expenses display the owner's name as a blue chip in the expenses table
+- **Per-member split breakdown on dashboard** — the member expense splits table now shows three columns: Shared owed (proportional split of shared pool), Individual (expenses assigned solely to that member), and Total owed
+
+### Changed
+- `Expense` schema: added `ownedByUserId String?` with a `SetNull` foreign key to `User`; all existing expenses default to `null` (shared)
+- Dashboard API `memberSplits` response shape: replaced `monthlyExpensesOwed` with `monthlySharedOwed`, `monthlyIndividualOwed`, and `monthlyTotalOwed`
+- Expense API (`POST`/`PUT`) validates that `ownedByUserId`, when provided, is an actual member of the household; returns 400 otherwise
+
+---
+
 ## [0.22.0] - 2026-03-26 — Sprint 22: Visual Identity & Polish
 
 ### Added
