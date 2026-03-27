@@ -20,6 +20,8 @@ interface IncomeMember {
   name: string
   email: string
   monthlyAllocated: string
+  monthlyAllocatedGross: string
+  monthlyAllocatedNet: string
   sharePct: string
 }
 
@@ -350,7 +352,7 @@ export function DashboardPage() {
                           <span className={`text-sm font-semibold ${isMe ? 'text-amber-300' : 'text-white'}`}>{m.name}</span>
                           {isMe && <span className="text-xs bg-amber-900/60 text-amber-400 px-1.5 py-0.5 rounded-full">you</span>}
                         </div>
-                        <span className="text-xs text-gray-500">{m.sharePct}% of income</span>
+                        <span className="text-xs text-gray-500">{m.sharePct}% of gross income</span>
                       </div>
                       <div className="space-y-1.5 mb-4">
                         <div className="flex justify-between text-sm">

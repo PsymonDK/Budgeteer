@@ -40,7 +40,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
         const refDate = getIncomeReferenceDate(activeBY.year, activeBY.status)
         const incomeResult = await calcIncomeForYear(activeBY.id, refDate)
-        const totalIncome = incomeResult.totalMonthly
+        const totalIncome = incomeResult.totalMonthlyNet
 
         const [expenses, savingsEntries] = await Promise.all([
           prisma.expense.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
@@ -67,10 +67,10 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           const prevTotalSavings = prevSav.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
           previousYear = {
             year: previousBY.year,
-            monthlyIncome: prevIncome.totalMonthly.toFixed(2),
+            monthlyIncome: prevIncome.totalMonthlyNet.toFixed(2),
             monthlyExpenses: prevTotalExpenses.toFixed(2),
             monthlySavings: prevTotalSavings.toFixed(2),
-            monthlySurplus: (prevIncome.totalMonthly - prevTotalExpenses - prevTotalSavings).toFixed(2),
+            monthlySurplus: (prevIncome.totalMonthlyNet - prevTotalExpenses - prevTotalSavings).toFixed(2),
           }
         }
 
@@ -178,17 +178,22 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     // ── Income ──────────────────────────────────────────────────────────────
     const referenceDate = getIncomeReferenceDate(activeBudgetYear.year, activeBudgetYear.status)
     const incomeResult = await calcIncomeForYear(activeBudgetYear.id, referenceDate)
-    const totalMonthlyIncome = incomeResult.totalMonthly
-    const memberIncomeMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocated]))
+    const totalMonthlyGross = incomeResult.totalMonthlyGross
+    const totalMonthlyIncome = incomeResult.totalMonthlyNet
+    const memberGrossMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedGross]))
+    const memberNetMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedNet]))
     const incomeMembers = household.members.map((m) => {
-      const allocated = memberIncomeMap.get(m.userId) ?? 0
+      const allocatedGross = memberGrossMap.get(m.userId) ?? 0
+      const allocatedNet = memberNetMap.get(m.userId) ?? 0
       return {
         userId: m.userId,
         name: m.user.name,
         email: m.user.email,
-        monthlyAllocated: allocated.toFixed(2),
-        sharePct: totalMonthlyIncome > 0
-          ? ((allocated / totalMonthlyIncome) * 100).toFixed(1)
+        monthlyAllocated: allocatedNet.toFixed(2),
+        monthlyAllocatedGross: allocatedGross.toFixed(2),
+        monthlyAllocatedNet: allocatedNet.toFixed(2),
+        sharePct: totalMonthlyGross > 0
+          ? ((allocatedGross / totalMonthlyGross) * 100).toFixed(1)
           : '0.0',
       }
     })
@@ -351,7 +356,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       years.map(async (y) => {
         const refDate = getIncomeReferenceDate(y.year, y.status)
         const incomeResult = await calcIncomeForYear(y.id, refDate)
-        const totalIncome = incomeResult.totalMonthly
+        const totalIncome = incomeResult.totalMonthlyNet
         const totalExpenses = y.expenses.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
         const totalSavings = y.savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
 

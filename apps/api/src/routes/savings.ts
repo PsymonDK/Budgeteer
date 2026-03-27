@@ -299,7 +299,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       years.map(async (y) => {
         const refDate = getIncomeReferenceDate(y.year, y.status)
         const incomeResult = await calcIncomeForYear(y.id, refDate)
-        const income = incomeResult.totalMonthly
+        const income = incomeResult.totalMonthlyNet
         const savings = y.savingsEntries.reduce(
           (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
         )

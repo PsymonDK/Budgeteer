@@ -22,6 +22,7 @@ interface MemberSummary {
   email: string
   role: 'ADMIN' | 'MEMBER'
   monthlyAllocated: string
+  monthlyAllocatedGross: string
   sharePct: string
   entries: IncomeEntry[]
 }
@@ -125,8 +126,14 @@ export function HouseholdIncomePage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-amber-400 font-bold text-lg">{fmt(monthly)} <span className="text-gray-500 text-sm font-normal">/ mo</span></p>
+                      <p className="text-amber-400 font-bold text-lg">
+                        {fmt(member.monthlyAllocatedGross ?? monthly)}
+                        <span className="text-gray-500 text-sm font-normal"> gross / mo</span>
+                      </p>
                       <p className="text-gray-400 text-sm">{share}% of household</p>
+                      {member.monthlyAllocatedGross && parseFloat(member.monthlyAllocatedGross) !== monthly && (
+                        <p className="text-gray-500 text-xs">{fmt(monthly)} net / mo</p>
+                      )}
                     </div>
                   </div>
 

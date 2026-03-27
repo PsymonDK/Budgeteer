@@ -38,8 +38,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
     // Compute monthly income for each job
     const jobIncomes = await Promise.all(
       jobs.map(async (job) => {
-        const monthly = await getJobMonthlyIncome(job.id, today)
-        return { job, monthly }
+        const { gross } = await getJobMonthlyIncome(job.id, today)
+        return { job, monthly: gross }
       })
     )
 
@@ -54,7 +54,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       },
     })
 
-    // Build a map of jobId -> monthly income
+    // Build a map of jobId -> gross monthly income
     const jobIncomeMap = new Map(jobIncomes.map(({ job, monthly }) => [job.id, monthly]))
 
     let totalAllocated = 0
@@ -111,14 +111,14 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
         // Check override first
         const override = job.overrides.find((o) => o.year === year && o.month === mon)
-        if (override) return parseFloat(override.netAmount.toString())
+        if (override) return parseFloat(override.grossAmount.toString())
 
         // Fall back to latest salary record effective on or before refDate
         const salary = [...job.salaryRecords]
           .filter((s) => s.effectiveFrom <= refDate)
           .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
 
-        return salary ? parseFloat(salary.netAmount.toString()) : 0
+        return salary ? parseFloat(salary.grossAmount.toString()) : 0
       })
 
       return { id: job.id, name: job.name, monthly }
@@ -141,7 +141,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
           bonuses.push({
             jobId: job.id,
             month: formatYYYYMM(pd),
-            amount: parseFloat(bonus.netAmount.toString()),
+            amount: parseFloat(bonus.grossAmount.toString()),
             label: bonus.label,
           })
         }
@@ -163,14 +163,14 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
     const jobIncomes = await Promise.all(
       activeJobs.map(async (job) => {
-        const monthly = await getJobMonthlyIncome(job.id, today)
-        return { job, monthly }
+        const { gross } = await getJobMonthlyIncome(job.id, today)
+        return { job, gross }
       })
     )
 
-    const totalIncome = jobIncomes.reduce((s, { monthly }) => s + monthly, 0)
+    const totalIncome = jobIncomes.reduce((s, { gross }) => s + gross, 0)
     const jobIds = activeJobs.map((j) => j.id)
-    const jobIncomeMap = new Map(jobIncomes.map(({ job, monthly }) => [job.id, monthly]))
+    const jobIncomeMap = new Map(jobIncomes.map(({ job, gross }) => [job.id, gross]))
 
     // Fetch all allocations for active jobs with ACTIVE/FUTURE budget years, including household name
     const allocations = await prisma.householdIncomeAllocation.findMany({
@@ -214,30 +214,30 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const totalAllocated = [...householdMap.values()].reduce((s, h) => s + h.allocatedAmount, 0)
     const unallocatedAmount = totalIncome - totalAllocated
 
-    // For each household, fetch expenses and savings totals
+    // For each household, fetch expenses and savings totals scaled to user's share
     const householdDetails = await Promise.all(
       [...householdMap.values()].map(async (hh) => {
-        // Get the active/latest non-simulation budget year for expense/savings totals
-        const budgetYear = await prisma.budgetYear.findFirst({
-          where: { householdId: hh.householdId, status: { in: ['ACTIVE', 'FUTURE'] } },
-          orderBy: [{ status: 'asc' }, { year: 'asc' }],
-        })
+        const [expenseRows, savingsRows, allAllocations] = await Promise.all([
+          prisma.expense.findMany({ where: { budgetYearId: hh.budgetYearId } }),
+          prisma.savingsEntry.findMany({ where: { budgetYearId: hh.budgetYearId } }),
+          prisma.householdIncomeAllocation.findMany({ where: { budgetYearId: hh.budgetYearId } }),
+        ])
 
-        let expenses = 0
-        let savings = 0
+        const totalExpenses = expenseRows.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+        const totalSavings = savingsRows.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
 
-        if (budgetYear) {
-          const expenseRows = await prisma.expense.findMany({
-            where: { budgetYearId: budgetYear.id },
+        // Compute total household gross income to determine user's proportional share
+        const allAllocGross = await Promise.all(
+          allAllocations.map(async (alloc) => {
+            const { gross } = await getJobMonthlyIncome(alloc.jobId, today)
+            return gross * parseFloat(alloc.allocationPct.toString()) / 100
           })
-          expenses = expenseRows.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+        )
+        const totalHouseholdGross = allAllocGross.reduce((s, v) => s + v, 0)
+        const userSharePct = totalHouseholdGross > 0 ? hh.allocatedAmount / totalHouseholdGross : 0
 
-          const savingsRows = await prisma.savingsEntry.findMany({
-            where: { budgetYearId: budgetYear.id },
-          })
-          savings = savingsRows.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-        }
-
+        const expenses = totalExpenses * userSharePct
+        const savings = totalSavings * userSharePct
         const surplus = Math.max(0, hh.allocatedAmount - expenses - savings)
 
         return {
@@ -260,8 +260,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const links: { source: string; target: string; value: number }[] = []
 
     // Job nodes
-    jobIncomes.forEach(({ job, monthly }, i) => {
-      if (monthly <= 0) return
+    jobIncomes.forEach(({ job, gross }, i) => {
+      if (gross <= 0) return
       nodes.push({ id: `job_${job.id}`, name: job.name, color: JOB_COLOR_PALETTE[i % JOB_COLOR_PALETTE.length] })
     })
 
@@ -305,13 +305,13 @@ export async function profileRoutes(fastify: FastifyInstance) {
     // Unallocated node
     if (unallocatedAmount > 0) {
       nodes.push({ id: 'unallocated', name: 'Unallocated' })
-      for (const { job, monthly } of jobIncomes) {
-        if (monthly <= 0) continue
+      for (const { job, gross } of jobIncomes) {
+        if (gross <= 0) continue
         // Proportion of unallocated from this job
         const jobAllocated = allocations
           .filter((a) => a.jobId === job.id)
-          .reduce((s, a) => s + monthly * parseFloat(a.allocationPct.toString()) / 100, 0)
-        const jobUnallocated = monthly - jobAllocated
+          .reduce((s, a) => s + gross * parseFloat(a.allocationPct.toString()) / 100, 0)
+        const jobUnallocated = gross - jobAllocated
         if (jobUnallocated > 0) {
           links.push({ source: `job_${job.id}`, target: 'unallocated', value: jobUnallocated })
         }

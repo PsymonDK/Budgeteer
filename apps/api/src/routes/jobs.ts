@@ -719,37 +719,42 @@ export async function jobRoutes(fastify: FastifyInstance) {
         const entries = await Promise.all(
           allocations.map(async (alloc) => {
             const pct = parseFloat(alloc.allocationPct.toString())
-            const monthly = await getJobMonthlyIncome(alloc.jobId, referenceDate)
+            const { gross, net } = await getJobMonthlyIncome(alloc.jobId, referenceDate)
             return {
               id: alloc.jobId,
               label: alloc.job.name,
               employer: alloc.job.employer,
-              monthlyNet: monthly,
+              monthlyGross: gross,
+              monthlyNet: net,
               allocationPct: pct,
-              monthlyAllocated: (monthly * pct / 100).toFixed(2),
+              monthlyAllocatedGross: (gross * pct / 100).toFixed(2),
+              monthlyAllocated: (net * pct / 100).toFixed(2),
             }
           })
         )
 
-        const monthlyAllocated = entries.reduce((s, e) => s + parseFloat(e.monthlyAllocated), 0)
+        const monthlyAllocatedNet = entries.reduce((s, e) => s + parseFloat(e.monthlyAllocated), 0)
+        const monthlyAllocatedGross = entries.reduce((s, e) => s + parseFloat(e.monthlyAllocatedGross), 0)
 
         return {
           userId: m.userId,
           name: m.user.name,
           email: m.user.email,
           role: m.role,
-          monthlyAllocated: monthlyAllocated.toFixed(2),
+          monthlyAllocated: monthlyAllocatedNet.toFixed(2),
+          monthlyAllocatedGross: monthlyAllocatedGross.toFixed(2),
           entries,
         }
       })
     )
 
     const totalMonthly = memberSummaries.reduce((s, m) => s + parseFloat(m.monthlyAllocated), 0)
+    const grossTotalMonthly = memberSummaries.reduce((s, m) => s + parseFloat(m.monthlyAllocatedGross), 0)
 
     const membersWithShare = memberSummaries.map((m) => ({
       ...m,
-      sharePct: totalMonthly > 0
-        ? ((parseFloat(m.monthlyAllocated) / totalMonthly) * 100).toFixed(1)
+      sharePct: grossTotalMonthly > 0
+        ? ((parseFloat(m.monthlyAllocatedGross) / grossTotalMonthly) * 100).toFixed(1)
         : '0.0',
     }))
 

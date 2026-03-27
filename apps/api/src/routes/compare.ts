@@ -56,8 +56,8 @@ export async function compareRoutes(fastify: FastifyInstance) {
       calcIncomeForYear(yearIdA, getIncomeReferenceDate(yearA.year, yearA.status)),
       calcIncomeForYear(yearIdB, getIncomeReferenceDate(yearB.year, yearB.status)),
     ])
-    const incomeA = incomeResultA.totalMonthly
-    const incomeB = incomeResultB.totalMonthly
+    const incomeA = incomeResultA.totalMonthlyNet
+    const incomeB = incomeResultB.totalMonthlyNet
 
     const expTotalA = expensesA.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
     const expTotalB = expensesB.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
