@@ -103,17 +103,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const windowStart = new Date(`${months[0]}-01`)
     const windowEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
 
-    const bonuses: { jobId: string; month: string; amount: number; label: string }[] = []
-    // bonus amount map: "<jobId>::<YYYY-MM>" -> total bonus gross for that month
+    const bonuses: { jobId: string; month: string; amount: number; amountNet: number; label: string }[] = []
+    // bonus amount maps: "<jobId>::<YYYY-MM>" -> total bonus gross/net for that month
     const bonusAmountMap = new Map<string, number>()
+    const bonusAmountMapNet = new Map<string, number>()
     for (const job of jobs) {
       for (const bonus of job.bonuses) {
         const pd = bonus.paymentDate
         if (pd >= windowStart && pd <= windowEnd) {
           const monthStr = formatYYYYMM(pd)
-          bonuses.push({ jobId: job.id, month: monthStr, amount: toNum(bonus.grossAmount), label: bonus.label })
+          bonuses.push({ jobId: job.id, month: monthStr, amount: toNum(bonus.grossAmount), amountNet: toNum(bonus.netAmount), label: bonus.label })
           const key = `${job.id}::${monthStr}`
           bonusAmountMap.set(key, (bonusAmountMap.get(key) ?? 0) + toNum(bonus.grossAmount))
+          bonusAmountMapNet.set(key, (bonusAmountMapNet.get(key) ?? 0) + toNum(bonus.netAmount))
         }
       }
     }
@@ -124,12 +126,9 @@ export async function profileRoutes(fastify: FastifyInstance) {
         const [year, mon] = monthStr.split('-').map(Number)
         const refDate = new Date(year, mon - 1, 1)
 
-        // If job hadn't started yet, return 0
         if (job.startDate > new Date(year, mon - 1, 28)) return 0
-        // If job ended before this month, return 0
         if (job.endDate && job.endDate < refDate) return 0
 
-        // Check override first
         const override = job.overrides.find((o) => o.year === year && o.month === mon)
         const salary = override
           ? toNum(override.grossAmount)
@@ -143,15 +142,34 @@ export async function profileRoutes(fastify: FastifyInstance) {
         return salary + (bonusAmountMap.get(`${job.id}::${monthStr}`) ?? 0)
       })
 
-      return { id: job.id, name: job.name, monthly }
+      const monthlyNet: number[] = months.map((monthStr) => {
+        const [year, mon] = monthStr.split('-').map(Number)
+        const refDate = new Date(year, mon - 1, 1)
+
+        if (job.startDate > new Date(year, mon - 1, 28)) return 0
+        if (job.endDate && job.endDate < refDate) return 0
+
+        const override = job.overrides.find((o) => o.year === year && o.month === mon)
+        const salary = override
+          ? toNum(override.netAmount)
+          : (() => {
+              const rec = [...job.salaryRecords]
+                .filter((s) => s.effectiveFrom <= refDate)
+                .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
+              return rec ? toNum(rec.netAmount) : 0
+            })()
+
+        return salary + (bonusAmountMapNet.get(`${job.id}::${monthStr}`) ?? 0)
+      })
+
+      return { id: job.id, name: job.name, monthly, monthlyNet }
     })
 
     // Compute totals per month
-    const total: number[] = months.map((_, i) =>
-      jobTrends.reduce((s, j) => s + j.monthly[i], 0)
-    )
+    const total: number[] = months.map((_, i) => jobTrends.reduce((s, j) => s + j.monthly[i], 0))
+    const totalNet: number[] = months.map((_, i) => jobTrends.reduce((s, j) => s + j.monthlyNet[i], 0))
 
-    return reply.send({ months, jobs: jobTrends, total, bonuses })
+    return reply.send({ months, jobs: jobTrends, total, totalNet, bonuses })
   })
 
   // ── GET /users/me/income/sankey ──────────────────────────────────────────────

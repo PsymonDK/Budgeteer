@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.36.0] - 2026-03-27 — Gross/net toggle on income charts; bonus history fix
+
+### Added
+- **Gross/Net toggle on 12-month income trend** — personal dashboard now has a Gross/Net segmented control above the trend chart; defaults to Gross; per-job lines and totals switch accordingly
+- **Gross/Net toggle on income history chart** — the Income History chart on the Personal Income page now defaults to Gross (was Net); toggle behaviour unchanged
+
+### Fixed
+- **Income history bonus spikes** — `SPREAD_ANNUALLY` bonuses now show their full amount in the payment month on the history chart instead of being divided by 12 and spread across every month; matches `ONE_OFF` behaviour
+
+### Changed
+- **Income trend API** (`/users/me/income/trend`) now returns `monthlyNet[]` alongside `monthly[]` per job, `totalNet[]` alongside `total[]`, and `amountNet` on each bonus entry so the frontend can toggle between gross and net without a second request
+
+---
+
 ## [0.35.0] - 2026-03-27 — Gross income splits, Sankey fix, navigation, refactoring
 
 ### Added

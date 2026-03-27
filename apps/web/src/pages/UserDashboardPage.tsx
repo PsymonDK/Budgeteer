@@ -61,9 +61,10 @@ interface NewHousehold {
 
 interface IncomeTrend {
   months: string[]
-  jobs: { id: string; name: string; monthly: number[] }[]
+  jobs: { id: string; name: string; monthly: number[]; monthlyNet: number[] }[]
   total: number[]
-  bonuses: { jobId: string; month: string; amount: number; label: string }[]
+  totalNet: number[]
+  bonuses: { jobId: string; month: string; amount: number; amountNet: number; label: string }[]
 }
 
 interface IncomeSankeyData {
@@ -140,6 +141,7 @@ export function UserDashboardPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [createError, setCreateError] = useState('')
+  const [showGross, setShowGross] = useState(true)
 
   const { data: summary, isLoading } = useQuery<UserSummary>({
     queryKey: ['me', 'summary'],
@@ -158,8 +160,12 @@ export function UserDashboardPage() {
 
   const chartData = incomeTrend
     ? incomeTrend.months.map((m, i) => {
-        const row: Record<string, unknown> = { month: formatMonth(m), monthKey: m, total: incomeTrend.total[i] }
-        incomeTrend.jobs.forEach((j) => { row[j.name] = j.monthly[i] })
+        const row: Record<string, unknown> = {
+          month: formatMonth(m),
+          monthKey: m,
+          total: showGross ? incomeTrend.total[i] : incomeTrend.totalNet[i],
+        }
+        incomeTrend.jobs.forEach((j) => { row[j.name] = showGross ? j.monthly[i] : j.monthlyNet[i] })
         return row
       })
     : []
@@ -169,7 +175,7 @@ export function UserDashboardPage() {
     for (const b of incomeTrend.bonuses) {
       const key = `${b.jobId}::${b.month}`
       const arr = bonusMap.get(key) ?? []
-      arr.push({ jobId: b.jobId, amount: b.amount, label: b.label })
+      arr.push({ jobId: b.jobId, amount: showGross ? b.amount : b.amountNet, label: b.label })
       bonusMap.set(key, arr)
     }
   }
@@ -283,7 +289,15 @@ export function UserDashboardPage() {
 
             {/* 12-month income trend */}
             <div className={`${cardClass} mb-6`}>
-              <h2 className="text-base font-semibold mb-4">12-month income trend</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-base font-semibold">12-month income trend</h2>
+                <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+                  <button onClick={() => setShowGross(true)}
+                    className={`px-3 py-1.5 transition-colors ${showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Gross</button>
+                  <button onClick={() => setShowGross(false)}
+                    className={`px-3 py-1.5 transition-colors ${!showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Net</button>
+                </div>
+              </div>
               {incomeTrend && incomeTrend.jobs.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>

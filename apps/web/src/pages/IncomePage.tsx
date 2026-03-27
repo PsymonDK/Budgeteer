@@ -179,7 +179,7 @@ export function IncomePage() {
   })
   const [histTo, setHistTo] = useState(() => new Date().toISOString().slice(0, 7))
   const [granularity, setGranularity] = useState<Granularity>('monthly')
-  const [showGross, setShowGross] = useState(false)
+  const [showGross, setShowGross] = useState(true)
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
