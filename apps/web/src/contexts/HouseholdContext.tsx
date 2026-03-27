@@ -1,5 +1,4 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from './AuthContext'
@@ -19,8 +18,6 @@ export function useHousehold() { return useContext(HouseholdContext) }
 
 export function HouseholdProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  const navigate = useNavigate()
-  const location = useLocation()
   const [activeHouseholdId, setActiveHouseholdId] = useState<string | null>(
     () => localStorage.getItem(LS_KEY)
   )
@@ -45,14 +42,11 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     }
   }, [households])
 
+  // Pure state update — navigation is the caller's responsibility
   const setActiveHousehold = useCallback((id: string) => {
     localStorage.setItem(LS_KEY, id)
     setActiveHouseholdId(id)
-    // Extract sub-path after /households/:currentId
-    const match = location.pathname.match(/^\/households\/[^/]+(\/.*)?$/)
-    const subPath = match?.[1] ?? ''
-    navigate(`/households/${id}${subPath}`)
-  }, [navigate, location.pathname])
+  }, [])
 
   return (
     <HouseholdContext.Provider value={{ activeHouseholdId, setActiveHousehold }}>

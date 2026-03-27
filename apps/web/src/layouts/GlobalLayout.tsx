@@ -1,4 +1,4 @@
-import { Link, Outlet } from 'react-router-dom'
+import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useAuth } from '../contexts/AuthContext'
 import { AppFooter } from '../components/AppFooter'
@@ -8,6 +8,8 @@ import { ChevronLeft } from 'lucide-react'
 export function GlobalLayout() {
   const { activeHouseholdId } = useHousehold()
   const { user } = useAuth()
+  const location = useLocation()
+  const isDashboard = location.pathname === '/'
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -16,7 +18,7 @@ export function GlobalLayout() {
           <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
             ☠️ Budgeteer
           </Link>
-          {activeHouseholdId && (
+          {!isDashboard && activeHouseholdId && (
             <>
               <span className="text-gray-600">/</span>
               <Link

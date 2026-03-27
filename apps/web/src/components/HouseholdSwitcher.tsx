@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { ChevronDown, Pin, PinOff, Plus } from 'lucide-react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useHousehold } from '../contexts/HouseholdContext'
@@ -12,6 +13,8 @@ interface Props { currentHouseholdId: string }
 export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
   const { setActiveHousehold } = useHousehold()
   const { user } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
@@ -42,6 +45,7 @@ export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
       setShowCreate(false)
       setNewName('')
       setActiveHousehold(res.data.id)
+      navigate(`/households/${res.data.id}`)
     },
   })
 
@@ -79,7 +83,13 @@ export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
             >
               <button
                 className="flex-1 text-left text-sm text-gray-300 hover:text-white truncate"
-                onClick={() => { setOpen(false); setActiveHousehold(h.id) }}
+                onClick={() => {
+                  setOpen(false)
+                  setActiveHousehold(h.id)
+                  const match = location.pathname.match(/^\/households\/[^/]+(\/.*)?$/)
+                  const subPath = match?.[1] ?? ''
+                  navigate(`/households/${h.id}${subPath}`)
+                }}
               >
                 {h.name}
               </button>
