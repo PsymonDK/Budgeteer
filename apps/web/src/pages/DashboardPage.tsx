@@ -54,6 +54,7 @@ interface MemberSplit {
   monthlyIncomeAllocated: string
   monthlySharedOwed: string
   monthlyIndividualOwed: string
+  monthlyCustomOwed: string
   monthlyTotalOwed: string
 }
 
@@ -331,48 +332,47 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* Member splits */}
+          {/* HH-005: Member expense splits */}
           {summary.memberSplits.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Member expense splits</h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-800 text-gray-400 text-left">
-                      <th className="px-4 py-3 font-medium">Member</th>
-                      <th className="px-4 py-3 font-medium text-right">Income / mo</th>
-                      <th className="px-4 py-3 font-medium text-right">Share</th>
-                      <th className="px-4 py-3 font-medium text-right">Shared owed</th>
-                      <th className="px-4 py-3 font-medium text-right">Individual</th>
-                      <th className="px-4 py-3 font-medium text-right">Total owed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {summary.memberSplits.map((m) => (
-                      <tr key={m.userId} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
-                        <td className="px-4 py-3 text-white">
-                          {m.name}
-                          {m.userId === me?.id && <span className="ml-2 text-xs text-gray-500">(you)</span>}
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-300 tabular-nums">{fmt(m.monthlyIncomeAllocated)}</td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <div className="w-20 bg-gray-800 rounded-full h-1.5">
-                              <div
-                                className="bg-amber-400 h-1.5 rounded-full"
-                                style={{ width: `${Math.min(parseFloat(m.sharePct), 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-gray-300 tabular-nums w-10 text-right">{m.sharePct}%</span>
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Monthly obligations</h2>
+              <div className={`grid gap-4 mb-4 ${summary.memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {summary.memberSplits.map((m) => {
+                  const isMe = m.userId === me?.id
+                  const personal = parseFloat(m.monthlyIndividualOwed) + parseFloat(m.monthlyCustomOwed)
+                  return (
+                    <div
+                      key={m.userId}
+                      className={`rounded-xl p-5 border ${isMe ? 'bg-amber-950/30 border-amber-700/50' : 'bg-gray-900 border-gray-800'}`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-semibold ${isMe ? 'text-amber-300' : 'text-white'}`}>{m.name}</span>
+                          {isMe && <span className="text-xs bg-amber-900/60 text-amber-400 px-1.5 py-0.5 rounded-full">you</span>}
+                        </div>
+                        <span className="text-xs text-gray-500">{m.sharePct}% of income</span>
+                      </div>
+                      <div className="space-y-1.5 mb-4">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-400">Shared expenses</span>
+                          <span className="text-gray-300 tabular-nums">{fmt(m.monthlySharedOwed)}</span>
+                        </div>
+                        {personal > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Personal expenses</span>
+                            <span className="text-gray-300 tabular-nums">{fmt(personal)}</span>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-300 tabular-nums">{fmt(m.monthlySharedOwed)}</td>
-                        <td className="px-4 py-3 text-right text-gray-300 tabular-nums">{fmt(m.monthlyIndividualOwed)}</td>
-                        <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">{fmt(m.monthlyTotalOwed)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        )}
+                      </div>
+                      <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
+                        <span className={`text-xl font-bold tabular-nums ${isMe ? 'text-amber-400' : 'text-white'}`}>
+                          {fmt(m.monthlyTotalOwed)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           )}

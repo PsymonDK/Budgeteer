@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.30.0] - 2026-03-27 — Per-member expense breakdown (HH-005)
+
+### Changed
+- **Member expense splits section** redesigned from a dense table into per-member cards, each showing shared expenses, personal expenses, and a prominent "Amount to transfer / mo" total; the current user's card is highlighted in amber
+- Footer version bumped to `0.30.0`
+
+---
+
 ## [0.29.0] - 2026-03-27 — Household income flow diagram (VIZ-001)
 
 ### Added
