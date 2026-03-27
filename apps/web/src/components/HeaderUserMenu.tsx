@@ -36,11 +36,25 @@ export default function HeaderUserMenu() {
           </div>
           <div className="py-1">
             <Link
+              to="/income"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+            >
+              My Income
+            </Link>
+            <Link
               to="/profile"
               onClick={() => setOpen(false)}
               className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
             >
               Profile
+            </Link>
+            <Link
+              to="/change-password"
+              onClick={() => setOpen(false)}
+              className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+            >
+              Change Password
             </Link>
           </div>
           <div className="border-t border-gray-800 py-1">

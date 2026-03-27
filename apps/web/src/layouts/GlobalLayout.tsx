@@ -32,6 +32,9 @@ export function GlobalLayout() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
+            My Income
+          </Link>
           {user?.role === 'SYSTEM_ADMIN' && (
             <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
               Admin
