@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { PageLoader } from '../components/LoadingSpinner'
+import { SankeyChart, type SankeyNodeDef, type SankeyLinkDef } from '../components/SankeyChart'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,9 @@ const FREQ_LABELS: Record<string, string> = {
   QUARTERLY: 'Quarterly', BIANNUAL: 'Every 6 months', ANNUAL: 'Annually',
 }
 
+const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
+const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', '#f43f5e', '#22d3ee', '#fbbf24']
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
@@ -148,6 +152,30 @@ export function DashboardPage() {
   // SAV-003: adjusted surplus after extra savings slider
   const adjustedSurplus = useMemo(() => surplus - extraSavings, [surplus, extraSavings])
   const sliderMax = useMemo(() => Math.max(Math.ceil(surplus / 100) * 100, 500), [surplus])
+
+  // VIZ-001: income flow Sankey data
+  const sankeyData = useMemo(() => {
+    if (!summary?.budgetYear || income <= 0) return null
+    const activeMembers = summary.income.members.filter((m) => parseFloat(m.monthlyAllocated) > 0)
+    if (activeMembers.length === 0) return null
+    const nodes: SankeyNodeDef[] = [
+      ...activeMembers.map((m, i) => ({ id: `member_${m.userId}`, name: m.name, color: MEMBER_COLORS[i % MEMBER_COLORS.length] })),
+      ...summary.expenses.byCategory.map((c, i) => ({ id: `cat_${c.categoryId}`, name: c.categoryName, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] })),
+      ...(savings > 0 ? [{ id: 'savings', name: 'Savings', color: '#3b82f6' }] : []),
+      ...(surplus > 0 ? [{ id: 'surplus', name: 'Surplus', color: '#10b981' }] : []),
+    ]
+    const links: SankeyLinkDef[] = []
+    for (const m of activeMembers) {
+      const share = parseFloat(m.sharePct) / 100
+      for (const c of summary.expenses.byCategory) {
+        const val = parseFloat(c.totalMonthly) * share
+        if (val > 0) links.push({ source: `member_${m.userId}`, target: `cat_${c.categoryId}`, value: val })
+      }
+      if (savings > 0) links.push({ source: `member_${m.userId}`, target: 'savings', value: savings * share })
+      if (surplus > 0) links.push({ source: `member_${m.userId}`, target: 'surplus', value: surplus * share })
+    }
+    return { nodes, links }
+  }, [summary, income, savings, surplus])
 
   const warnings = summary?.warnings
   const activeWarnings: { key: string; message: string }[] = []
@@ -455,6 +483,16 @@ export function DashboardPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* VIZ-001: Income flow diagram */}
+          {sankeyData && sankeyData.links.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                <SankeyChart data={sankeyData} />
               </div>
             </div>
           )}

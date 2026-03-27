@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.29.0] - 2026-03-27 — Household income flow diagram (VIZ-001)
+
+### Added
+- **Income flow Sankey diagram** on the household dashboard — shows each income member's contribution flowing proportionally into expense categories, savings, and surplus; member nodes are colour-coded on the left, target nodes on the right
+- **Shared `SankeyChart` component** (`components/SankeyChart.tsx`) extracted from personal dashboard so both the household and personal dashboards use the same rendering logic
+
+### Changed
+- `UserDashboardPage` now imports `SankeyChart` from the shared component instead of defining it inline
+- Footer version bumped to `0.29.0`
+
+---
+
 ## [0.28.0] - 2026-03-27 — Personal dashboard income overview (DASH-004)
 
 ### Added
