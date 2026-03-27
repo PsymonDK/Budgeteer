@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.31.0] - 2026-03-27 — Monthly expense calendar (EXP-005)
+
+### Added
+- **Calendar view** on the Expenses page — toggle between "List" and "Calendar" using the new view switcher in the controls bar
+- **Yearly expense grid**: one row per expense, 12 month columns (Jan–Dec) + row total, with a footer row showing monthly totals and a grand total
+- **Heatmap colouring**: cells are tinted amber proportionally to the column's maximum value, making high-spend months immediately visible
+- **Frequency-aware month logic**: MONTHLY/WEEKLY/FORTNIGHTLY expenses show the monthly equivalent in every column; QUARTERLY fills Mar/Jun/Sep/Dec with the actual charge; BIANNUAL fills Jun/Dec; ANNUAL fills Dec only — empty months show "—"
+- **Recurring indicator**: a `↻` glyph marks monthly/weekly/fortnightly expenses so periodic ones stand out
+
+### Changed
+- Footer version bumped to `0.31.0`
+
+---
+
 ## [0.30.0] - 2026-03-27 — Per-member expense breakdown (HH-005)
 
 ### Changed
