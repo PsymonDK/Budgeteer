@@ -37,6 +37,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-api
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -59,6 +60,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-web
           tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}

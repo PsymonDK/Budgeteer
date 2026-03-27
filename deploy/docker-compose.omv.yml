@@ -1,0 +1,57 @@
+# Budgeteer — OpenMediaVault / Compose compose file
+#
+# Before starting, add these three lines to your Global Environment Variables:
+#
+#   JWT_SECRET=<output of: openssl rand -hex 32>
+#   POSTGRES_PASSWORD=<strong password>
+#   ADMIN_PASSWORD=<your login password>
+#
+# All other values are pulled from your existing global variables.
+
+services:
+  budgeteer-db:
+    image: postgres:16-alpine
+    container_name: budgeteer-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: budgeteer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: budgeteer
+      TZ: ${TIME_ZONE_VALUE}
+    volumes:
+      - ${PATH_TO_APPDATA}/budgeteer/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U budgeteer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  budgeteer-api:
+    image: ghcr.io/psymondk/budgeteer-api:latest
+    container_name: budgeteer-api
+    restart: unless-stopped
+    depends_on:
+      budgeteer-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@budgeteer-db:5432/budgeteer
+      API_PORT: 3001
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGIN: ${APP_URL:-http://localhost:7272}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
+      TZ: ${TIME_ZONE_VALUE}
+
+  budgeteer-web:
+    image: ghcr.io/psymondk/budgeteer-web:latest
+    container_name: budgeteer-web
+    restart: unless-stopped
+    depends_on:
+      - budgeteer-api
+    ports:
+      - "${APP_PORT:-7272}:80"
+    environment:
+      TZ: ${TIME_ZONE_VALUE}
