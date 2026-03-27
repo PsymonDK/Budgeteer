@@ -33,6 +33,10 @@ services:
     depends_on:
       budgeteer-db:
         condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - api
     environment:
       DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@budgeteer-db:5432/budgeteer
       API_PORT: 3001
