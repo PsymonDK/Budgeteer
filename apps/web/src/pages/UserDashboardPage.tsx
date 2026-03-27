@@ -17,6 +17,7 @@ import { inputClass } from '../lib/styles'
 
 interface PreviousYear {
   year: number
+  monthlyGrossIncome: string
   monthlyIncome: string
   monthlyExpenses: string
   monthlySavings: string
@@ -28,6 +29,7 @@ interface HouseholdSummary {
   name: string
   myRole: 'ADMIN' | 'MEMBER'
   memberCount: number
+  monthlyGrossIncome: string
   monthlyIncome: string
   monthlyExpenses: string
   monthlySavings: string
@@ -38,6 +40,7 @@ interface HouseholdSummary {
 }
 
 interface Totals {
+  monthlyGrossIncome: string
   monthlyIncome: string
   monthlyExpenses: string
   monthlySavings: string
@@ -220,8 +223,10 @@ export function UserDashboardPage() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
               <SummaryCard
                 label="Monthly income"
-                value={totals?.monthlyIncome ?? '0.00'}
-                previous={previousTotals?.monthlyIncome}
+                value={totals?.monthlyGrossIncome ?? '0.00'}
+                subLabel="Net"
+                subValue={totals?.monthlyIncome ?? '0.00'}
+                previous={previousTotals?.monthlyGrossIncome}
                 mode="higher-good"
                 accent="text-emerald-400"
               />
@@ -377,10 +382,12 @@ export function UserDashboardPage() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SummaryCard({
-  label, value, previous, mode, accent,
+  label, value, subLabel, subValue, previous, mode, accent,
 }: {
   label: string
   value: string
+  subLabel?: string
+  subValue?: string
   previous?: string
   mode: DeltaMode
   accent: string
@@ -389,6 +396,9 @@ function SummaryCard({
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{label}</p>
       <p className={`text-2xl font-semibold ${accent}`}>{fmt(value)}</p>
+      {subLabel && subValue !== undefined && (
+        <p className="text-xs text-gray-500 mt-0.5">{subLabel}: <span className="text-gray-400">{fmt(subValue)}</span></p>
+      )}
       <div className="mt-2">
         {previous !== undefined ? (
           <DeltaBadge current={value} previous={previous} mode={mode} />
@@ -431,10 +441,10 @@ function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary;
 
           {/* Mini stats grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
-            <Stat label="Income" value={h.monthlyIncome} color="text-gray-200" />
+            <Stat label="Income" value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" />
             <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" />
             <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" />
-            <Stat label="Surplus" value={h.monthlySurplus} color={surplusColor} />
+            <Stat label="Surplus (net)" value={h.monthlySurplus} color={surplusColor} />
           </div>
 
           {/* Warning badges */}
@@ -464,11 +474,14 @@ function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary;
   )
 }
 
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
+function Stat({ label, value, subLabel, subValue, color }: { label: string; value: string; subLabel?: string; subValue?: string; color: string }) {
   return (
     <div>
       <p className="text-xs text-gray-500">{label}</p>
       <p className={`text-sm font-medium ${color}`}>{fmt(value)}</p>
+      {subLabel && subValue !== undefined && (
+        <p className="text-xs text-gray-600">{subLabel}: {fmt(subValue)}</p>
+      )}
     </div>
   )
 }

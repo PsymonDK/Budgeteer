@@ -9,10 +9,10 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
+import { FREQUENCIES, type Frequency } from '../lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
 type SavingsOwnership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
 
 interface CustomSplitInput {
@@ -77,15 +77,6 @@ interface EntryForm {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const FREQUENCIES: { value: Frequency; label: string }[] = [
-  { value: 'WEEKLY',      label: 'Weekly' },
-  { value: 'FORTNIGHTLY', label: 'Fortnightly' },
-  { value: 'MONTHLY',     label: 'Monthly' },
-  { value: 'QUARTERLY',   label: 'Quarterly' },
-  { value: 'BIANNUAL',    label: 'Every 6 months' },
-  { value: 'ANNUAL',      label: 'Annually' },
-]
 
 const emptyForm = (baseCurrency: string): EntryForm => ({
   label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency,

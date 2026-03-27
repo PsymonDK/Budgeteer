@@ -1,8 +1,10 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { deriveBudgetStatus } from '../lib/calculations'
+import { assertHouseholdAccess } from '../lib/ownership'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -21,18 +23,60 @@ const RenameSimulationSchema = z.object({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function assertHouseholdMember(householdId: string, userId: string) {
-  return prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
-}
-
 async function assertHouseholdAdmin(householdId: string, userId: string, role: string) {
   if (role === 'SYSTEM_ADMIN') return true
   const member = await prisma.householdMember.findUnique({
     where: { householdId_userId: { householdId, userId } },
   })
   return member?.role === 'ADMIN'
+}
+
+type SourceBudgetYear = Prisma.BudgetYearGetPayload<{
+  include: { expenses: { include: { customSplits: true } }; savingsEntries: { include: { customSplits: true } } }
+}>
+
+async function copyBudgetYearContent(tx: Prisma.TransactionClient, source: SourceBudgetYear, targetId: string) {
+  for (const e of source.expenses) {
+    const newExpense = await tx.expense.create({
+      data: {
+        budgetYearId: targetId,
+        label: e.label,
+        amount: e.amount,
+        frequency: e.frequency,
+        frequencyPeriod: e.frequencyPeriod,
+        monthlyEquivalent: e.monthlyEquivalent,
+        notes: e.notes,
+        categoryId: e.categoryId,
+        ownership: e.ownership,
+        ownedByUserId: e.ownedByUserId,
+      },
+    })
+    if (e.customSplits.length > 0) {
+      await tx.expenseCustomSplit.createMany({
+        data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
+      })
+    }
+  }
+  for (const s of source.savingsEntries) {
+    const newEntry = await tx.savingsEntry.create({
+      data: {
+        budgetYearId: targetId,
+        label: s.label,
+        amount: s.amount,
+        frequency: s.frequency,
+        monthlyEquivalent: s.monthlyEquivalent,
+        notes: s.notes,
+        ownership: s.ownership,
+        ownedByUserId: s.ownedByUserId,
+        categoryId: s.categoryId,
+      },
+    })
+    if (s.customSplits.length > 0) {
+      await tx.savingsCustomSplit.createMany({
+        data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
+      })
+    }
+  }
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -43,10 +87,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await assertHouseholdMember(householdId, userId)
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const years = await prisma.budgetYear.findMany({
       where: { householdId },
@@ -127,54 +168,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         const created = await tx.budgetYear.create({
           data: { householdId, year: data.year, status: deriveBudgetStatus(data.year), copiedFromId: source.id },
         })
-
-        if (source.expenses.length > 0) {
-          for (const e of source.expenses) {
-            const newExpense = await tx.expense.create({
-              data: {
-                budgetYearId: created.id,
-                label: e.label,
-                amount: e.amount,
-                frequency: e.frequency,
-                frequencyPeriod: e.frequencyPeriod,
-                monthlyEquivalent: e.monthlyEquivalent,
-                notes: e.notes,
-                categoryId: e.categoryId,
-                ownership: e.ownership,
-                ownedByUserId: e.ownedByUserId,
-              },
-            })
-            if (e.customSplits.length > 0) {
-              await tx.expenseCustomSplit.createMany({
-                data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
-              })
-            }
-          }
-        }
-
-        if (source.savingsEntries.length > 0) {
-          for (const s of source.savingsEntries) {
-            const newEntry = await tx.savingsEntry.create({
-              data: {
-                budgetYearId: created.id,
-                label: s.label,
-                amount: s.amount,
-                frequency: s.frequency,
-                monthlyEquivalent: s.monthlyEquivalent,
-                notes: s.notes,
-                ownership: s.ownership,
-                ownedByUserId: s.ownedByUserId,
-                categoryId: s.categoryId,
-              },
-            })
-            if (s.customSplits.length > 0) {
-              await tx.savingsCustomSplit.createMany({
-                data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
-              })
-            }
-          }
-        }
-
+        await copyBudgetYearContent(tx, source, created.id)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
           include: { _count: { select: { expenses: true, savingsEntries: true } } },
@@ -193,54 +187,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
             copiedFromId: source.id,
           },
         })
-
-        if (source.expenses.length > 0) {
-          for (const e of source.expenses) {
-            const newExpense = await tx.expense.create({
-              data: {
-                budgetYearId: created.id,
-                label: e.label,
-                amount: e.amount,
-                frequency: e.frequency,
-                frequencyPeriod: e.frequencyPeriod,
-                monthlyEquivalent: e.monthlyEquivalent,
-                notes: e.notes,
-                categoryId: e.categoryId,
-                ownership: e.ownership,
-                ownedByUserId: e.ownedByUserId,
-              },
-            })
-            if (e.customSplits.length > 0) {
-              await tx.expenseCustomSplit.createMany({
-                data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
-              })
-            }
-          }
-        }
-
-        if (source.savingsEntries.length > 0) {
-          for (const s of source.savingsEntries) {
-            const newEntry = await tx.savingsEntry.create({
-              data: {
-                budgetYearId: created.id,
-                label: s.label,
-                amount: s.amount,
-                frequency: s.frequency,
-                monthlyEquivalent: s.monthlyEquivalent,
-                notes: s.notes,
-                ownership: s.ownership,
-                ownedByUserId: s.ownedByUserId,
-                categoryId: s.categoryId,
-              },
-            })
-            if (s.customSplits.length > 0) {
-              await tx.savingsCustomSplit.createMany({
-                data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
-              })
-            }
-          }
-        }
-
+        await copyBudgetYearContent(tx, source, created.id)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
           include: { _count: { select: { expenses: true, savingsEntries: true } } },

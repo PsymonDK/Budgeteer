@@ -11,6 +11,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { inputClass } from '../lib/styles'
+import { FREQUENCIES, type Frequency } from '../lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,19 +65,9 @@ interface BudgetYear {
   simulationName: string | null
 }
 
-type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
 type SortKey = 'label' | 'category' | 'amount' | 'frequency' | 'monthly'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const FREQUENCIES: { value: Frequency; label: string }[] = [
-  { value: 'WEEKLY',      label: 'Weekly' },
-  { value: 'FORTNIGHTLY', label: 'Fortnightly' },
-  { value: 'MONTHLY',     label: 'Monthly' },
-  { value: 'QUARTERLY',   label: 'Quarterly' },
-  { value: 'BIANNUAL',    label: 'Every 6 months' },
-  { value: 'ANNUAL',      label: 'Annually' },
-]
 
 const FREQ_ORDER: Record<Frequency, number> = {
   WEEKLY: 0, FORTNIGHTLY: 1, MONTHLY: 2, QUARTERLY: 3, BIANNUAL: 4, ANNUAL: 5,

@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart, type SankeyNodeDef, type SankeyLinkDef } from '../components/SankeyChart'
+import { FREQ_LABELS } from '../lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -97,10 +98,6 @@ function fmt(v: number | string) {
   return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const FREQ_LABELS: Record<string, string> = {
-  WEEKLY: 'Weekly', FORTNIGHTLY: 'Fortnightly', MONTHLY: 'Monthly',
-  QUARTERLY: 'Quarterly', BIANNUAL: 'Every 6 months', ANNUAL: 'Annually',
-}
 
 const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', '#f43f5e', '#22d3ee', '#fbbf24']

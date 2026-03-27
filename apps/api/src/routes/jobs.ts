@@ -5,6 +5,8 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { getJobMonthlyIncome, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
+import { assertHouseholdAccess } from '../lib/ownership'
+import { toNum } from '../lib/decimal'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -443,7 +445,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const newInclude = data.includeInBudget ?? existing.includeInBudget
 
     let bonusCurrency: string | null = existing.currencyCode
-    let bonusRate: number | null = existing.rateUsed ? parseFloat(existing.rateUsed.toString()) : null
+    let bonusRate: number | null = existing.rateUsed ? toNum(existing.rateUsed) : null
     if (data.currencyCode !== undefined) {
       bonusCurrency = data.currencyCode && data.currencyCode !== BASE_CURRENCY ? data.currencyCode : null
       if (bonusCurrency) {
@@ -618,14 +620,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
         let grossMonthly: number
 
         if (override) {
-          netMonthly = parseFloat(override.netAmount.toString())
-          grossMonthly = parseFloat(override.grossAmount.toString())
+          netMonthly = toNum(override.netAmount)
+          grossMonthly = toNum(override.grossAmount)
         } else {
           const salary = job.salaryRecords
             .filter((s) => s.effectiveFrom <= refDate)
             .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
-          netMonthly = salary ? parseFloat(salary.netAmount.toString()) : 0
-          grossMonthly = salary ? parseFloat(salary.grossAmount.toString()) : 0
+          netMonthly = toNum(salary?.netAmount)
+          grossMonthly = toNum(salary?.grossAmount)
         }
 
         perJob.push({ jobId: job.id, jobName: job.name, gross: grossMonthly, net: netMonthly })
@@ -639,12 +641,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
           if (bonus.budgetMode === 'ONE_OFF') {
             if (bd.getFullYear() === year && bd.getMonth() + 1 === month) {
-              addNet = parseFloat(bonus.netAmount.toString())
-              addGross = parseFloat(bonus.grossAmount.toString())
+              addNet = toNum(bonus.netAmount)
+              addGross = toNum(bonus.grossAmount)
             }
           } else if (bonus.budgetMode === 'SPREAD_ANNUALLY') {
-            addNet = parseFloat(bonus.netAmount.toString()) / 12
-            addGross = parseFloat(bonus.grossAmount.toString()) / 12
+            if (bd.getFullYear() === year && bd.getMonth() + 1 === month) {
+              addNet = toNum(bonus.netAmount)
+              addGross = toNum(bonus.grossAmount)
+            }
           }
 
           if (addNet > 0 || addGross > 0) {
@@ -678,12 +682,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const household = await prisma.household.findUnique({
       where: { id: householdId },
@@ -718,7 +717,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
         const entries = await Promise.all(
           allocations.map(async (alloc) => {
-            const pct = parseFloat(alloc.allocationPct.toString())
+            const pct = toNum(alloc.allocationPct)
             const { gross, net } = await getJobMonthlyIncome(alloc.jobId, referenceDate)
             return {
               id: alloc.jobId,

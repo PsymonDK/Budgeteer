@@ -1,5 +1,6 @@
 import { prisma } from './prisma'
 import { BudgetStatus } from '@prisma/client'
+import { toNum } from './decimal'
 
 export interface MemberIncome {
   userId: string
@@ -19,8 +20,8 @@ export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<
     where: { jobId_year_month: { jobId, year, month } },
   })
   if (override) return {
-    gross: parseFloat(override.grossAmount.toString()),
-    net: parseFloat(override.netAmount.toString()),
+    gross: toNum(override.grossAmount),
+    net: toNum(override.netAmount),
   }
 
   const salary = await prisma.salaryRecord.findFirst({
@@ -28,10 +29,10 @@ export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<
     orderBy: { effectiveFrom: 'desc' },
   })
   if (!salary) return { gross: 0, net: 0 }
-  const rate = salary.rateUsed ? parseFloat(salary.rateUsed.toString()) : 1
+  const rate = salary.rateUsed ? toNum(salary.rateUsed) : 1
   return {
-    gross: parseFloat(salary.grossAmount.toString()) * rate,
-    net: parseFloat(salary.netAmount.toString()) * rate,
+    gross: toNum(salary.grossAmount) * rate,
+    net: toNum(salary.netAmount) * rate,
   }
 }
 
@@ -70,7 +71,7 @@ export async function calcIncomeForYear(
   await Promise.all(
     allocations.map(async (alloc) => {
       const { gross, net } = await getJobMonthlyIncome(alloc.jobId, referenceDate)
-      const pct = parseFloat(alloc.allocationPct.toString()) / 100
+      const pct = toNum(alloc.allocationPct) / 100
       const userId = alloc.job.userId
       memberGrossMap.set(userId, (memberGrossMap.get(userId) ?? 0) + gross * pct)
       memberNetMap.set(userId, (memberNetMap.get(userId) ?? 0) + net * pct)

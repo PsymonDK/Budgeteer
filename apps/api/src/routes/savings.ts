@@ -6,6 +6,8 @@ import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyEquivalent } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { assertBudgetYearAccess, assertHouseholdAccess, validateOwnership } from '../lib/ownership'
+import { toNum } from '../lib/decimal'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -38,57 +40,6 @@ const savingsInclude = {
   ownedBy: { select: { id: true, name: true } },
   customSplits: { include: { user: { select: { id: true, name: true } } } },
 } as const
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-async function assertBudgetYearAccess(budgetYearId: string, userId: string, systemAdmin: boolean) {
-  const budgetYear = await prisma.budgetYear.findUnique({
-    where: { id: budgetYearId },
-    include: {
-      household: { include: { members: { where: { userId } } } },
-    },
-  })
-  if (!budgetYear) return null
-  if (!systemAdmin && budgetYear.household.members.length === 0) return null
-  return budgetYear
-}
-
-async function assertHouseholdMember(householdId: string, userId: string) {
-  const member = await prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
-  return member !== null
-}
-
-async function validateOwnership(
-  ownership: 'SHARED' | 'INDIVIDUAL' | 'CUSTOM',
-  ownedByUserId: string | null | undefined,
-  customSplits: { userId: string; pct: number }[] | undefined,
-  householdId: string,
-): Promise<string | null> {
-  if (ownership === 'SHARED') return null
-
-  if (ownership === 'INDIVIDUAL') {
-    if (!ownedByUserId) return 'ownedByUserId is required for INDIVIDUAL ownership'
-    const isMember = await assertHouseholdMember(householdId, ownedByUserId)
-    if (!isMember) return 'Assigned user is not a member of this household'
-    return null
-  }
-
-  // CUSTOM
-  if (!customSplits || customSplits.length === 0) {
-    return 'customSplits are required for CUSTOM ownership'
-  }
-  for (const split of customSplits) {
-    const isMember = await assertHouseholdMember(householdId, split.userId)
-    if (!isMember) return `User ${split.userId} is not a member of this household`
-  }
-  const total = customSplits.reduce((s, c) => s + c.pct, 0)
-  if (Math.abs(total - 100) > 0.01) {
-    return `Custom split percentages must sum to 100 (got ${total.toFixed(2)})`
-  }
-  return null
-}
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -208,14 +159,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     if (newCurrency === BASE_CURRENCY) {
       rate = 1
     } else if (existing.rateDate && existing.rateUsed) {
-      rate = parseFloat(existing.rateUsed.toString())
+      rate = toNum(existing.rateUsed)
     } else {
       const fetched = await getLatestRate(newCurrency)
       if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
       rate = fetched
     }
 
-    const newAmount = data.amount !== undefined ? data.amount : parseFloat(existing.amount.toString())
+    const newAmount = data.amount !== undefined ? data.amount : toNum(existing.amount)
     const newFrequency = data.frequency ?? existing.frequency
     const amountInBase = newAmount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
@@ -281,12 +232,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
@@ -300,9 +246,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
         const refDate = getIncomeReferenceDate(y.year, y.status)
         const incomeResult = await calcIncomeForYear(y.id, refDate)
         const income = incomeResult.totalMonthlyNet
-        const savings = y.savingsEntries.reduce(
-          (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
-        )
+        const savings = y.savingsEntries.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
         return {
           year: y.year,
           status: y.status,

@@ -5,6 +5,8 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyEquivalent } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
+import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
+import { toNum } from '../lib/decimal'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 
@@ -37,64 +39,6 @@ const expenseInclude = {
   customSplits: { include: { user: { select: { id: true, name: true } } } },
 } as const
 
-// Verify that a user is a member of a household
-async function assertHouseholdMember(householdId: string, userId: string) {
-  const member = await prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
-  return member !== null
-}
-
-// Verify the caller is a member of the household that owns the budget year
-async function assertBudgetYearAccess(budgetYearId: string, userId: string, systemAdmin: boolean) {
-  const budgetYear = await prisma.budgetYear.findUnique({
-    where: { id: budgetYearId },
-    include: {
-      household: {
-        include: { members: { where: { userId } } },
-      },
-    },
-  })
-  if (!budgetYear) return null
-  if (!systemAdmin && budgetYear.household.members.length === 0) return null
-  return budgetYear
-}
-
-type OwnershipInput = {
-  ownership: 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
-  ownedByUserId?: string | null
-  customSplits?: { userId: string; pct: number }[]
-}
-
-async function validateOwnership(
-  ownership: OwnershipInput['ownership'],
-  ownedByUserId: string | null | undefined,
-  customSplits: OwnershipInput['customSplits'],
-  householdId: string,
-): Promise<string | null> {
-  if (ownership === 'SHARED') {
-    return null
-  }
-  if (ownership === 'INDIVIDUAL') {
-    if (!ownedByUserId) return 'ownedByUserId is required for INDIVIDUAL ownership'
-    const isMember = await assertHouseholdMember(householdId, ownedByUserId)
-    if (!isMember) return 'Assigned user is not a member of this household'
-    return null
-  }
-  // CUSTOM
-  if (!customSplits || customSplits.length === 0) {
-    return 'customSplits are required for CUSTOM ownership'
-  }
-  for (const split of customSplits) {
-    const isMember = await assertHouseholdMember(householdId, split.userId)
-    if (!isMember) return `User ${split.userId} is not a member of this household`
-  }
-  const total = customSplits.reduce((s, c) => s + c.pct, 0)
-  if (Math.abs(total - 100) > 0.01) {
-    return `Custom split percentages must sum to 100 (got ${total.toFixed(2)})`
-  }
-  return null
-}
 
 export async function expenseRoutes(fastify: FastifyInstance) {
   // GET /budget-years/:id/expenses
@@ -222,14 +166,14 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (newCurrency === BASE_CURRENCY) {
       rate = 1
     } else if (existing.rateDate && existing.rateUsed) {
-      rate = parseFloat(existing.rateUsed.toString())
+      rate = toNum(existing.rateUsed)
     } else {
       const fetched = await getLatestRate(newCurrency)
       if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
       rate = fetched
     }
 
-    const newAmount = amount !== undefined ? amount : parseFloat(existing.amount.toString())
+    const newAmount = amount !== undefined ? amount : toNum(existing.amount)
     const newFrequency = frequency ?? existing.frequency
     const amountInBase = newAmount * rate
     const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)

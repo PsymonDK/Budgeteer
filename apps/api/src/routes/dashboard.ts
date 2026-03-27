@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { assertHouseholdAccess, partitionByOwnership } from '../lib/ownership'
+import { toNum } from '../lib/decimal'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /me/summary ──────────────────────────────────────────────────────────
@@ -31,7 +33,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         if (!activeBY) {
           return {
             id: h.id, name: h.name, myRole: m.role, memberCount: h._count.members,
-            monthlyIncome: '0.00', monthlyExpenses: '0.00', monthlySavings: '0.00', monthlySurplus: '0.00',
+            monthlyGrossIncome: '0.00', monthlyIncome: '0.00', monthlyExpenses: '0.00', monthlySavings: '0.00', monthlySurplus: '0.00',
             budgetYear: null,
             warnings: { expensesExceedIncome: false, noSavings: false },
             previousYear: null,
@@ -40,14 +42,15 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
         const refDate = getIncomeReferenceDate(activeBY.year, activeBY.status)
         const incomeResult = await calcIncomeForYear(activeBY.id, refDate)
+        const totalGrossIncome = incomeResult.totalMonthlyGross
         const totalIncome = incomeResult.totalMonthlyNet
 
         const [expenses, savingsEntries] = await Promise.all([
           prisma.expense.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
           prisma.savingsEntry.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
         ])
-        const totalExpenses = expenses.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-        const totalSavings = savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+        const totalExpenses = expenses.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+        const totalSavings = savingsEntries.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
         // Previous retired budget year for period comparison
         const previousBY = await prisma.budgetYear.findFirst({
@@ -63,10 +66,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
             prisma.expense.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
             prisma.savingsEntry.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
           ])
-          const prevTotalExpenses = prevExp.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-          const prevTotalSavings = prevSav.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+          const prevTotalExpenses = prevExp.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+          const prevTotalSavings = prevSav.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
           previousYear = {
             year: previousBY.year,
+            monthlyGrossIncome: prevIncome.totalMonthlyGross.toFixed(2),
             monthlyIncome: prevIncome.totalMonthlyNet.toFixed(2),
             monthlyExpenses: prevTotalExpenses.toFixed(2),
             monthlySavings: prevTotalSavings.toFixed(2),
@@ -76,6 +80,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
         return {
           id: h.id, name: h.name, myRole: m.role, memberCount: h._count.members,
+          monthlyGrossIncome: totalGrossIncome.toFixed(2),
           monthlyIncome: totalIncome.toFixed(2),
           monthlyExpenses: totalExpenses.toFixed(2),
           monthlySavings: totalSavings.toFixed(2),
@@ -91,23 +96,27 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     )
 
     // Aggregate totals across all households
+    const totalGrossIncome = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlyGrossIncome), 0)
     const totalIncome = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlyIncome), 0)
     const totalExpenses = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlyExpenses), 0)
     const totalSavings = householdSummaries.reduce((s, h) => s + parseFloat(h.monthlySavings), 0)
 
     const withPrev = householdSummaries.filter((h) => h.previousYear !== null)
+    const prevTotalGrossIncome = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlyGrossIncome), 0)
     const prevTotalIncome = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlyIncome), 0)
     const prevTotalExpenses = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlyExpenses), 0)
     const prevTotalSavings = withPrev.reduce((s, h) => s + parseFloat(h.previousYear!.monthlySavings), 0)
 
     return reply.send({
       totals: {
+        monthlyGrossIncome: totalGrossIncome.toFixed(2),
         monthlyIncome: totalIncome.toFixed(2),
         monthlyExpenses: totalExpenses.toFixed(2),
         monthlySavings: totalSavings.toFixed(2),
         monthlySurplus: (totalIncome - totalExpenses - totalSavings).toFixed(2),
       },
       previousTotals: withPrev.length > 0 ? {
+        monthlyGrossIncome: prevTotalGrossIncome.toFixed(2),
         monthlyIncome: prevTotalIncome.toFixed(2),
         monthlyExpenses: prevTotalExpenses.toFixed(2),
         monthlySavings: prevTotalSavings.toFixed(2),
@@ -125,12 +134,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const { budgetYearId: requestedYearId } = request.query as { budgetYearId?: string }
     const { sub: userId, role } = request.user
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     // Get household + members
     const household = await prisma.household.findUnique({
@@ -208,31 +212,15 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       },
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
-    const totalMonthlyExpenses = expenses.reduce(
-      (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
-    )
+    const totalMonthlyExpenses = expenses.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
     // Partition expenses by ownership mode
-    const sharedPool = expenses
-      .filter((e) => e.ownership === 'SHARED')
-      .reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-    const individualOwedMap = new Map<string, number>()
-    for (const e of expenses.filter((e) => e.ownership === 'INDIVIDUAL')) {
-      const cur = individualOwedMap.get(e.ownedByUserId!) ?? 0
-      individualOwedMap.set(e.ownedByUserId!, cur + parseFloat(e.monthlyEquivalent.toString()))
-    }
-    const customExpensesMap = new Map<string, number>()
-    for (const e of expenses.filter((e) => e.ownership === 'CUSTOM')) {
-      const monthly = parseFloat(e.monthlyEquivalent.toString())
-      for (const split of e.customSplits) {
-        const cur = customExpensesMap.get(split.userId) ?? 0
-        customExpensesMap.set(split.userId, cur + monthly * parseFloat(split.pct.toString()) / 100)
-      }
-    }
+    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByOwnership(expenses)
+
     const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
     for (const e of expenses) {
       const existing = byCategoryMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
-      existing.totalMonthly += parseFloat(e.monthlyEquivalent.toString())
+      existing.totalMonthly += toNum(e.monthlyEquivalent)
       byCategoryMap.set(e.categoryId, existing)
     }
     const byCategory = [...byCategoryMap.values()]
@@ -244,27 +232,10 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       where: { budgetYearId: activeBudgetYear.id },
       include: { customSplits: true },
     })
-    const totalMonthlySavings = savingsEntries.reduce(
-      (s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0
-    )
+    const totalMonthlySavings = savingsEntries.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
     // Partition savings by ownership mode
-    const sharedSavingsPool = savingsEntries
-      .filter((e) => e.ownership === 'SHARED')
-      .reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-    const individualSavingsMap = new Map<string, number>()
-    for (const e of savingsEntries.filter((e) => e.ownership === 'INDIVIDUAL')) {
-      const cur = individualSavingsMap.get(e.ownedByUserId!) ?? 0
-      individualSavingsMap.set(e.ownedByUserId!, cur + parseFloat(e.monthlyEquivalent.toString()))
-    }
-    const customSavingsMap = new Map<string, number>()
-    for (const e of savingsEntries.filter((e) => e.ownership === 'CUSTOM')) {
-      const monthly = parseFloat(e.monthlyEquivalent.toString())
-      for (const split of e.customSplits) {
-        const cur = customSavingsMap.get(split.userId) ?? 0
-        customSavingsMap.set(split.userId, cur + monthly * parseFloat(split.pct.toString()) / 100)
-      }
-    }
+    const { shared: sharedSavingsPool, individual: individualSavingsMap, custom: customSavingsMap } = partitionByOwnership(savingsEntries)
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
@@ -330,12 +301,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
 
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const household = await prisma.household.findUnique({
       where: { id: householdId },
@@ -357,14 +323,14 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         const refDate = getIncomeReferenceDate(y.year, y.status)
         const incomeResult = await calcIncomeForYear(y.id, refDate)
         const totalIncome = incomeResult.totalMonthlyNet
-        const totalExpenses = y.expenses.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-        const totalSavings = y.savingsEntries.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+        const totalExpenses = y.expenses.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+        const totalSavings = y.savingsEntries.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
         // Category breakdown for this year
         const catMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
         for (const e of y.expenses) {
           const cur = catMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
-          cur.totalMonthly += parseFloat(e.monthlyEquivalent.toString())
+          cur.totalMonthly += toNum(e.monthlyEquivalent)
           catMap.set(e.categoryId, cur)
         }
 

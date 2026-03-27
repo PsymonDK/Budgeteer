@@ -4,8 +4,7 @@ import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-
-type Frequency = 'WEEKLY' | 'FORTNIGHTLY' | 'MONTHLY' | 'QUARTERLY' | 'BIANNUAL' | 'ANNUAL'
+import { FREQ_LABELS, type Frequency } from '../lib/constants'
 
 interface IncomeEntry {
   id: string
@@ -33,10 +32,6 @@ interface IncomeSummary {
   totalMonthly: string
 }
 
-const FREQ_LABELS: Record<Frequency, string> = {
-  WEEKLY: 'Weekly', FORTNIGHTLY: 'Fortnightly', MONTHLY: 'Monthly',
-  QUARTERLY: 'Quarterly', BIANNUAL: 'Every 6 months', ANNUAL: 'Annually',
-}
 
 function fmt(v: number | string) {
   return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

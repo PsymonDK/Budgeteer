@@ -2,6 +2,8 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { assertHouseholdAccess } from '../lib/ownership'
+import { toNum } from '../lib/decimal'
 
 export async function compareRoutes(fastify: FastifyInstance) {
   // GET /households/:id/compare?a=budgetYearIdA&b=budgetYearIdB
@@ -11,12 +13,7 @@ export async function compareRoutes(fastify: FastifyInstance) {
     const { sub: userId, role } = request.user
 
     // Auth
-    if (role !== 'SYSTEM_ADMIN') {
-      const member = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
-      if (!member) return reply.status(403).send({ error: 'Forbidden' })
-    }
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     if (!yearIdA || !yearIdB) {
       return reply.status(400).send({ error: 'Query params a and b (budget year IDs) are required' })
@@ -59,10 +56,10 @@ export async function compareRoutes(fastify: FastifyInstance) {
     const incomeA = incomeResultA.totalMonthlyNet
     const incomeB = incomeResultB.totalMonthlyNet
 
-    const expTotalA = expensesA.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-    const expTotalB = expensesB.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-    const savTotalA = savingsA.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
-    const savTotalB = savingsB.reduce((s, e) => s + parseFloat(e.monthlyEquivalent.toString()), 0)
+    const expTotalA = expensesA.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+    const expTotalB = expensesB.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+    const savTotalA = savingsA.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
+    const savTotalB = savingsB.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
     const surplusA = incomeA - expTotalA - savTotalA
     const surplusB = incomeB - expTotalB - savTotalB
 
@@ -88,8 +85,8 @@ export async function compareRoutes(fastify: FastifyInstance) {
       const ea = mapA.get(key)
       const eb = mapB.get(key)
 
-      const monthlyA = ea ? parseFloat(ea.monthlyEquivalent.toString()) : 0
-      const monthlyB = eb ? parseFloat(eb.monthlyEquivalent.toString()) : 0
+      const monthlyA = ea ? toNum(ea.monthlyEquivalent) : 0
+      const monthlyB = eb ? toNum(eb.monthlyEquivalent) : 0
       const delta = monthlyB - monthlyA
 
       let status: ExpenseRow['status']

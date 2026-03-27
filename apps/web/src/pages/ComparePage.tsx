@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { CategoryIcon } from '../components/CategoryIcon'
 import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
+import { FREQ_LABELS } from '../lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -59,10 +60,6 @@ const PERIOD_LABEL: Record<Period, string> = {
   annual: '/ year',
 }
 
-const FREQ_LABELS: Record<string, string> = {
-  WEEKLY: 'Weekly', FORTNIGHTLY: 'Fortnightly', MONTHLY: 'Monthly',
-  QUARTERLY: 'Quarterly', BIANNUAL: 'Every 6 months', ANNUAL: 'Annually',
-}
 
 function fmt(v: number, period: Period) {
   return (v * PERIOD_MULTIPLIER[period]).toLocaleString('en', {
