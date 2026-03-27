@@ -11,11 +11,13 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 ### Frontend
 - **React + TypeScript** — UI framework
 - **Vite** — build tool and dev server
-- **Tailwind CSS** — styling
-- **shadcn/ui** — accessible component library
+- **Tailwind CSS** — styling (custom components, no component library)
+- **Lucide React** — icon library
+- **Sonner** — toast notifications
 - **TanStack Query** — server state and caching
 - **React Router v6** — client-side routing
 - **Recharts** — budget visualisations
+- **D3 / Sankey** — income flow diagram
 
 ### Backend
 - **Node.js + TypeScript** — runtime
@@ -24,6 +26,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
+- **node-cron** — daily currency rate sync (06:00)
 
 ### Infrastructure
 - **Docker + Docker Compose** — single-command self-hosted setup
@@ -46,8 +49,7 @@ budgeteer/
 │   ├── nginx.conf
 │   └── docker-compose.yml
 ├── prisma/
-│   ├── schema.prisma
-│   └── migrations/
+│   └── schema.prisma
 ├── scripts/
 │   └── setup.sh
 └── docs/
@@ -60,35 +62,68 @@ budgeteer/
 ### Entities
 
 **users** — system accounts
-- id, email, name, passwordHash, role (SYSTEM_ADMIN | USER), isActive, mustChangePassword
+- id, email, name, passwordHash, role (`SYSTEM_ADMIN` | `BOOKKEEPER` | `USER`), isActive, isProxy, mustChangePassword, avatarUrl, failedLoginAttempts, lockedUntil
+
+**user_preferences** — per-user settings (1:1 with user)
+- userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised
 
 **households** — shared budget spaces
 - id, name
 
 **household_members** — many-to-many users ↔ households
-- householdId, userId, role (ADMIN | MEMBER)
+- householdId, userId, role (`ADMIN` | `MEMBER`)
 
-**budget_years** — one budget per year per household, multiple simulations allowed
-- householdId, year (int), status (ACTIVE | FUTURE | RETIRED | SIMULATION)
+**budget_years** — one budget per year per household; multiple simulations allowed
+- householdId, year (int), status (`ACTIVE` | `FUTURE` | `RETIRED` | `SIMULATION`)
 - simulationName (nullable), copiedFromId (self-referencing, nullable)
 
-**income_entries** — per user, not per household
-- userId, label, amount, frequency, frequencyPeriod, monthlyEquivalent
+**jobs** — a user's employment record; income is modelled per job
+- userId, name, employer (nullable), startDate, endDate (nullable)
 
-**household_income_allocations** — user allocates % of income to a budget year
-- incomeEntryId, budgetYearId, allocationPct
+**salary_records** — salary history for a job
+- jobId, grossAmount, netAmount, effectiveFrom, currencyCode (nullable), rateUsed (nullable)
+- Active salary for any month = most recent record where `effectiveFrom <= that month`
+
+**monthly_income_overrides** — one-off overrides for a specific month
+- jobId, year, month, grossAmount, netAmount, note
+- Takes precedence over the default salary record for that month
+
+**bonuses** — additional payments on a job
+- jobId, label, grossAmount, netAmount, paymentDate, includeInBudget, budgetMode (`ONE_OFF` | `SPREAD_ANNUALLY`), currencyCode (nullable)
+
+**household_income_allocations** — user allocates % of a job's income to a budget year
+- jobId, budgetYearId, allocationPct
 - Warning (not block) if total allocation across households exceeds 100%
 
-**expense_categories** — system-wide or household-custom
-- name, isSystemWide, householdId (null if system-wide), createdByUserId
-- Household admins can create custom categories
-- System admins can promote custom → system-wide
+**categories** — expense or savings classification; system-wide or household-custom
+- name, icon, categoryType (`EXPENSE` | `SAVINGS`), isSystemWide, isActive, householdId (null if system-wide), createdByUserId
+- Household members can create custom categories; system admins can promote them system-wide
+- Inactive categories are hidden from new entries but remain on historical records
 
 **expenses** — recurring expenses on a budget year
 - budgetYearId, categoryId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, notes
+- ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable)
+- currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
+
+**expense_custom_splits** — per-member percentage splits for CUSTOM ownership expenses
+- expenseId, userId, pct (must sum to 100%)
 
 **savings_entries** — planned savings on a budget year
-- budgetYearId, label, amount, frequency, monthlyEquivalent, notes
+- budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, notes
+- ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), categoryId (nullable)
+- currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
+
+**savings_custom_splits** — per-member percentage splits for CUSTOM ownership savings
+- savingsEntryId, userId, pct (must sum to 100%)
+
+**currencies** — admin-managed catalog of available currencies
+- code (PK), name, isEnabled
+- Disabled currencies are hidden from user-facing currency selectors
+
+**currency_rates** — time-series exchange rates fetched from Danmarks Nationalbank
+- currencyCode, rate (relative to BASE_CURRENCY), baseCurrency, fetchedDate
+- New rows appended daily; queries use `DISTINCT ON` to get the latest rate per currency
+- Past expense/savings rates are locked at `rateDate`; future ones recalculate on sync
 
 **refresh_tokens** — JWT refresh token store
 - token, userId, expiresAt
@@ -118,6 +153,8 @@ User B contributes €2,000/month → 40% of household income
 Shared expense €1,000/month → A owes €600, B owes €400
 ```
 
+Individual and custom-split expenses bypass the proportional calculation.
+
 Informational only — system calculates and displays, never enforces.
 
 ---
@@ -145,7 +182,7 @@ Informational only — system calculates and displays, never enforces.
 | Income allocation > 100% across households | Over-allocation warning on income screen and dashboard |
 | Total expenses > total income | Expenses exceed income warning |
 | No savings entries in budget year | No savings allocated warning |
-| Uncategorised expenses | Uncategorised expenses warning |
+| Expense has no category assigned | Uncategorised expenses warning |
 
 ---
 
@@ -166,48 +203,93 @@ POST   /auth/login
 POST   /auth/refresh
 POST   /auth/logout
 
-GET    /users                              # system admin only
+GET    /users                                          # admin only
 POST   /users
 PUT    /users/:id
 DELETE /users/:id
+POST   /users/:id/reset-password                       # admin only
+GET    /users/:id/income/history
+GET    /users/:id/jobs
+POST   /users/:id/jobs
+PUT    /users/:id/jobs/:jobId
+DELETE /users/:id/jobs/:jobId
+GET    /users/me
+PUT    /users/me
+POST   /users/me/avatar
+DELETE /users/me/avatar
+POST   /users/me/change-password
+PUT    /users/me/preferences
+GET    /users/me/income/summary
+GET    /users/me/income/trend
+GET    /users/me/income/sankey
+GET    /me/summary                                     # cross-household dashboard summary
+
+GET    /jobs/:id/salary
+POST   /jobs/:id/salary
+PUT    /jobs/:id/salary/:salaryId
+DELETE /jobs/:id/salary/:salaryId
+GET    /jobs/:id/overrides
+POST   /jobs/:id/overrides
+DELETE /jobs/:id/overrides/:overrideId
+GET    /jobs/:id/bonuses
+POST   /jobs/:id/bonuses
+PUT    /jobs/:id/bonuses/:bonusId
+DELETE /jobs/:id/bonuses/:bonusId
+
+PUT    /income/:id/allocations/:householdId
+DELETE /income/:id/allocations/:householdId
 
 GET    /households
 POST   /households
+GET    /households/:id
 PUT    /households/:id
 GET    /households/:id/members
 POST   /households/:id/members
-DELETE /households/:id/members/:userId
-
+PUT    /households/:id/members/:memberId
+DELETE /households/:id/members/:memberId
 GET    /households/:id/budget-years
 POST   /households/:id/budget-years
-PUT    /households/:id/budget-years/:yearId
+GET    /households/:id/summary
+GET    /households/:id/income-summary
+GET    /households/:id/savings-history
+GET    /households/:id/trends
+GET    /households/:id/compare
+
+PATCH  /households/:id/budget-years/:yearId
 POST   /households/:id/budget-years/:yearId/copy
-POST   /households/:id/budget-years/:yearId/promote
-POST   /households/:id/budget-years/:yearId/retire
+PATCH  /households/:id/budget-years/:yearId/promote
+PATCH  /households/:id/budget-years/:yearId/retire
+DELETE /households/:id/budget-years/:yearId
 
 GET    /budget-years/:id/expenses
 POST   /budget-years/:id/expenses
 PUT    /budget-years/:id/expenses/:expenseId
 DELETE /budget-years/:id/expenses/:expenseId
 
-GET    /users/:id/income
-POST   /users/:id/income
-PUT    /users/:id/income/:incomeId
-DELETE /users/:id/income/:incomeId
-
 GET    /budget-years/:id/savings
 POST   /budget-years/:id/savings
-PUT    /budget-years/:id/savings/:savingsId
-DELETE /budget-years/:id/savings/:savingsId
+PUT    /budget-years/:id/savings/:entryId
+DELETE /budget-years/:id/savings/:entryId
 
 GET    /categories
 POST   /categories
-PUT    /categories/:id
 DELETE /categories/:id
-POST   /categories/:id/promote             # system admin only
+POST   /categories/:id/promote                         # admin only
+POST   /admin/categories
+PATCH  /admin/categories/:id
 
-GET    /households/:id/compare?yearA=:id&yearB=:id
-GET    /households/:id/budget-years/:yearId/summary
+GET    /currencies
+GET    /currencies/:code/history
+GET    /admin/currencies                               # admin only
+POST   /admin/currencies                               # admin only
+PATCH  /admin/currencies/:code                         # admin only
+POST   /admin/currencies/refresh                       # admin only
+
+GET    /admin/users
+GET    /admin/households
+
+GET    /health
+GET    /config
 ```
 
 ---
@@ -218,5 +300,6 @@ GET    /households/:id/budget-years/:yearId/summary
 - Refresh token rotated on use
 - Frontend silently refreshes before expiry
 - Logout invalidates refresh token in database
-- Account locked after 10 failed login attempts
-- First login forces password change
+- Account locked after 10 failed login attempts for 15 minutes
+- First login (and admin-triggered reset) forces password change
+- Proxy accounts (`isProxy = true`) cannot log in directly — used for income entry on behalf of others
