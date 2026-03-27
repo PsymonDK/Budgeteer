@@ -56,14 +56,6 @@ interface NewHousehold {
   name: string
 }
 
-interface IncomeSummary {
-  totalMonthly: string
-  totalAllocated: string
-  totalUnallocated: string
-  allocationPct: string
-  overAllocated: boolean
-}
-
 interface IncomeTrend {
   months: string[]
   jobs: { id: string; name: string; monthly: number[] }[]
@@ -173,11 +165,6 @@ export function UserDashboardPage() {
   const { data: summary, isLoading } = useQuery<UserSummary>({
     queryKey: ['me', 'summary'],
     queryFn: async () => (await api.get<UserSummary>('/me/summary')).data,
-  })
-
-  const { data: incomeSummary } = useQuery<IncomeSummary>({
-    queryKey: ['income-summary-me'],
-    queryFn: async () => (await api.get<IncomeSummary>('/users/me/income/summary')).data,
   })
 
   const { data: incomeTrend } = useQuery<IncomeTrend>({
@@ -302,40 +289,8 @@ export function UserDashboardPage() {
               </div>
             )}
 
-            {/* Income summary cards */}
-            {incomeSummary && (
-              <>
-                <h2 className="text-base font-semibold text-gray-200 mt-10 mb-4">Personal income</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-                  {[
-                    { label: 'Monthly total', value: incomeSummary.totalMonthly, warn: false },
-                    { label: 'Allocated', value: incomeSummary.totalAllocated, warn: false },
-                    { label: 'Unallocated', value: incomeSummary.totalUnallocated, warn: false },
-                    {
-                      label: 'Allocation %',
-                      value: incomeSummary.allocationPct + '%',
-                      warn: incomeSummary.overAllocated,
-                      warnMsg: 'Over-allocated',
-                    },
-                  ].map(({ label, value, warn, warnMsg }) => (
-                    <div key={label} className={`${cardClass} relative`}>
-                      {warn && (
-                        <span className="absolute top-3 right-3 flex items-center gap-1 bg-red-900/60 text-red-300 text-xs px-2 py-0.5 rounded-full">
-                          <AlertTriangle size={10} />
-                          {warnMsg}
-                        </span>
-                      )}
-                      <p className="text-xs text-gray-400 mb-1">{label}</p>
-                      <p className={`text-xl font-semibold ${warn ? 'text-red-400' : 'text-white'}`}>
-                        {typeof value === 'string' && value.includes('%') ? value : fmt(value)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
             {/* Income flow (Sankey) */}
+            <h2 className="text-base font-semibold text-gray-200 mt-10 mb-4">Personal income</h2>
             <div className={`${cardClass} mb-6`}>
               <h2 className="text-base font-semibold mb-4">Income flow</h2>
               {sankeyData && sankeyData.nodes.length > 0 ? (
