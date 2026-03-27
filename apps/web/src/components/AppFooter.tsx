@@ -1,4 +1,4 @@
-const VERSION = '0.33.0'
+const VERSION = '0.35.0'
 
 export function AppFooter() {
   return (

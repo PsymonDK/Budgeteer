@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.35.0] - 2026-03-27 — Gross income splits, Sankey fix, navigation, refactoring
+
+### Added
+- **My Income link always visible** (#117) — "My Income" link added to the main header navigation (visible on all pages); user avatar dropdown now also includes My Income and Change Password entries for quick access without going through the household page
+
+### Fixed
+- **#105 Personal Sankey proportional share** — the personal dashboard Sankey now shows each user's proportional share of household expenses and savings (based on gross income share) rather than the full household totals; a surplus node appears when the user's allocated income exceeds their share of spending
+- **Gross income as split basis** (#104) — member share percentages across all dashboards and income summaries are now calculated from gross income rather than net; displayed income figures remain net; the income trend chart and Sankey source values switched to gross
+
+### Changed
+- **Household income summary** (`/households/:id/income-summary`) now returns `monthlyAllocatedGross` per member alongside the existing net figure, plus `sharePct` derived from gross
+- **Household dashboard** member income cards show gross income with share % and net income below it
+- **Personal income trend** endpoint switched to gross amounts for salary records, overrides, and bonuses
+- Footer version bumped to `0.35.0`
+
+### Refactored (internal, no behaviour change)
+- **#119 `toNum()` helper** — `apps/api/src/lib/decimal.ts` centralises all Prisma Decimal-to-number conversions; replaced 50+ `parseFloat(x.toString())` calls across routes and `incomeCalc.ts`
+- **#120 `partitionByOwnership()`** — shared utility in `lib/ownership.ts` replaces duplicated SHARED/INDIVIDUAL/CUSTOM split blocks in `dashboard.ts`
+- **#121 `assertHouseholdAccess()`** — shared auth guard in `lib/ownership.ts` replaces inline `prisma.householdMember.findUnique` checks across `dashboard.ts`, `compare.ts`, `jobs.ts`, `budgetYears.ts`
+- **#122 `copyBudgetYearContent()`** — helper in `budgetYears.ts` removes ~60 lines of duplicated expense/savings copy logic between the copy-to-year and copy-to-simulation branches
+- **#123 Frontend constants** — `apps/web/src/lib/constants.ts` exports `FREQ_LABELS` and `FREQUENCIES`; removed local definitions from `DashboardPage`, `HouseholdIncomePage`, `ComparePage`, `ExpensesPage`, `SavingsPage`
+
+---
+
 ## [0.33.0] - 2026-03-27 — Bug fixes, security hardening, household lifecycle
 
 ### Added
