@@ -113,6 +113,9 @@ export function HouseholdLayout() {
           <HouseholdSwitcher currentHouseholdId={householdId!} />
         </div>
         <div className="flex items-center gap-5">
+          <Link to="/" className="text-sm text-gray-400 hover:text-white transition-colors">
+            Dashboard
+          </Link>
           <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
             Personal Income
           </Link>
