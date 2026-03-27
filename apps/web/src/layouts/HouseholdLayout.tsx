@@ -94,7 +94,7 @@ export function HouseholdLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
       {/* Top header */}
       <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
@@ -142,7 +142,7 @@ export function HouseholdLayout() {
         <nav className={`
           fixed inset-y-0 left-0 z-50 w-56 bg-gray-900 border-r border-gray-800 flex flex-col py-4
           transform transition-transform duration-200
-          md:static md:translate-x-0 md:z-auto md:flex-shrink-0
+          md:static md:translate-x-0 md:z-auto md:flex-shrink-0 md:overflow-y-auto
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}>
           {/* Close button — mobile only */}
