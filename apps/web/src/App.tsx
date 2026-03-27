@@ -12,6 +12,8 @@ import { AdminUsersPage } from './pages/admin/UsersPage'
 import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
+import { CurrenciesAdminPage } from './pages/admin/CurrenciesAdminPage'
+import { ForbiddenPage } from './pages/ForbiddenPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { IncomePage } from './pages/IncomePage'
 import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
@@ -66,6 +68,7 @@ function App() {
             >
               <Route path="users" element={<AdminUsersPage />} />
               <Route path="households" element={<HouseholdsAdminPage />} />
+              <Route path="currencies" element={<CurrenciesAdminPage />} />
               <Route path="categories" element={<CategoriesAdminPage />} />
             </Route>
 
@@ -83,6 +86,7 @@ function App() {
               <Route path="/profile" element={<ProfilePage />} />
             </Route>
 
+            <Route path="/403" element={<ForbiddenPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
           </HouseholdProvider>

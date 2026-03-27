@@ -10,6 +10,18 @@ const CreateCategorySchema = z.object({
   categoryType: z.enum(['EXPENSE', 'SAVINGS']).default('EXPENSE'),
 })
 
+const CreateSystemCategorySchema = z.object({
+  name: z.string().min(1).max(100),
+  icon: z.string().optional(),
+  categoryType: z.enum(['EXPENSE', 'SAVINGS']).default('EXPENSE'),
+})
+
+const UpdateCategorySchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  isActive: z.boolean().optional(),
+  icon: z.string().optional(),
+})
+
 const DeleteCategorySchema = z
   .object({ replacementId: z.string().optional() })
   .optional()
@@ -20,6 +32,7 @@ const categorySelect = {
   icon: true,
   categoryType: true,
   isSystemWide: true,
+  isActive: true,
   householdId: true,
   createdAt: true,
   createdBy: { select: { id: true, name: true } },
@@ -28,31 +41,33 @@ const categorySelect = {
 
 export async function categoryRoutes(fastify: FastifyInstance) {
   // GET /categories?householdId=:id&type=EXPENSE|SAVINGS
-  // System-wide categories always returned.
+  // System-wide categories always returned (active ones for regular users, all for admins).
   // If householdId given: also includes that household's custom categories.
   // System admin with no householdId: all categories across system.
   // Optional ?type filter restricts to EXPENSE or SAVINGS categories.
   fastify.get('/categories', { preHandler: authenticate }, async (request, reply) => {
     const { householdId, type } = request.query as { householdId?: string; type?: string }
     const { role } = request.user
+    const isAdmin = role === 'SYSTEM_ADMIN'
 
     const typeFilter = type === 'EXPENSE' || type === 'SAVINGS' ? { categoryType: type as 'EXPENSE' | 'SAVINGS' } : {}
+    const activeFilter = isAdmin ? {} : { isActive: true }
 
-    let where: Record<string, unknown> = { ...typeFilter }
+    let where: Record<string, unknown> = { ...typeFilter, ...activeFilter }
 
     if (householdId) {
       // Verify requester is a member of this household (or system admin)
-      if (role !== 'SYSTEM_ADMIN') {
+      if (!isAdmin) {
         const membership = await prisma.householdMember.findUnique({
           where: { householdId_userId: { householdId, userId: request.user.sub } },
         })
         if (!membership) return reply.status(403).send({ error: 'Forbidden' })
       }
-      where = { ...typeFilter, OR: [{ isSystemWide: true }, { householdId }] }
-    } else if (role === 'SYSTEM_ADMIN') {
+      where = { ...typeFilter, ...activeFilter, OR: [{ isSystemWide: true }, { householdId }] }
+    } else if (isAdmin) {
       where = { ...typeFilter } // all categories (optionally filtered by type)
     } else {
-      where = { ...typeFilter, isSystemWide: true }
+      where = { ...typeFilter, isActive: true, isSystemWide: true }
     }
 
     const categories = await prisma.category.findMany({
@@ -103,6 +118,71 @@ export async function categoryRoutes(fastify: FastifyInstance) {
       ...category,
       ...(systemMatch ? { warning: 'A system-wide category with this name already exists' } : {}),
     })
+  })
+
+  // POST /admin/categories — create a system-wide category (system admin only)
+  fastify.post('/admin/categories', { preHandler: requireAdmin }, async (request, reply) => {
+    const result = CreateSystemCategorySchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+    const { name, icon, categoryType } = result.data
+    const { sub: userId } = request.user
+
+    const duplicate = await prisma.category.findFirst({
+      where: { isSystemWide: true, categoryType, name: { equals: name, mode: 'insensitive' } },
+    })
+    if (duplicate) {
+      return reply.status(409).send({ error: 'A system-wide category with this name already exists' })
+    }
+
+    const category = await prisma.category.create({
+      data: { name, icon, categoryType, isSystemWide: true, createdByUserId: userId },
+      select: categorySelect,
+    })
+
+    return reply.status(201).send(category)
+  })
+
+  // PATCH /admin/categories/:id — rename or toggle isActive (system admin only)
+  fastify.patch('/admin/categories/:id', { preHandler: requireAdmin }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const result = UpdateCategorySchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+    const { name, isActive, icon } = result.data
+
+    const category = await prisma.category.findUnique({ where: { id } })
+    if (!category) return reply.status(404).send({ error: 'Category not found' })
+
+    if (name && name !== category.name) {
+      const duplicate = await prisma.category.findFirst({
+        where: {
+          isSystemWide: true,
+          categoryType: category.categoryType,
+          name: { equals: name, mode: 'insensitive' },
+          NOT: { id },
+        },
+      })
+      if (duplicate) {
+        return reply.status(409).send({ error: 'A system-wide category with this name already exists' })
+      }
+    }
+
+    const updates: { name?: string; isActive?: boolean; icon?: string } = {}
+    if (name !== undefined) updates.name = name
+    if (isActive !== undefined) updates.isActive = isActive
+    if (icon !== undefined) updates.icon = icon
+
+    const updated = await prisma.category.update({
+      where: { id },
+      data: updates,
+      select: categorySelect,
+    })
+
+    return reply.send(updated)
   })
 
   // POST /categories/:id/promote — make a custom category system-wide (system admin only)

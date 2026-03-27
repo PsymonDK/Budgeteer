@@ -118,7 +118,7 @@ export function HouseholdLayout() {
           </Link>
           {user?.role === 'SYSTEM_ADMIN' && (
             <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Users
+              Admin
             </Link>
           )}
           <HeaderUserMenu />

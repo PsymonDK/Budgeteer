@@ -5,6 +5,7 @@ import HeaderUserMenu from '../components/HeaderUserMenu'
 const ADMIN_NAV = [
   { label: 'Users',       path: '/admin/users' },
   { label: 'Households',  path: '/admin/households' },
+  { label: 'Currencies',  path: '/admin/currencies' },
   { label: 'Categories',  path: '/admin/categories' },
 ]
 

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.27.0] - 2026-03-27 — Admin panel: currency & category management (ADMIN-005)
+
+### Added
+- **Currency management page** (`/admin/currencies`) — admin can view all managed currencies showing code, name, conversion rate, last-updated date, and enabled/disabled status; add new currencies with code, name, and initial rate; edit name or rate; enable/disable (base currency cannot be disabled); "Sync rates" button triggers a manual pull from Danmarks Nationalbank
+- **`Currency` model** — new table stores admin-managed currency catalog (`code`, `name`, `isEnabled`); `GET /currencies` now filters out disabled currencies via a LEFT JOIN; backward-compatible (currencies with no catalog row continue to appear)
+- **`GET /admin/currencies`** — lists all currencies in the catalog joined with their latest rate and last-updated date
+- **`POST /admin/currencies`** — creates a currency catalog entry and an initial `CurrencyRate` row
+- **`PATCH /admin/currencies/:code`** — updates name, isEnabled, or inserts a new rate row; base currency cannot be disabled
+- **Category management overhaul** (`/admin/categories`) — admin can now view all system-wide categories (name, type, active status, usage count), add new system-wide categories, rename existing categories, and toggle active/inactive; custom household categories are shown in a separate tab with the existing promote action
+- **`isActive` field on `Category`** — soft-deactivation; inactive categories are hidden from new entries but remain on historical records; `GET /categories` filters to `isActive: true` for non-admin users
+- **`POST /admin/categories`** — creates a system-wide category (name, type, optional icon)
+- **`PATCH /admin/categories/:id`** — renames a category or toggles `isActive`
+- **Forbidden page** (`/403`) — pirate-themed 403 page shown when a non-admin navigates to any `/admin/*` route
+- **"Admin" navigation link** — visible only to system admin users in the household sidebar header and global layout header
+- **15 default currencies seeded** — DKK, EUR, USD, GBP, SEK, NOK, CHF, JPY, CAD, AUD, PLN, CZK, HUF, RON, BGN pre-populated on first seed
+
+### Changed
+- Admin sub-navigation now includes a **Currencies** tab alongside Users, Households, and Categories
+- Non-admin access to `/admin/*` routes now redirects to `/403` instead of `/`
+- "Users" shortcut link in the household header renamed to "Admin"
+
+---
+
 ## [0.26.0] - 2026-03-26 — User dashboard overview (DASH-004)
 
 ### Added

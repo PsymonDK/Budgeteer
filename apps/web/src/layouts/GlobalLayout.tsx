@@ -1,11 +1,13 @@
 import { Link, Outlet } from 'react-router-dom'
 import { useHousehold } from '../contexts/HouseholdContext'
+import { useAuth } from '../contexts/AuthContext'
 import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import { ChevronLeft } from 'lucide-react'
 
 export function GlobalLayout() {
   const { activeHouseholdId } = useHousehold()
+  const { user } = useAuth()
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
@@ -27,7 +29,14 @@ export function GlobalLayout() {
             </>
           )}
         </div>
-        <HeaderUserMenu />
+        <div className="flex items-center gap-4">
+          {user?.role === 'SYSTEM_ADMIN' && (
+            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
+              Admin
+            </Link>
+          )}
+          <HeaderUserMenu />
+        </div>
       </header>
 
       <div className="flex-1 flex flex-col">

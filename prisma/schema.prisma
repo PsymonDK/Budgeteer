@@ -214,6 +214,7 @@ model Category {
   icon            String?
   categoryType    CategoryType @default(EXPENSE)
   isSystemWide    Boolean      @default(false)
+  isActive        Boolean      @default(true)
   householdId     String?
   createdBy       User         @relation(fields: [createdByUserId], references: [id])
   createdByUserId String
@@ -305,6 +306,14 @@ model CurrencyRate {
 
   @@index([currencyCode, fetchedDate])
   @@index([baseCurrency, currencyCode])
+}
+
+model Currency {
+  code      String   @id
+  name      String
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model RefreshToken {

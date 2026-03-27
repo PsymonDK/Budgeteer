@@ -22,6 +22,24 @@ const DEFAULT_SAVINGS_CATEGORIES: { name: string; icon: string }[] = [
   { name: 'General',        icon: 'PiggyBank' },
 ]
 
+const DEFAULT_CURRENCIES: { code: string; name: string }[] = [
+  { code: 'DKK', name: 'Danish Krone' },
+  { code: 'EUR', name: 'Euro' },
+  { code: 'USD', name: 'US Dollar' },
+  { code: 'GBP', name: 'British Pound' },
+  { code: 'SEK', name: 'Swedish Krona' },
+  { code: 'NOK', name: 'Norwegian Krone' },
+  { code: 'CHF', name: 'Swiss Franc' },
+  { code: 'JPY', name: 'Japanese Yen' },
+  { code: 'CAD', name: 'Canadian Dollar' },
+  { code: 'AUD', name: 'Australian Dollar' },
+  { code: 'PLN', name: 'Polish Zloty' },
+  { code: 'CZK', name: 'Czech Koruna' },
+  { code: 'HUF', name: 'Hungarian Forint' },
+  { code: 'RON', name: 'Romanian Leu' },
+  { code: 'BGN', name: 'Bulgarian Lev' },
+]
+
 async function main() {
   // ── Admin user ─────────────────────────────────────────────────────────────
   const email = process.env.ADMIN_EMAIL ?? 'admin@budgeteer.local'
@@ -83,6 +101,18 @@ async function main() {
   }
   if (savingsSeeded > 0) console.log(`✓ Seeded ${savingsSeeded} default savings categories.`)
   else console.log(`Default savings categories already exist, skipping.`)
+
+  // ── Default currencies (idempotent) ────────────────────────────────────────
+  let currenciesSeeded = 0
+  for (const { code, name } of DEFAULT_CURRENCIES) {
+    const existing = await prisma.currency.findUnique({ where: { code } })
+    if (!existing) {
+      await prisma.currency.create({ data: { code, name } })
+      currenciesSeeded++
+    }
+  }
+  if (currenciesSeeded > 0) console.log(`✓ Seeded ${currenciesSeeded} default currencies.`)
+  else console.log(`Default currencies already exist, skipping.`)
 
   // ── Demo data (only when SEED_DEMO_DATA=true) ──────────────────────────────
   if (process.env.SEED_DEMO_DATA !== 'true') return

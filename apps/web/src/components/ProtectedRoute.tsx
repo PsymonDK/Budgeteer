@@ -24,7 +24,7 @@ export function ProtectedRoute({ children, requireAdmin = false }: Props) {
   }
 
   if (requireAdmin && user.role !== 'SYSTEM_ADMIN') {
-    return <Navigate to="/" replace />
+    return <Navigate to="/403" replace />
   }
 
   return <>{children}</>
