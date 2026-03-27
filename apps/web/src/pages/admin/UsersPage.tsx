@@ -165,7 +165,7 @@ export function AdminUsersPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Users</h1>
           <button

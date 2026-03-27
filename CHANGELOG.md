@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.32.0] - 2026-03-27 — Wider layouts for larger screens
+
+### Changed
+- **Dashboards** (`DashboardPage`, `UserDashboardPage`) expanded from `max-w-5xl` to `max-w-7xl` to make better use of wider screens
+- **Compare page** expanded from `max-w-6xl` to `max-w-7xl`
+- **Tables & lists** (`ExpensesPage`, `HistoryPage`, `IncomePage`, `HouseholdIncomePage`) expanded from `max-w-4xl/5xl` to `max-w-6xl`
+- **Admin pages** (`UsersPage`, `HouseholdsAdminPage`, `CurrenciesAdminPage`, `CategoriesAdminPage`) expanded from `max-w-4xl/5xl` to `max-w-6xl`
+- **Expense calendar view** uses full available width (`w-full`) with no cap, since the 13-column grid benefits from every available pixel
+- Settings and form pages remain at `max-w-4xl` (no change)
+- Footer version bumped to `0.32.0`
+
+---
+
 ## [0.31.0] - 2026-03-27 — Monthly expense calendar (EXP-005)
 
 ### Added

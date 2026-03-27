@@ -20,7 +20,7 @@ export function HouseholdsAdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">All Households</h1>
           <span className="text-sm text-gray-500">{households.length} total</span>

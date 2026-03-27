@@ -1,17 +1,13 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: budgeteer
-      POSTGRES_PASSWORD: budgeteer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: budgeteer
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U budgeteer"]
       interval: 5s
@@ -19,28 +15,24 @@ services:
       retries: 10
 
   api:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.api
+    image: ghcr.io/psymondk/budgeteer-api:latest
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://budgeteer:budgeteer@postgres:5432/budgeteer
+      DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@postgres:5432/budgeteer
       API_PORT: 3001
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
-      CORS_ORIGIN: ${APP_URL:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      CORS_ORIGIN: ${APP_URL:-http://localhost:7272}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
 
   web:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.web
+    image: ghcr.io/psymondk/budgeteer-web:latest
     restart: unless-stopped
     depends_on:
       - api

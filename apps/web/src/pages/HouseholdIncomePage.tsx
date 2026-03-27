@@ -54,7 +54,7 @@ export function HouseholdIncomePage() {
   const totalMonthly = parseFloat(summary?.totalMonthly ?? '0')
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
+    <main className="max-w-6xl mx-auto px-6 py-8">
       {summary?.budgetYear && (
         <div className="mb-6">
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${

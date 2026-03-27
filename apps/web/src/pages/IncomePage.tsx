@@ -438,7 +438,7 @@ export function IncomePage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         <PageHeader title="Personal Income" subtitle="Manage your income sources and household allocations." />
 
         {/* ── Proxy banner ────────────────────────────────────────────────── */}

@@ -181,7 +181,7 @@ export function ComparePage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
+    <main className="max-w-7xl mx-auto px-6 py-8">
       <PageHeader title="Compare Budgets" subtitle="Select two budget years or simulations to compare side by side." />
 
       {/* COMP-001: Year selectors */}

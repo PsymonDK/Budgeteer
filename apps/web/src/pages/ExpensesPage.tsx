@@ -357,7 +357,7 @@ export function ExpensesPage() {
 
   return (
     <>
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className={view === 'calendar' ? 'w-full px-6 py-8' : 'max-w-6xl mx-auto px-6 py-8'}>
         <PageHeader title="Expenses" />
         {/* Budget year selector */}
         {budgetYears.length > 0 && (
