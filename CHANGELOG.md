@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.28.0] - 2026-03-27 — Personal dashboard income overview (DASH-004)
+
+### Added
+- **Income overview on personal dashboard** — the dashboard at `/` now shows personal income summary cards (monthly total, allocated, unallocated, allocation %), an income flow (Sankey) diagram, and a 12-month income trend chart, placed below the household cards
+- **"Manage jobs & salary →" link** on the dashboard for quick access to income management
+
+### Changed
+- **Footer version** updated to `0.28.0`
+- **Profile page** Income tab removed — the income overview is now on the dashboard; the Profile page retains Profile and Households tabs
+
+### Fixed
+- **Double footer bug** — `AppFooter` was rendered inside both `UserDashboardPage` and `GlobalLayout`, causing a duplicate footer; removed the redundant render from the page component
+
+---
+
 ## [0.27.0] - 2026-03-27 — Admin panel: currency & category management (ADMIN-005)
 
 ### Added

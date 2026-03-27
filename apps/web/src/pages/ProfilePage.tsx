@@ -3,14 +3,9 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  Legend, ResponsiveContainer, Dot,
-} from 'recharts'
-import { sankey, sankeyLinkHorizontal, SankeyNode, SankeyLink } from 'd3-sankey'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { AlertTriangle, User, TrendingUp, Home } from 'lucide-react'
+import { AlertTriangle, User, Home } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
@@ -49,44 +44,9 @@ interface Household {
 }
 
 interface IncomeSummary {
-  totalMonthly: string
-  totalAllocated: string
-  totalUnallocated: string
   allocationPct: string
   overAllocated: boolean
 }
-
-interface IncomeTrend {
-  months: string[]
-  jobs: { id: string; name: string; monthly: number[] }[]
-  total: number[]
-  bonuses: { jobId: string; month: string; amount: number; label: string }[]
-}
-
-interface SankeyNodeDef {
-  id: string
-  name: string
-  color?: string
-}
-
-interface SankeyLinkDef {
-  source: string
-  target: string
-  value: number
-}
-
-interface IncomeSankeyData {
-  totalIncome: string
-  nodes: SankeyNodeDef[]
-  links: SankeyLinkDef[]
-}
-
-// ── Job color palette (same as backend) ─────────────────────────────────────
-
-const JOB_COLORS = [
-  '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#84cc16',
-]
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
 
@@ -370,337 +330,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   )
 }
 
-// ── Tab 2: Income ────────────────────────────────────────────────────────────
-
-function formatMonth(yyyymm: string): string {
-  const [year, mon] = yyyymm.split('-')
-  const date = new Date(Number(year), Number(mon) - 1, 1)
-  return date.toLocaleString('en-GB', { month: 'short', year: '2-digit' })
-}
-
-function fmt(val: string | number): string {
-  return Number(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-function IncomeTab() {
-  // Summary
-  const { data: summary } = useQuery<IncomeSummary>({
-    queryKey: ['income-summary-me'],
-    queryFn: async () => (await api.get<IncomeSummary>('/users/me/income/summary')).data,
-  })
-
-  // Trend
-  const { data: trend } = useQuery<IncomeTrend>({
-    queryKey: ['income-trend-me'],
-    queryFn: async () => (await api.get<IncomeTrend>('/users/me/income/trend')).data,
-  })
-
-  // Sankey
-  const { data: sankeyData } = useQuery<IncomeSankeyData>({
-    queryKey: ['income-sankey-me'],
-    queryFn: async () => (await api.get<IncomeSankeyData>('/users/me/income/sankey')).data,
-  })
-
-  // Build recharts data from trend
-  const chartData = trend
-    ? trend.months.map((m, i) => {
-        const row: Record<string, unknown> = { month: formatMonth(m), monthKey: m, total: trend.total[i] }
-        trend.jobs.forEach((j) => {
-          row[j.name] = j.monthly[i]
-        })
-        return row
-      })
-    : []
-
-  const bonusMap = new Map<string, { jobId: string; amount: number; label: string }[]>()
-  if (trend) {
-    for (const b of trend.bonuses) {
-      const key = `${b.jobId}::${b.month}`
-      const arr = bonusMap.get(key) ?? []
-      arr.push({ jobId: b.jobId, amount: b.amount, label: b.label })
-      bonusMap.set(key, arr)
-    }
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Summary cards */}
-      {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          {[
-            { label: 'Monthly total', value: summary.totalMonthly, warn: false },
-            { label: 'Allocated', value: summary.totalAllocated, warn: false },
-            { label: 'Unallocated', value: summary.totalUnallocated, warn: false },
-            {
-              label: 'Allocation %',
-              value: summary.allocationPct + '%',
-              warn: summary.overAllocated,
-              warnMsg: 'Over-allocated',
-            },
-          ].map(({ label, value, warn, warnMsg }) => (
-            <div key={label} className={`${cardClass} relative`}>
-              {warn && (
-                <span className="absolute top-3 right-3 flex items-center gap-1 bg-red-900/60 text-red-300 text-xs px-2 py-0.5 rounded-full">
-                  <AlertTriangle size={10} />
-                  {warnMsg}
-                </span>
-              )}
-              <p className="text-xs text-gray-400 mb-1">{label}</p>
-              <p className={`text-xl font-semibold ${warn ? 'text-red-400' : 'text-white'}`}>
-                {typeof value === 'string' && value.includes('%') ? value : fmt(value)}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Trend chart */}
-      <div className={cardClass}>
-        <h2 className="text-base font-semibold mb-4">12-month income trend</h2>
-        {trend && trend.jobs.length > 0 ? (
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
-              <RechartsTooltip
-                contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-                labelStyle={{ color: '#f3f4f6' }}
-                itemStyle={{ color: '#d1d5db' }}
-              />
-              <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
-              {trend.jobs.map((job, i) => (
-                <Line
-                  key={job.id}
-                  type="monotone"
-                  dataKey={job.name}
-                  stroke={JOB_COLORS[i % JOB_COLORS.length]}
-                  strokeWidth={2}
-                  dot={(props) => {
-                    const { cx, cy, payload } = props
-                    const monthKey = payload.monthKey as string
-                    const hasBonuses = bonusMap.has(`${job.id}::${monthKey}`)
-                    if (hasBonuses) {
-                      const bonuses = bonusMap.get(`${job.id}::${monthKey}`)!
-                      const tipText = bonuses.map((b) => `${b.label}: ${fmt(b.amount)}`).join(', ')
-                      return (
-                        <g key={`dot-${job.id}-${monthKey}`}>
-                          <circle
-                            cx={cx}
-                            cy={cy}
-                            r={6}
-                            fill={JOB_COLORS[i % JOB_COLORS.length]}
-                            stroke="#fff"
-                            strokeWidth={1.5}
-                          />
-                          <title>{`Bonus: ${tipText}`}</title>
-                        </g>
-                      )
-                    }
-                    return <Dot key={`dot-${job.id}-${monthKey}`} {...props} r={3} />
-                  }}
-                />
-              ))}
-              <Line
-                type="monotone"
-                dataKey="total"
-                stroke="#ffffff"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-                name="Total"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <p className="text-gray-500 text-sm">No job income data found.</p>
-        )}
-      </div>
-
-      {/* Sankey diagram */}
-      <div className={cardClass}>
-        <h2 className="text-base font-semibold mb-4">Income flow</h2>
-        {sankeyData && sankeyData.nodes.length > 0 ? (
-          <SankeyChart data={sankeyData} />
-        ) : (
-          <p className="text-gray-500 text-sm">No allocation data to display. Allocate income to households first.</p>
-        )}
-      </div>
-
-      {/* Link to income management */}
-      <div>
-        <Link to="/income" className="text-amber-400 hover:text-amber-300 text-sm transition-colors">
-          Manage jobs &amp; salary →
-        </Link>
-      </div>
-    </div>
-  )
-}
-
-// ── Sankey SVG component ─────────────────────────────────────────────────────
-
-interface SankeyExtNode extends SankeyNodeDef {
-  x0?: number; x1?: number; y0?: number; y1?: number; index?: number
-}
-
-interface SankeyExtLink {
-  source: SankeyExtNode
-  target: SankeyExtNode
-  value: number
-  width?: number
-  y0?: number; y1?: number
-}
-
-function SankeyChart({ data }: { data: IncomeSankeyData }) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [svgContent, setSvgContent] = useState<{
-    nodes: SankeyExtNode[]
-    links: SankeyExtLink[]
-    width: number
-    height: number
-  } | null>(null)
-
-  useEffect(() => {
-    const width = containerRef.current?.clientWidth ?? 800
-    const height = 400
-
-    // Map node ids to indices
-    const nodeIndexMap = new Map(data.nodes.map((n, i) => [n.id, i]))
-
-    const sankeyNodes: SankeyExtNode[] = data.nodes.map((n) => ({ ...n }))
-    const sankeyLinks = data.links
-      .filter((l) => nodeIndexMap.has(l.source) && nodeIndexMap.has(l.target) && l.value > 0)
-      .map((l) => ({
-        source: nodeIndexMap.get(l.source)!,
-        target: nodeIndexMap.get(l.target)!,
-        value: l.value,
-      }))
-
-    if (sankeyNodes.length === 0 || sankeyLinks.length === 0) {
-      setSvgContent(null)
-      return
-    }
-
-    try {
-      const layout = sankey<SankeyExtNode, { source: number; target: number; value: number }>()
-        .nodeId((d) => d.index ?? 0)
-        .nodeWidth(18)
-        .nodePadding(12)
-        .extent([[1, 1], [width - 1, height - 6]])
-
-      const graph = layout({
-        nodes: sankeyNodes.map((d, i) => ({ ...d, index: i })),
-        links: sankeyLinks,
-      })
-
-      setSvgContent({
-        nodes: graph.nodes as unknown as SankeyExtNode[],
-        links: graph.links as unknown as SankeyExtLink[],
-        width,
-        height,
-      })
-    } catch {
-      setSvgContent(null)
-    }
-  }, [data])
-
-  // Build color map by node id
-  const colorMap = new Map(data.nodes.map((n, i) => [n.id, n.color ?? JOB_COLORS[i % JOB_COLORS.length]]))
-
-  if (!svgContent) {
-    // Fallback table
-    return (
-      <div className="overflow-x-auto">
-        <table className="text-sm w-full">
-          <thead>
-            <tr className="text-gray-400 border-b border-gray-800">
-              <th className="text-left py-2 pr-4">Flow</th>
-              <th className="text-right py-2">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.links.map((l, i) => {
-              const srcName = data.nodes.find((n) => n.id === l.source)?.name ?? l.source
-              const tgtName = data.nodes.find((n) => n.id === l.target)?.name ?? l.target
-              return (
-                <tr key={i} className="border-b border-gray-800/50">
-                  <td className="py-1.5 pr-4 text-gray-300">{srcName} → {tgtName}</td>
-                  <td className="py-1.5 text-right text-white">{fmt(l.value)}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    )
-  }
-
-  const { nodes, links, width, height } = svgContent
-  const linkPath = sankeyLinkHorizontal()
-
-  return (
-    <div ref={containerRef}>
-      <svg width={width} height={height} style={{ fontFamily: 'inherit' }}>
-        {/* Links */}
-        {links.map((link, i) => {
-          const srcId = (link.source as unknown as SankeyExtNode).id
-          const color = colorMap.get(srcId) ?? '#6b7280'
-          const d = linkPath(link as unknown as SankeyLink<SankeyNode<SankeyExtNode, SankeyExtLink>, SankeyExtLink>)
-          return (
-            <path
-              key={i}
-              d={d ?? ''}
-              fill="none"
-              stroke={color}
-              strokeOpacity={0.35}
-              strokeWidth={Math.max(1, link.width ?? 1)}
-              style={{ cursor: 'default' }}
-            >
-              <title>{`${(link.source as unknown as SankeyExtNode).name} → ${(link.target as unknown as SankeyExtNode).name}: ${fmt(link.value)}`}</title>
-            </path>
-          )
-        })}
-
-        {/* Nodes */}
-        {nodes.map((node, i) => {
-          const x0 = node.x0 ?? 0
-          const x1 = node.x1 ?? 0
-          const y0 = node.y0 ?? 0
-          const y1 = node.y1 ?? 0
-          const color = colorMap.get(node.id) ?? JOB_COLORS[i % JOB_COLORS.length]
-          const isLeft = x0 < width / 2
-          return (
-            <g key={node.id}>
-              <rect
-                x={x0}
-                y={y0}
-                height={Math.max(1, y1 - y0)}
-                width={x1 - x0}
-                fill={color}
-                fillOpacity={0.9}
-                rx={2}
-              >
-                <title>{`${node.name}: ${fmt((node as unknown as { value?: number }).value ?? 0)}`}</title>
-              </rect>
-              <text
-                x={isLeft ? x1 + 6 : x0 - 6}
-                y={(y0 + y1) / 2}
-                textAnchor={isLeft ? 'start' : 'end'}
-                dominantBaseline="middle"
-                fontSize={11}
-                fill="#d1d5db"
-              >
-                {node.name}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-    </div>
-  )
-}
-
-// ── Tab 3: Households ────────────────────────────────────────────────────────
+// ── Tab 2: Households ────────────────────────────────────────────────────────
 
 function HouseholdsTab() {
   const { data: summary } = useQuery<IncomeSummary>({
@@ -777,11 +407,10 @@ function HouseholdsTab() {
 
 // ── Main ProfilePage ─────────────────────────────────────────────────────────
 
-type TabKey = 'profile' | 'income' | 'households'
+type TabKey = 'profile' | 'households'
 
 const TABS: { key: TabKey; label: string; icon: typeof User }[] = [
   { key: 'profile', label: 'Profile', icon: User },
-  { key: 'income', label: 'Income', icon: TrendingUp },
   { key: 'households', label: 'Households', icon: Home },
 ]
 
@@ -817,7 +446,6 @@ export function ProfilePage() {
 
         {/* Tab content */}
         {tab === 'profile' && <ProfileTab user={user} />}
-        {tab === 'income' && <IncomeTab />}
         {tab === 'households' && <HouseholdsTab />}
       </main>
     </div>
