@@ -1,12 +1,12 @@
 # Budgeteer — OpenMediaVault / Compose compose file
 #
-# Before starting, add these three lines to your Global Environment Variables:
+# Store these three secrets in this stack's Files tab (.env):
 #
 #   JWT_SECRET=<output of: openssl rand -hex 32>
 #   POSTGRES_PASSWORD=<strong password>
 #   ADMIN_PASSWORD=<your login password>
 #
-# All other values are pulled from your existing global variables.
+# All other values are pulled from your OMV global environment variables.
 
 services:
   budgeteer-db:
@@ -41,7 +41,9 @@ services:
       DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@budgeteer-db:5432/budgeteer
       API_PORT: 3001
       JWT_SECRET: ${JWT_SECRET}
-      CORS_ORIGIN: ${APP_URL:-http://localhost:7272}
+      # PUBLIC_URL: the URL your browser uses to reach the NAS (e.g. http://freedom.local:7272)
+      # If you access via a reverse proxy with a custom domain, use that URL instead.
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:7272}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
@@ -56,6 +58,7 @@ services:
     depends_on:
       - budgeteer-api
     ports:
+      # Port the web UI is served on — default 7272
       - "${APP_PORT:-7272}:80"
     environment:
       TZ: ${TIME_ZONE_VALUE}

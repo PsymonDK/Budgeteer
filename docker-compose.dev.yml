@@ -30,7 +30,7 @@ services:
       DATABASE_URL: postgresql://budgeteer:budgeteer@postgres:5432/budgeteer
       API_PORT: 3001
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
-      CORS_ORIGIN: ${APP_URL:-http://localhost:3000}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:7272}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}

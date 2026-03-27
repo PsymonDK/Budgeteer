@@ -85,7 +85,7 @@ See [deploy/README.md](deploy/README.md) for backup/restore instructions and mor
 ### Requirements
 
 - Node.js 20+
-- PostgreSQL (or use the Docker Compose dev setup)
+- PostgreSQL (or use the Docker Compose dev setup: `docker-compose.dev.yml`)
 
 ### Setup
 
@@ -97,6 +97,12 @@ npm install
 npm run db:migrate
 npm run db:seed
 npm run dev
+```
+
+To spin up a local Postgres instance instead of installing it bare-metal:
+
+```bash
+docker compose -f docker-compose.dev.yml up postgres -d
 ```
 
 The API runs on `http://localhost:3001` and the web app on `http://localhost:5173`.

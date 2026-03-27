@@ -27,14 +27,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem('user')
-    if (stored) {
-      try {
-        setUser(JSON.parse(stored) as AuthUser)
-      } catch {
-        localStorage.removeItem('user')
-      }
+    if (!stored) {
+      setIsLoading(false)
+      return
     }
-    setIsLoading(false)
+    try {
+      setUser(JSON.parse(stored) as AuthUser)
+    } catch {
+      localStorage.removeItem('user')
+      setIsLoading(false)
+      return
+    }
+    // Refresh user data from the server so name/email/role are always current
+    api.get<AuthUser>('/users/me')
+      .then((res) => {
+        setUser(res.data)
+        localStorage.setItem('user', JSON.stringify(res.data))
+      })
+      .catch(() => {
+        // 401 means token is invalid/user deleted — clear the session
+        localStorage.removeItem('accessToken')
+        localStorage.removeItem('refreshToken')
+        localStorage.removeItem('user')
+        setUser(null)
+      })
+      .finally(() => setIsLoading(false))
   }, [])
 
   async function login(email: string, password: string) {

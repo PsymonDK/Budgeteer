@@ -22,31 +22,34 @@ export async function currencyRoutes(fastify: FastifyInstance) {
   // Returns currencies that have isEnabled = true in the Currency table,
   // or any currency from CurrencyRate that has no Currency row (backward compat).
   fastify.get('/currencies', { preHandler: authenticate }, async (_request, reply) => {
+    // Start from the Currency table so enabled currencies are always returned,
+    // even when CurrencyRate records don't exist yet (e.g. before the first sync).
     const latest = await prisma.$queryRaw<{
       currencyCode: string
-      rate: string
-      fetchedDate: Date
-      name: string | null
+      rate: string | null
+      fetchedDate: Date | null
+      name: string
     }[]>`
-      SELECT DISTINCT ON (cr."currencyCode")
-        cr."currencyCode",
-        cr.rate::text,
+      SELECT DISTINCT ON (c.code)
+        c.code          AS "currencyCode",
+        cr.rate::text   AS rate,
         cr."fetchedDate",
         c.name
-      FROM "CurrencyRate" cr
-      LEFT JOIN "Currency" c ON c.code = cr."currencyCode"
-      WHERE cr."baseCurrency" = ${BASE_CURRENCY}
-        AND (c."isEnabled" IS NULL OR c."isEnabled" = true)
-      ORDER BY cr."currencyCode", cr."fetchedDate" DESC
+      FROM "Currency" c
+      LEFT JOIN "CurrencyRate" cr
+        ON cr."currencyCode" = c.code
+       AND cr."baseCurrency" = ${BASE_CURRENCY}
+      WHERE c."isEnabled" = true
+      ORDER BY c.code, cr."fetchedDate" DESC NULLS LAST
     `
 
     return reply.send(
       latest.map((r) => ({
         code: r.currencyCode,
-        name: r.name ?? r.currencyCode,
-        rate: parseFloat(r.rate),
+        name: r.name,
+        rate: r.rate !== null ? parseFloat(r.rate) : null,
         baseCurrency: BASE_CURRENCY,
-        fetchedDate: r.fetchedDate,
+        fetchedDate: r.fetchedDate ?? null,
       }))
     )
   })

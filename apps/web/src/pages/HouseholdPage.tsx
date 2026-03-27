@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
@@ -20,6 +20,7 @@ interface Member {
 interface Household {
   id: string
   name: string
+  isActive: boolean
   myRole: 'ADMIN' | 'MEMBER' | null
   members: Member[]
 }
@@ -36,6 +37,7 @@ export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
   const { user: me } = useAuth()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
 
   const [showAddMember, setShowAddMember] = useState(false)
   const [addUserId, setAddUserId] = useState('')
@@ -49,6 +51,7 @@ export function HouseholdPage() {
   // Confirmation dialogs
   const [confirmRemove, setConfirmRemove] = useState<Member | null>(null)
   const [confirmRoleChange, setConfirmRoleChange] = useState<{ member: Member; newRole: 'ADMIN' | 'MEMBER' } | null>(null)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
   const { data: household, isLoading } = useQuery<Household>({
     queryKey: ['household', id],
@@ -101,6 +104,26 @@ export function HouseholdPage() {
       queryClient.invalidateQueries({ queryKey: ['household', id] })
       toast.success('Role updated')
     },
+  })
+
+  const deactivateMutation = useMutation({
+    mutationFn: () => api.put(`/households/${id}/deactivate`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['households'] })
+      toast.success('Household deactivated')
+      navigate('/')
+    },
+    onError: () => toast.error('Failed to deactivate household'),
+  })
+
+  const reactivateMutation = useMutation({
+    mutationFn: () => api.put(`/households/${id}/reactivate`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      queryClient.invalidateQueries({ queryKey: ['households'] })
+      toast.success('Household reactivated')
+    },
+    onError: () => toast.error('Failed to reactivate household'),
   })
 
   const updateNameMutation = useMutation({
@@ -278,6 +301,37 @@ export function HouseholdPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Danger zone */}
+        {isAdmin && (
+          <div className="mt-12 border border-red-900/50 rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-red-400 uppercase tracking-wide mb-1">Danger zone</h2>
+            {household.isActive ? (
+              <>
+                <p className="text-gray-400 text-sm mb-4">
+                  Deactivating this household hides it from the dashboard. All data is preserved and it can be reactivated at any time.
+                </p>
+                <button
+                  onClick={() => setConfirmDeactivate(true)}
+                  className="bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  Deactivate household
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-gray-400 text-sm mb-4">This household is deactivated and hidden from the dashboard.</p>
+                <button
+                  onClick={() => reactivateMutation.mutate()}
+                  disabled={reactivateMutation.isPending}
+                  className="bg-green-950 hover:bg-green-900 border border-green-800 text-green-300 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {reactivateMutation.isPending ? 'Reactivating…' : 'Reactivate household'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Add member modal */}
@@ -346,6 +400,28 @@ export function HouseholdPage() {
               Remove
             </button>
             <button onClick={() => setConfirmRemove(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Confirm deactivate */}
+      {confirmDeactivate && (
+        <Modal title="Deactivate household" onClose={() => setConfirmDeactivate(false)} size="sm">
+          <p className="text-gray-300 text-sm mb-6">
+            This will hide <span className="font-semibold text-white">{household.name}</span> from the dashboard. All data is preserved and the household can be reactivated from the settings page.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { deactivateMutation.mutate(); setConfirmDeactivate(false) }}
+              disabled={deactivateMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Deactivate
+            </button>
+            <button onClick={() => setConfirmDeactivate(false)}
               className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
               Cancel
             </button>

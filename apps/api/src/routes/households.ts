@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
-import { authenticate } from '../plugins/authenticate'
+import { authenticate, requireAdmin } from '../plugins/authenticate'
 
 const CreateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
@@ -37,7 +37,11 @@ export async function householdRoutes(fastify: FastifyInstance) {
   fastify.get('/households', { preHandler: authenticate }, async (request, reply) => {
     const { sub: userId, role } = request.user
 
-    const where = role === 'SYSTEM_ADMIN' ? {} : { members: { some: { userId } } }
+    const includeInactive = role === 'SYSTEM_ADMIN' && (request.query as Record<string, string>).all === 'true'
+    const activeFilter = includeInactive ? {} : { isActive: true }
+    const where = role === 'SYSTEM_ADMIN'
+      ? { ...activeFilter }
+      : { isActive: true, members: { some: { userId } } }
 
     const households = await prisma.household.findMany({
       where,
@@ -219,6 +223,49 @@ export async function householdRoutes(fastify: FastifyInstance) {
       where: { householdId_userId: { householdId: id, userId: memberId } },
     })
 
+    return reply.status(204).send()
+  })
+
+  // PUT /households/:id/deactivate — household admin only (soft delete)
+  fastify.put('/households/:id/deactivate', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    const membership = await getMembership(id, userId)
+    if (membership?.role !== 'ADMIN' && role !== 'SYSTEM_ADMIN') {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const household = await prisma.household.update({ where: { id }, data: { isActive: false } })
+    return reply.send(household)
+  })
+
+  // PUT /households/:id/reactivate — household admin only
+  fastify.put('/households/:id/reactivate', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    const membership = await getMembership(id, userId)
+    if (membership?.role !== 'ADMIN' && role !== 'SYSTEM_ADMIN') {
+      return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const household = await prisma.household.update({ where: { id }, data: { isActive: true } })
+    return reply.send(household)
+  })
+
+  // DELETE /households/:id — system admin only (hard delete)
+  fastify.delete('/households/:id', { preHandler: requireAdmin }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+
+    const activeBudgetYear = await prisma.budgetYear.findFirst({
+      where: { householdId: id, status: 'ACTIVE' },
+    })
+    if (activeBudgetYear) {
+      return reply.status(409).send({ error: 'Cannot delete a household with an active budget year. Retire or deactivate it first.' })
+    }
+
+    await prisma.household.delete({ where: { id } })
     return reply.status(204).send()
   })
 }

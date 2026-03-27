@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.33.0] - 2026-03-27 — Bug fixes, security hardening, household lifecycle
+
+### Added
+- **Household deactivate / reactivate** (#101) — household admins can deactivate a household from the Settings page; deactivated households are hidden from the dashboard; system admins can hard-delete a household (blocked if an active budget year exists)
+- **System admin household list** now shows inactive households (dimmed) and includes a Delete button with confirmation
+
+### Fixed
+- **#96 Display name** — user data is now refreshed from `/users/me` on every app load so the header always shows the current name from the database rather than a stale localStorage value
+- **#97 Currency dropdown empty** — the `/currencies` endpoint now returns all enabled currencies from the Currency table even when no rate records exist yet (e.g. before the first Nationalbank sync); rates are `null` until the sync completes
+- **#98 Session persists after data wipe** — all three auth guards (`authenticate`, `requireAdmin`, `requireBookkeeperOrAdmin`) now verify the user still exists and is active in the database after validating the JWT signature; deleted users are rejected with 401
+
+### Changed
+- **#100 ENV variable naming** — `APP_URL` renamed to `PUBLIC_URL` across all compose files and the API; old name still accepted as a fallback; `VITE_API_URL` removed from the deploy `.env.example` (it is a build-time variable that always defaults to `/api` in Docker and does not need to be set); inline comments added to compose files explaining every variable
+- **#103 Docker Compose** — `docker-compose.yml` renamed to `docker-compose.dev.yml` to clearly separate the contributor build-from-source setup from the end-user `deploy/docker-compose.yml`
+- Footer version bumped to `0.33.0`
+
+---
+
 ## [0.32.0] - 2026-03-27 — Wider layouts for larger screens
 
 ### Changed

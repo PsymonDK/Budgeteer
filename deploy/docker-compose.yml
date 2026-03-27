@@ -21,14 +21,22 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # ── Required ──────────────────────────────────────────────────────────
       DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@postgres:5432/budgeteer
-      API_PORT: 3001
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
-      CORS_ORIGIN: ${APP_URL:-http://localhost:7272}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      # ── Optional ──────────────────────────────────────────────────────────
+      API_PORT: 3001
+      # PUBLIC_URL: the URL your browser uses to reach the app.
+      # Must match the address you type into your browser (including port if non-standard).
+      # Used to allow cross-origin requests from the web UI to the API.
+      # Example: http://192.168.1.10:7272  or  https://budget.yourdomain.com
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:7272}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      # Set to true to populate demo households on first boot
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      # Base currency for all calculations — must be a currency Danmarks Nationalbank publishes rates for
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
 
   web:
@@ -37,6 +45,7 @@ services:
     depends_on:
       - api
     ports:
+      # APP_PORT: the host port the web UI is served on (default 7272)
       - "${APP_PORT:-7272}:80"
 
 volumes:
