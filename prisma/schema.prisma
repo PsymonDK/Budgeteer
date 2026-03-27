@@ -237,6 +237,8 @@ model Expense {
   amount            Decimal          @db.Decimal(10, 2)
   frequency         Frequency
   frequencyPeriod   String?
+  startMonth        Int?
+  endMonth          Int?
   monthlyEquivalent Decimal          @db.Decimal(10, 2)
   notes             String?
   currencyCode      String?

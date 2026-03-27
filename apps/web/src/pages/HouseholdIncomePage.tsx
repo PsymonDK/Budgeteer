@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { FREQ_LABELS, type Frequency } from '../lib/constants'
+import { useFmt } from '../hooks/useFmt'
 
 interface IncomeEntry {
   id: string
@@ -33,13 +34,10 @@ interface IncomeSummary {
 }
 
 
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 export function HouseholdIncomePage() {
   const { id: householdId } = useParams<{ id: string }>()
   const { user: me } = useAuth()
+  const fmt = useFmt()
 
   const { data: summary, isLoading } = useQuery<IncomeSummary>({
     queryKey: ['income-summary', householdId],

@@ -7,6 +7,7 @@ import { CategoryIcon } from '../components/CategoryIcon'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart, type SankeyNodeDef, type SankeyLinkDef } from '../components/SankeyChart'
 import { FREQ_LABELS } from '../lib/constants'
+import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -92,11 +93,6 @@ interface SavingsHistoryRow {
   savingsRate: string | null
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 
 const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
@@ -107,6 +103,8 @@ const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', 
 export function DashboardPage() {
   const { id: householdId } = useParams<{ id: string }>()
   const { user: me } = useAuth()
+  const fmt = useFmt()
+  const baseCurrency = useBaseCurrency()
 
   // DASH-002: monthly vs actual charge toggle
   const [expenseView, setExpenseView] = useState<'monthly' | 'actual'>('monthly')
@@ -491,7 +489,7 @@ export function DashboardPage() {
             <div className="mb-8">
               <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <SankeyChart data={sankeyData} />
+                <SankeyChart data={sankeyData} currency={baseCurrency} />
               </div>
             </div>
           )}

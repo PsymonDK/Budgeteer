@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcMonthlyEquivalent } from '../lib/calculations'
+import { calcMonthlyEquivalent, calcAnnualAverage } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
@@ -15,12 +15,14 @@ const CustomSplitSchema = z.object({
   pct: z.number().min(0).max(100),
 })
 
-const CreateExpenseSchema = z.object({
+const ExpenseBaseSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
   frequency: FrequencyEnum,
   categoryId: z.string(),
   frequencyPeriod: z.string().optional(),
+  startMonth: z.number().int().min(1).max(12).nullable().optional(),
+  endMonth: z.number().int().min(1).max(12).nullable().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
   ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
@@ -28,10 +30,18 @@ const CreateExpenseSchema = z.object({
   customSplits: z.array(CustomSplitSchema).optional(),
 })
 
-const UpdateExpenseSchema = CreateExpenseSchema.partial().refine(
-  (d) => Object.keys(d).length > 0,
-  { message: 'At least one field is required' }
-)
+const monthRangeRefinement = (d: { startMonth?: number | null; endMonth?: number | null }) => {
+  if (d.startMonth != null && d.endMonth != null) return d.startMonth <= d.endMonth
+  return true
+}
+
+const CreateExpenseSchema = ExpenseBaseSchema.refine(monthRangeRefinement, {
+  message: 'startMonth must be ≤ endMonth', path: ['endMonth'],
+})
+
+const UpdateExpenseSchema = ExpenseBaseSchema.partial()
+  .refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' })
+  .refine(monthRangeRefinement, { message: 'startMonth must be ≤ endMonth', path: ['endMonth'] })
 
 const expenseInclude = {
   category: { select: { id: true, name: true, icon: true, isSystemWide: true, categoryType: true } },
@@ -71,7 +81,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, notes, currencyCode, ownership, ownedByUserId, customSplits } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits } = result.data
 
     const category = await prisma.category.findUnique({ where: { id: categoryId } })
     if (!category) return reply.status(400).send({ error: 'Category not found' })
@@ -84,7 +94,11 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
 
     const amountInBase = amount * rate
-    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
+    const monthlyEquivalent = calcAnnualAverage(
+      calcMonthlyEquivalent(new Decimal(amountInBase), frequency),
+      startMonth ?? null,
+      endMonth ?? null,
+    )
 
     const expense = await prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
@@ -95,6 +109,8 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           frequency,
           categoryId,
           frequencyPeriod: frequencyPeriod ?? null,
+          startMonth: startMonth ?? null,
+          endMonth: endMonth ?? null,
           notes: notes ?? null,
           monthlyEquivalent,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
@@ -141,7 +157,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, ...rest } = result.data
+    const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, startMonth, endMonth, ...rest } = result.data
 
     if (categoryId) {
       const category = await prisma.category.findUnique({ where: { id: categoryId } })
@@ -175,8 +191,14 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const newAmount = amount !== undefined ? amount : toNum(existing.amount)
     const newFrequency = frequency ?? existing.frequency
+    const newStartMonth = startMonth !== undefined ? (startMonth ?? null) : existing.startMonth
+    const newEndMonth = endMonth !== undefined ? (endMonth ?? null) : existing.endMonth
     const amountInBase = newAmount * rate
-    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
+    const monthlyEquivalent = calcAnnualAverage(
+      calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency),
+      newStartMonth,
+      newEndMonth,
+    )
 
     const expense = await prisma.$transaction(async (tx) => {
       // Always replace custom splits when ownership fields are touched
@@ -189,6 +211,8 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           ...(amount !== undefined && { amount: new Decimal(amount) }),
           ...(frequency !== undefined && { frequency }),
           ...(categoryId !== undefined && { categoryId }),
+          ...(startMonth !== undefined && { startMonth: startMonth ?? null }),
+          ...(endMonth !== undefined && { endMonth: endMonth ?? null }),
           ownership: newOwnership,
           ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
           monthlyEquivalent,

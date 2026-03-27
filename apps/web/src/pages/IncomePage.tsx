@@ -13,6 +13,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
+import { useFmt } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -101,9 +102,6 @@ interface HistoryBucket {
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })
@@ -133,6 +131,7 @@ const emptyBonus = (baseCurrency: string): BonusForm => ({ label: '', grossAmoun
 export function IncomePage() {
   const { user: me } = useAuth()
   const queryClient = useQueryClient()
+  const fmt = useFmt()
   const [params] = useSearchParams()
   const proxyUserId = params.get('proxyUserId')
   const isProxy = !!proxyUserId && (me?.role === 'SYSTEM_ADMIN' || me?.role === 'BOOKKEEPER')

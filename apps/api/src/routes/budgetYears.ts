@@ -44,6 +44,8 @@ async function copyBudgetYearContent(tx: Prisma.TransactionClient, source: Sourc
         amount: e.amount,
         frequency: e.frequency,
         frequencyPeriod: e.frequencyPeriod,
+        startMonth: e.startMonth,
+        endMonth: e.endMonth,
         monthlyEquivalent: e.monthlyEquivalent,
         notes: e.notes,
         categoryId: e.categoryId,

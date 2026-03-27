@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.37.0] - 2026-03-27 — Currency markers throughout; expense date ranges
+
+### Added
+- **#124 Currency code next to all monetary amounts** — a shared `useFmt()` hook (and `useBaseCurrency()`) fetches the base currency from `/config` once (stale-time: Infinity) and formats every monetary value as `1,234.56 DKK`; replaces bare number formatting across all pages (Expenses, Savings, Dashboard, User Dashboard, Compare, Income, History, Household Income)
+- **#106 Expense date ranges (partial)** — expenses can now have an optional start month and end month; the `monthlyEquivalent` stored in the database is adjusted to the annual average for partial-year expenses (e.g. a quarterly €900 expense active only May–Aug counts as €225/mo averaged over 12 months); the expense form has month picker dropdowns; the expense list shows a `May–Aug` badge on partial-year rows and dims rows whose `endMonth` has already passed in the current year
+- **Month range validation** — API rejects payloads where `startMonth > endMonth`; `copyBudgetYear` copies `startMonth`/`endMonth` to new years and simulations
+
+### Changed
+- **`SankeyChart`** now accepts a `currency` prop instead of capturing the base currency itself; callers pass `useBaseCurrency()` so the chart stays a pure presentational component
+- **`ComparePage`** period-aware formatter refactored to a `makeFmt(currency)` factory so the period-multiplier logic stays local while currency comes from the shared hook
+- Footer version bumped to `0.37.0`
+
+---
+
 ## [0.36.0] - 2026-03-27 — Gross/net toggle on income charts; bonus history fix
 
 ### Added

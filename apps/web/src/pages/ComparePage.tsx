@@ -6,6 +6,7 @@ import { CategoryIcon } from '../components/CategoryIcon'
 import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { FREQ_LABELS } from '../lib/constants'
+import { useBaseCurrency } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -61,10 +62,13 @@ const PERIOD_LABEL: Record<Period, string> = {
 }
 
 
-function fmt(v: number, period: Period) {
-  return (v * PERIOD_MULTIPLIER[period]).toLocaleString('en', {
-    minimumFractionDigits: 2, maximumFractionDigits: 2,
-  })
+function makeFmt(currency: string) {
+  return (v: number, period: Period) => {
+    const n = (v * PERIOD_MULTIPLIER[period]).toLocaleString('en', {
+      minimumFractionDigits: 2, maximumFractionDigits: 2,
+    })
+    return currency ? `${n} ${currency}` : n
+  }
 }
 
 function yearLabel(y: BudgetYearOption | { year: number; status: string; simulationName: string | null }) {
@@ -88,6 +92,7 @@ function deltaSign(delta: number) {
 
 export function ComparePage() {
   const { id: householdId } = useParams<{ id: string }>()
+  const fmt = makeFmt(useBaseCurrency())
 
   const [yearIdA, setYearIdA] = useState('')
   const [yearIdB, setYearIdB] = useState('')

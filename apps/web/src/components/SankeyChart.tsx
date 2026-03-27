@@ -34,15 +34,13 @@ const FALLBACK_COLORS = [
   '#ec4899', '#06b6d4', '#84cc16',
 ]
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function SankeyChart({ data }: { data: { nodes: SankeyNodeDef[]; links: SankeyLinkDef[] } }) {
+export function SankeyChart({ data, currency = '' }: { data: { nodes: SankeyNodeDef[]; links: SankeyLinkDef[] }; currency?: string }) {
+  function fmt(v: number | string) {
+    const n = Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    return currency ? `${n} ${currency}` : n
+  }
   const containerRef = useRef<HTMLDivElement>(null)
   const [svgContent, setSvgContent] = useState<{
     nodes: SankeyExtNode[]

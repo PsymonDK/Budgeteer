@@ -10,6 +10,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency } from '../lib/constants'
+import { useFmt } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -83,10 +84,6 @@ const emptyForm = (baseCurrency: string): EntryForm => ({
   ownership: 'SHARED', ownedByUserId: null, categoryId: '', customSplits: [],
 })
 
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 function calcMonthly(amount: number, freq: Frequency): number {
   switch (freq) {
     case 'WEEKLY':      return amount * 52 / 12
@@ -107,6 +104,7 @@ function yearLabel(y: BudgetYear) {
 
 export function SavingsPage() {
   const { id: householdId } = useParams<{ id: string }>()
+  const fmt = useFmt()
   const [searchParams] = useSearchParams()
   const requestedYearId = searchParams.get('budgetYearId')
   const queryClient = useQueryClient()

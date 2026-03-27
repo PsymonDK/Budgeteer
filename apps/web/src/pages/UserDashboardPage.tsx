@@ -12,6 +12,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart } from '../components/SankeyChart'
 import { inputClass } from '../lib/styles'
+import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,10 +85,6 @@ const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 function formatMonth(yyyymm: string): string {
   const [year, mon] = yyyymm.split('-')
   const date = new Date(Number(year), Number(mon) - 1, 1)
@@ -138,6 +135,8 @@ const STATUS_STYLES: Record<string, string> = {
 export function UserDashboardPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const fmt = useFmt()
+  const baseCurrency = useBaseCurrency()
   const [showCreate, setShowCreate] = useState(false)
   const [name, setName] = useState('')
   const [createError, setCreateError] = useState('')
@@ -235,6 +234,7 @@ export function UserDashboardPage() {
                 previous={previousTotals?.monthlyGrossIncome}
                 mode="higher-good"
                 accent="text-emerald-400"
+                fmt={fmt}
               />
               <SummaryCard
                 label="Monthly expenses"
@@ -242,6 +242,7 @@ export function UserDashboardPage() {
                 previous={previousTotals?.monthlyExpenses}
                 mode="lower-good"
                 accent="text-red-400"
+                fmt={fmt}
               />
               <SummaryCard
                 label="Monthly savings"
@@ -249,6 +250,7 @@ export function UserDashboardPage() {
                 previous={previousTotals?.monthlySavings}
                 mode="higher-good"
                 accent="text-blue-400"
+                fmt={fmt}
               />
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Households</p>
@@ -271,7 +273,7 @@ export function UserDashboardPage() {
             ) : (
               <div className="space-y-3">
                 {households.map((h) => (
-                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} />
+                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={fmt} />
                 ))}
               </div>
             )}
@@ -281,7 +283,7 @@ export function UserDashboardPage() {
             <div className={`${cardClass} mb-6`}>
               <h2 className="text-base font-semibold mb-4">Income flow</h2>
               {sankeyData && sankeyData.nodes.length > 0 ? (
-                <SankeyChart data={sankeyData} />
+                <SankeyChart data={sankeyData} currency={baseCurrency} />
               ) : (
                 <p className="text-gray-500 text-sm">No allocation data to display. Allocate income to households first.</p>
               )}
@@ -396,7 +398,7 @@ export function UserDashboardPage() {
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SummaryCard({
-  label, value, subLabel, subValue, previous, mode, accent,
+  label, value, subLabel, subValue, previous, mode, accent, fmt,
 }: {
   label: string
   value: string
@@ -405,6 +407,7 @@ function SummaryCard({
   previous?: string
   mode: DeltaMode
   accent: string
+  fmt: (v: number | string) => string
 }) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
@@ -424,7 +427,7 @@ function SummaryCard({
   )
 }
 
-function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary; onClick: () => void }) {
+function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSummary; onClick: () => void; fmt: (v: number | string) => string }) {
   const surplus = parseFloat(h.monthlySurplus)
   const surplusColor = surplus >= 0 ? 'text-emerald-400' : 'text-red-400'
 
@@ -455,10 +458,10 @@ function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary;
 
           {/* Mini stats grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
-            <Stat label="Income" value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" />
-            <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" />
-            <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" />
-            <Stat label="Surplus (net)" value={h.monthlySurplus} color={surplusColor} />
+            <Stat label="Income" value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
+            <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
+            <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" fmt={fmt} />
+            <Stat label="Surplus (net)" value={h.monthlySurplus} color={surplusColor} fmt={fmt} />
           </div>
 
           {/* Warning badges */}
@@ -488,7 +491,7 @@ function HouseholdCard({ household: h, onClick }: { household: HouseholdSummary;
   )
 }
 
-function Stat({ label, value, subLabel, subValue, color }: { label: string; value: string; subLabel?: string; subValue?: string; color: string }) {
+function Stat({ label, value, subLabel, subValue, color, fmt }: { label: string; value: string; subLabel?: string; subValue?: string; color: string; fmt: (v: number | string) => string }) {
   return (
     <div>
       <p className="text-xs text-gray-500">{label}</p>

@@ -12,6 +12,7 @@ import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency } from '../lib/constants'
+import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ interface Expense {
   amount: string
   frequency: Frequency
   frequencyPeriod: string | null
+  startMonth: number | null
+  endMonth: number | null
   monthlyEquivalent: string
   notes: string | null
   category: Category
@@ -84,10 +87,6 @@ function calcMonthly(amount: number, freq: Frequency): number {
   }
 }
 
-function fmt(value: number): string {
-  return value.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
 // ── Expense form state ────────────────────────────────────────────────────────
 
 interface ExpenseForm {
@@ -96,6 +95,8 @@ interface ExpenseForm {
   frequency: Frequency
   categoryId: string
   frequencyPeriod: string
+  startMonth: string
+  endMonth: string
   notes: string
   currencyCode: string
   ownership: ExpenseOwnership
@@ -103,8 +104,29 @@ interface ExpenseForm {
   customSplits: CustomSplitInput[]
 }
 
+const MONTH_OPTIONS = [
+  { value: '1', label: 'January' }, { value: '2', label: 'February' },
+  { value: '3', label: 'March' }, { value: '4', label: 'April' },
+  { value: '5', label: 'May' }, { value: '6', label: 'June' },
+  { value: '7', label: 'July' }, { value: '8', label: 'August' },
+  { value: '9', label: 'September' }, { value: '10', label: 'October' },
+  { value: '11', label: 'November' }, { value: '12', label: 'December' },
+]
+
+const MONTH_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function monthRangeLabel(startMonth: number | null, endMonth: number | null): string | null {
+  if (startMonth == null && endMonth == null) return null
+  const s = startMonth ?? 1
+  const e = endMonth ?? 12
+  if (s === 1 && e === 12) return null
+  if (s === e) return MONTH_SHORT[s]
+  return `${MONTH_SHORT[s]}–${MONTH_SHORT[e]}`
+}
+
 const emptyForm = (baseCurrency: string): ExpenseForm => ({
-  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '', notes: '',
+  label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '',
+  startMonth: '', endMonth: '', notes: '',
   currencyCode: baseCurrency, ownership: 'SHARED', ownedByUserId: null, customSplits: [],
 })
 
@@ -117,6 +139,8 @@ function yearLabel(y: BudgetYear) {
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
+  const fmt = useFmt()
+  const baseCurrency = useBaseCurrency()
   const [searchParams] = useSearchParams()
   const requestedYearId = searchParams.get('budgetYearId')
   const queryClient = useQueryClient()
@@ -164,11 +188,6 @@ export function ExpensesPage() {
     enabled: !!householdId,
   })
 
-  const { data: config } = useQuery<{ baseCurrency: string }>({
-    queryKey: ['config'],
-    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
-  })
-
   const { data: currencies = [] } = useQuery<Currency[]>({
     queryKey: ['currencies'],
     queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
@@ -181,7 +200,6 @@ export function ExpensesPage() {
   })
   const members = householdData?.members ?? []
 
-  const baseCurrency = config?.baseCurrency ?? 'DKK'
 
   // ── Derived data ─────────────────────────────────────────────────────────────
 
@@ -301,6 +319,8 @@ export function ExpensesPage() {
       frequency: expense.frequency,
       categoryId: expense.category.id,
       frequencyPeriod: expense.frequencyPeriod ?? '',
+      startMonth: expense.startMonth?.toString() ?? '',
+      endMonth: expense.endMonth?.toString() ?? '',
       notes: expense.notes ?? '',
       currencyCode: expense.currencyCode ?? baseCurrency,
       ownership: expense.ownership ?? 'SHARED',
@@ -329,8 +349,10 @@ export function ExpensesPage() {
     const payload = {
       ...form,
       frequencyPeriod: form.frequencyPeriod || undefined,
+      startMonth: form.startMonth ? parseInt(form.startMonth, 10) : null,
+      endMonth: form.endMonth ? parseInt(form.endMonth, 10) : null,
       notes: form.notes || undefined,
-    } as ExpenseForm
+    } as ExpenseForm & { startMonth: number | null; endMonth: number | null }
     if (editingExpense) updateMutation.mutate(payload)
     else createMutation.mutate(payload)
   }
@@ -434,7 +456,7 @@ export function ExpensesPage() {
                 {expenses.length === 0 ? 'No plunder recorded yet. Add one to get started.' : 'No plunder matches the filter.'}
               </div>
             ) : view === 'calendar' ? (
-              <ExpenseCalendar expenses={filtered} />
+              <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (
               <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
                 <table className="w-full text-sm">
@@ -469,11 +491,20 @@ export function ExpensesPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((e) => (
-                      <tr key={e.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group">
+                    {filtered.map((e) => {
+                      const currentMonth = new Date().getMonth() + 1
+                      const isPast = e.endMonth != null && e.endMonth < currentMonth
+                      const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
+                      return (
+                      <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}`}>
                         <td className="px-4 py-3 text-white">
                           <div className="flex items-center gap-2 flex-wrap">
                             {e.label}
+                            {rangeLabel && (
+                              <span className="text-xs bg-gray-700/60 text-gray-400 border border-gray-600/50 px-2 py-0.5 rounded-full">
+                                {rangeLabel}
+                              </span>
+                            )}
                             {e.ownership === 'INDIVIDUAL' && e.ownedBy && (
                               <span className="text-xs bg-blue-900/60 text-blue-300 border border-blue-700/50 px-2 py-0.5 rounded-full">
                                 {e.ownedBy.name}
@@ -511,7 +542,6 @@ export function ExpensesPage() {
                         </td>
                         <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
                           {fmt(parseFloat(e.monthlyEquivalent))}
-                          <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
@@ -530,7 +560,7 @@ export function ExpensesPage() {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-gray-700 bg-gray-800/50">
@@ -618,7 +648,7 @@ export function ExpensesPage() {
               {previewMonthly !== null && (
                 <p className="text-xs text-gray-500">
                   Monthly equivalent:{' '}
-                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)}</span>
                   {isForeignCurrency && form.amount && (
                     <span className="ml-2 text-gray-600">
                       ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
@@ -723,6 +753,38 @@ export function ExpensesPage() {
                   className={inputClass}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Active from <span className="text-gray-600">(optional)</span>
+                  </label>
+                  <select
+                    value={form.startMonth}
+                    onChange={(e) => setForm({ ...form, startMonth: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">Start of year</option>
+                    {MONTH_OPTIONS.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Active until <span className="text-gray-600">(optional)</span>
+                  </label>
+                  <select
+                    value={form.endMonth}
+                    onChange={(e) => setForm({ ...form, endMonth: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">End of year</option>
+                    {MONTH_OPTIONS.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">
                   Notes <span className="text-gray-600">(optional)</span>
@@ -816,7 +878,7 @@ function getMonthValues(expense: Expense): (number | null)[] {
   }
 }
 
-function ExpenseCalendar({ expenses }: { expenses: Expense[] }) {
+function ExpenseCalendar({ expenses, fmt }: { expenses: Expense[]; fmt: (v: number | string) => string }) {
   const rows = expenses.map((e) => {
     const values = getMonthValues(e)
     return { expense: e, values, rowTotal: values.reduce<number>((s, v) => s + (v ?? 0), 0) }

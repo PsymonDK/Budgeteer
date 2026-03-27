@@ -8,6 +8,7 @@ import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
+import { useFmt } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,9 +31,6 @@ interface TrendRow {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmt(v: number | string) {
-  return Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
 
 function statusBadgeClass(status: string) {
   if (status === 'ACTIVE') return 'bg-green-900/50 text-green-300'
@@ -51,6 +49,7 @@ const CHART_COLOURS = {
 
 export function HistoryPage() {
   const { id: householdId } = useParams<{ id: string }>()
+  const fmt = useFmt()
 
   // HIST-002 category filter
   const [filterCategoryId, setFilterCategoryId] = useState<string>('')
