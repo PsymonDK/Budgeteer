@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.38.0] - 2026-03-28 — Personal income on user dashboard
+
+### Fixed
+- **User dashboard income tile shows personal income** — the `/me/summary` endpoint was using total household income instead of the current user's allocated share; now filters `calcIncomeForYear` results to the requesting user's `memberIncome` entry for both the active and previous budget year
+
+---
+
 ## [0.37.0] - 2026-03-27 — Currency markers throughout; expense date ranges
 
 ### Added
