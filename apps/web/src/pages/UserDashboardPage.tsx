@@ -122,6 +122,11 @@ export function UserDashboardPage() {
   const [name, setName] = useState('')
   const [createError, setCreateError] = useState('')
   const [showGross, setShowGross] = useState(true)
+  const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly')
+
+  const scale = period === 'annual' ? 12 : 1
+  const periodLabel = period === 'annual' ? '/ year' : '/ month'
+  function pfmt(v: number | string) { return fmt(parseFloat(String(v)) * scale) }
 
   const { data: dashboard, isLoading: dashLoading } = useQuery<PersonalDashboard>({
     queryKey: ['me', 'dashboard'],
@@ -205,22 +210,34 @@ export function UserDashboardPage() {
             <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
-          {me?.role === 'SYSTEM_ADMIN' && (
-            <button
-              onClick={() => { setShowCreate(true); setCreateError('') }}
-              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-            >
-              + New household
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
+              <button
+                onClick={() => setPeriod('monthly')}
+                className={`px-3 py-1.5 transition-colors ${period === 'monthly' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >Monthly</button>
+              <button
+                onClick={() => setPeriod('annual')}
+                className={`px-3 py-1.5 transition-colors ${period === 'annual' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >Annual</button>
+            </div>
+            {me?.role === 'SYSTEM_ADMIN' && (
+              <button
+                onClick={() => { setShowCreate(true); setCreateError('') }}
+                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+              >
+                + New household
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <PageLoader />
         ) : (
           <>
-            {/* ── Three primary tiles ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            {/* ── Four primary tiles ── */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
 
               {/* Income tile */}
               <Link
@@ -231,20 +248,20 @@ export function UserDashboardPage() {
                   <Briefcase size={14} className="text-amber-400" />
                   <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Income</p>
                 </div>
-                <p className="text-2xl font-bold text-amber-400">{fmt(dashboard?.income.grossMonthly ?? '0')}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Net: <span className="text-gray-300">{fmt(dashboard?.income.netMonthly ?? '0')}</span></p>
+                <p className="text-2xl font-bold text-amber-400">{pfmt(dashboard?.income.grossMonthly ?? '0')}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Net: <span className="text-gray-300">{pfmt(dashboard?.income.netMonthly ?? '0')}</span></p>
                 <div className="mt-3 space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-500">Allocated</span>
                     <span className="text-gray-300">
-                      {fmt(dashboard?.income.allocatedAmount ?? '0')}
+                      {pfmt(dashboard?.income.allocatedAmount ?? '0')}
                       <span className="text-gray-600 ml-1">({parseFloat(dashboard?.income.allocatedPct ?? '0').toFixed(0)}%)</span>
                     </span>
                   </div>
                   {parseFloat(dashboard?.income.unallocatedAmount ?? '0') > 0.005 && (
                     <div className="flex justify-between text-xs">
                       <span className="text-gray-500">Unallocated</span>
-                      <span className="text-amber-500">{fmt(dashboard?.income.unallocatedAmount ?? '0')}</span>
+                      <span className="text-amber-500">{pfmt(dashboard?.income.unallocatedAmount ?? '0')}</span>
                     </div>
                   )}
                 </div>
@@ -253,6 +270,7 @@ export function UserDashboardPage() {
                     <Sparkline data={dashboard.income.sparkline.map((s) => ({ value: s.gross }))} color="#f59e0b" />
                   </div>
                 )}
+                <p className="text-xs text-gray-600 mt-2">{periodLabel}</p>
               </Link>
 
               {/* Expenses tile */}
@@ -261,16 +279,16 @@ export function UserDashboardPage() {
                   <Receipt size={14} className="text-red-400" />
                   <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Expenses</p>
                 </div>
-                <p className="text-2xl font-bold text-red-400">{fmt(dashboard?.expenses.total.monthlyEquivalent ?? '0')}</p>
-                <p className="text-xs text-gray-600 mt-0.5">monthly total</p>
+                <p className="text-2xl font-bold text-red-400">{pfmt(dashboard?.expenses.total.monthlyEquivalent ?? '0')}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
                 <div className="mt-3 space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-500">Personal</span>
-                    <span className="text-gray-300">{fmt(dashboard?.expenses.personal.monthlyEquivalent ?? '0')}</span>
+                    <span className="text-gray-300">{pfmt(dashboard?.expenses.personal.monthlyEquivalent ?? '0')}</span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-500">Household share</span>
-                    <span className="text-gray-300">{fmt(dashboard?.expenses.householdShare.monthlyEquivalent ?? '0')}</span>
+                    <span className="text-gray-300">{pfmt(dashboard?.expenses.householdShare.monthlyEquivalent ?? '0')}</span>
                   </div>
                 </div>
                 {showSparklines && dashboard && dashboard.expenses.householdShare.sparkline.length >= 2 && (
@@ -286,8 +304,8 @@ export function UserDashboardPage() {
                   <PiggyBank size={14} className="text-blue-400" />
                   <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Savings</p>
                 </div>
-                <p className="text-2xl font-bold text-blue-400">{fmt(dashboard?.savings.monthlyEquivalent ?? '0')}</p>
-                <p className="text-xs text-gray-600 mt-0.5">monthly total</p>
+                <p className="text-2xl font-bold text-blue-400">{pfmt(dashboard?.savings.monthlyEquivalent ?? '0')}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
                 <div className="mt-3 space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-gray-500">% of gross</span>
@@ -304,26 +322,25 @@ export function UserDashboardPage() {
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* ── Surplus / deficit bar ── */}
-            {dashboard && (
-              <div className={`rounded-xl border px-5 py-4 mb-10 flex items-center justify-between ${
-                dashboard.surplus.isPositive
-                  ? 'bg-emerald-950/30 border-emerald-900/50'
-                  : 'bg-red-950/30 border-red-900/50'
-              }`}>
-                <div>
-                  <p className="text-xs text-gray-400 uppercase tracking-wide font-medium mb-0.5">
-                    Monthly {dashboard.surplus.isPositive ? 'surplus' : 'deficit'}
-                  </p>
-                  <p className="text-xs text-gray-500">Net income − (expenses + savings)</p>
-                </div>
-                <p className={`text-2xl font-bold tabular-nums ${dashboard.surplus.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {!dashboard.surplus.isPositive && '−'}{fmt(Math.abs(parseFloat(dashboard.surplus.amount)).toFixed(2))}
-                </p>
-              </div>
-            )}
+              {/* Surplus tile */}
+              {dashboard && (() => {
+                const surplusAmt = parseFloat(dashboard.surplus.amount)
+                const pos = dashboard.surplus.isPositive
+                return (
+                  <div className={`rounded-xl border p-5 ${pos ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-red-950/30 border-red-900/50'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">{pos ? 'Surplus' : 'Deficit'}</p>
+                    </div>
+                    <p className={`text-2xl font-bold ${pos ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {!pos && '−'}{pfmt(Math.abs(surplusAmt).toFixed(2))}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
+                    <p className="text-xs text-gray-500 mt-3">Net income − expenses − savings</p>
+                  </div>
+                )
+              })()}
+            </div>
 
             {/* ── Households ── */}
             <div className="flex items-center justify-between mb-4">
@@ -339,7 +356,7 @@ export function UserDashboardPage() {
             ) : (
               <div className="space-y-3 mb-10">
                 {households.map((h) => (
-                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={fmt} />
+                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={pfmt} periodLabel={periodLabel} />
                 ))}
               </div>
             )}
@@ -463,7 +480,7 @@ export function UserDashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSummary; onClick: () => void; fmt: (v: number | string) => string }) {
+function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { household: HouseholdSummary; onClick: () => void; fmt: (v: number | string) => string; periodLabel: string }) {
   const surplus = parseFloat(h.monthlySurplus)
   const surplusColor = surplus >= 0 ? 'text-emerald-400' : 'text-red-400'
 
@@ -489,10 +506,10 @@ function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSum
             {!h.budgetYear && <span className="text-xs text-gray-600">No active budget</span>}
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
-            <Stat label="Income" value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
-            <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
-            <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" fmt={fmt} />
-            <Stat label="Surplus (net)" value={h.monthlySurplus} color={surplusColor} fmt={fmt} />
+            <Stat label={`Income ${periodLabel}`} value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Expenses ${periodLabel}`} value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Savings ${periodLabel}`} value={h.monthlySavings} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Surplus ${periodLabel}`} value={h.monthlySurplus} color={surplusColor} fmt={fmt} />
           </div>
           {(h.warnings.expensesExceedIncome || h.warnings.noSavings) && (
             <div className="flex gap-2 mt-3 flex-wrap">
