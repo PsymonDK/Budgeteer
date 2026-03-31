@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { TrendingUp, TrendingDown, Minus, ArrowRight, AlertTriangle, PiggyBank, Briefcase, Receipt } from 'lucide-react'
+import { ArrowRight, AlertTriangle, PiggyBank, Briefcase, Receipt } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ResponsiveContainer, Dot,
@@ -108,24 +108,6 @@ const STATUS_STYLES: Record<string, string> = {
 function formatMonth(yyyymm: string): string {
   const [year, mon] = yyyymm.split('-')
   return new Date(Number(year), Number(mon) - 1, 1).toLocaleString('en-GB', { month: 'short', year: '2-digit' })
-}
-
-type DeltaMode = 'higher-good' | 'lower-good'
-
-function DeltaBadge({ current, previous, mode }: { current: string; previous: string; mode: DeltaMode }) {
-  const cur = parseFloat(current)
-  const prev = parseFloat(previous)
-  if (prev === 0) return null
-  const pct = ((cur - prev) / prev) * 100
-  if (Math.abs(pct) < 0.05) return <span className="flex items-center gap-1 text-xs text-gray-500"><Minus size={12} /> No change vs prev year</span>
-  const up = pct > 0
-  const good = mode === 'higher-good' ? up : !up
-  const Icon = up ? TrendingUp : TrendingDown
-  return (
-    <span className={`flex items-center gap-1 text-xs ${good ? 'text-emerald-400' : 'text-red-400'}`}>
-      <Icon size={12} />{up ? '+' : ''}{pct.toFixed(1)}% vs prev year
-    </span>
-  )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
