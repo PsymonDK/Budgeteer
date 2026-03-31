@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.39.0] - 2026-03-31 — Compare dashboard income fallback
+
+### Fixed
+- **Compare dashboard income tiles show 0** — when comparing budget years that have no `HouseholdIncomeAllocation` records (e.g. older/retired years), the compare endpoint now falls back to the most recent budget year in the same household that does have allocations; the salary reference date remains tied to the actual compared year so salary snapshots stay correct
+
+---
+
 ## [0.38.0] - 2026-03-28 — Personal income on user dashboard
 
 ### Fixed

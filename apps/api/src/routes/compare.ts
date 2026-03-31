@@ -5,6 +5,23 @@ import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { assertHouseholdAccess } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 
+async function resolveAllocationYearId(
+  budgetYearId: string,
+  householdId: string
+): Promise<string> {
+  const count = await prisma.householdIncomeAllocation.count({
+    where: { budgetYearId },
+  })
+  if (count > 0) return budgetYearId
+
+  const fallback = await prisma.budgetYear.findFirst({
+    where: { householdId, incomeAllocations: { some: {} } },
+    orderBy: { year: 'desc' },
+    select: { id: true },
+  })
+  return fallback?.id ?? budgetYearId
+}
+
 export async function compareRoutes(fastify: FastifyInstance) {
   // GET /households/:id/compare?a=budgetYearIdA&b=budgetYearIdB
   fastify.get('/households/:id/compare', { preHandler: authenticate }, async (request, reply) => {
@@ -48,10 +65,16 @@ export async function compareRoutes(fastify: FastifyInstance) {
       prisma.savingsEntry.findMany({ where: { budgetYearId: yearIdB } }),
     ])
 
-    // Income: use reference date = Dec 31 of each year for comparison
+    // Income: resolve allocation year IDs (fall back to most recent year with
+    // allocations if the requested year has none), then compute income at the
+    // reference date of the *actual* compared year so salary snapshots stay correct.
+    const [allocYearIdA, allocYearIdB] = await Promise.all([
+      resolveAllocationYearId(yearIdA, yearA.householdId),
+      resolveAllocationYearId(yearIdB, yearB.householdId),
+    ])
     const [incomeResultA, incomeResultB] = await Promise.all([
-      calcIncomeForYear(yearIdA, getIncomeReferenceDate(yearA.year, yearA.status)),
-      calcIncomeForYear(yearIdB, getIncomeReferenceDate(yearB.year, yearB.status)),
+      calcIncomeForYear(allocYearIdA, getIncomeReferenceDate(yearA.year, yearA.status)),
+      calcIncomeForYear(allocYearIdB, getIncomeReferenceDate(yearB.year, yearB.status)),
     ])
     const incomeA = incomeResultA.totalMonthlyNet
     const incomeB = incomeResultB.totalMonthlyNet
