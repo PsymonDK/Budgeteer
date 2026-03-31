@@ -1,8 +1,9 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { getJobMonthlyIncome } from '../lib/incomeCalc'
+import { getJobMonthlyIncome, calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { toNum } from '../lib/decimal'
+import { partitionByOwnership } from '../lib/ownership'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -344,6 +345,223 @@ export async function profileRoutes(fastify: FastifyInstance) {
       totalIncome: totalIncome.toFixed(2),
       nodes,
       links,
+    })
+  })
+
+  // ── GET /users/me/dashboard ──────────────────────────────────────────────────
+  fastify.get('/users/me/dashboard', { preHandler: authenticate }, async (request, reply) => {
+    const { sub: userId } = request.user
+    const today = new Date()
+
+    // ── Income ────────────────────────────────────────────────────────────────
+    const activeJobs = await prisma.job.findMany({ where: { userId, endDate: null } })
+
+    const jobIncomes = await Promise.all(
+      activeJobs.map(async (job) => {
+        const { gross, net } = await getJobMonthlyIncome(job.id, today)
+        return { jobId: job.id, gross, net }
+      })
+    )
+    const grossMonthly = jobIncomes.reduce((s, j) => s + j.gross, 0)
+    const netMonthly = jobIncomes.reduce((s, j) => s + j.net, 0)
+    const jobIncomeMap = new Map(jobIncomes.map((j) => [j.jobId, j.gross]))
+
+    const allocations = await prisma.householdIncomeAllocation.findMany({
+      where: {
+        jobId: { in: activeJobs.map((j) => j.id) },
+        budgetYear: { status: { in: ['ACTIVE', 'FUTURE'] } },
+      },
+    })
+    let allocatedAmount = 0
+    for (const alloc of allocations) {
+      allocatedAmount += (jobIncomeMap.get(alloc.jobId) ?? 0) * toNum(alloc.allocationPct) / 100
+    }
+    const unallocatedAmount = grossMonthly - allocatedAmount
+    const allocatedPct = grossMonthly > 0 ? (allocatedAmount / grossMonthly) * 100 : 0
+
+    // Income sparkline: last 6 months
+    const incomeSparklineStart = firstDayOfMonth(addMonths(today, -5))
+    const incomeSparklineMonths: string[] = []
+    for (let i = 0; i < 6; i++) incomeSparklineMonths.push(formatYYYYMM(addMonths(incomeSparklineStart, i)))
+
+    const allJobs = await prisma.job.findMany({
+      where: { userId },
+      include: { salaryRecords: { orderBy: { effectiveFrom: 'asc' } }, overrides: true },
+    })
+    const incomeSparkline = incomeSparklineMonths.map((monthStr) => {
+      const [year, mon] = monthStr.split('-').map(Number)
+      const refDate = new Date(year, mon - 1, 1)
+      let gross = 0
+      let net = 0
+      for (const job of allJobs) {
+        if (job.startDate > new Date(year, mon - 1, 28)) continue
+        if (job.endDate && job.endDate < refDate) continue
+        const override = job.overrides.find((o) => o.year === year && o.month === mon)
+        if (override) {
+          gross += toNum(override.grossAmount)
+          net += toNum(override.netAmount)
+        } else {
+          const rec = [...job.salaryRecords]
+            .filter((s) => s.effectiveFrom <= refDate)
+            .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
+          if (rec) { gross += toNum(rec.grossAmount); net += toNum(rec.netAmount) }
+        }
+      }
+      return { month: monthStr, gross, net }
+    })
+
+    // ── Households the user belongs to (active/future budget years) ──────────
+    const memberships = await prisma.householdMember.findMany({
+      where: { userId },
+      include: {
+        household: {
+          include: {
+            budgetYears: {
+              where: { status: { in: ['ACTIVE', 'FUTURE'] } },
+              orderBy: { year: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+    })
+
+    // ── Expenses & Savings ────────────────────────────────────────────────────
+    let personalExpenses = 0
+    let householdShareExpenses = 0
+    let personalSavings = 0
+    let householdShareSavings = 0
+
+    // Expense sparkline: last ≤6 non-simulation budget years across all households
+    const expenseYearMap = new Map<number, number>() // year -> user's total expense share
+    const savingsYearMap = new Map<number, number>() // year -> user's total savings share
+
+    for (const membership of memberships) {
+      const activeBY = membership.household.budgetYears[0]
+      if (!activeBY) continue
+
+      const [expenses, savings, incomeResult] = await Promise.all([
+        prisma.expense.findMany({
+          where: { budgetYearId: activeBY.id },
+          include: { customSplits: true },
+        }),
+        prisma.savingsEntry.findMany({
+          where: { budgetYearId: activeBY.id },
+          include: { customSplits: true },
+        }),
+        calcIncomeForYear(activeBY.id, getIncomeReferenceDate(activeBY.year, activeBY.status)),
+      ])
+
+      const totalHouseholdGross = incomeResult.totalMonthlyGross
+      const userMember = incomeResult.members.find((m) => m.userId === userId)
+      const userGross = userMember?.monthlyAllocatedGross ?? 0
+      const sharePct = totalHouseholdGross > 0 ? userGross / totalHouseholdGross : 0
+
+      const expPartition = partitionByOwnership(expenses)
+      const savPartition = partitionByOwnership(savings)
+
+      personalExpenses += expPartition.individual.get(userId) ?? 0
+      householdShareExpenses += expPartition.shared * sharePct + (expPartition.custom.get(userId) ?? 0)
+      personalSavings += savPartition.individual.get(userId) ?? 0
+      householdShareSavings += savPartition.shared * sharePct + (savPartition.custom.get(userId) ?? 0)
+
+      // Accumulate current budget year into sparkline maps
+      const yr = activeBY.year
+      expenseYearMap.set(yr, (expenseYearMap.get(yr) ?? 0) +
+        (expPartition.individual.get(userId) ?? 0) +
+        expPartition.shared * sharePct +
+        (expPartition.custom.get(userId) ?? 0))
+      savingsYearMap.set(yr, (savingsYearMap.get(yr) ?? 0) +
+        (savPartition.individual.get(userId) ?? 0) +
+        savPartition.shared * sharePct +
+        (savPartition.custom.get(userId) ?? 0))
+    }
+
+    // Also collect up to 5 prior non-simulation budget years for sparklines
+    const householdIds = memberships.map((m) => m.householdId)
+    if (householdIds.length > 0) {
+      const historicalYears = await prisma.budgetYear.findMany({
+        where: {
+          householdId: { in: householdIds },
+          status: 'RETIRED',
+          simulationName: null,
+        },
+        orderBy: { year: 'desc' },
+        take: 20,
+      })
+
+      // Deduplicate by year (take first per year), limit to 5 historical
+      const seen = new Set<number>()
+      const toCompute: typeof historicalYears = []
+      for (const by of historicalYears) {
+        if (!seen.has(by.year) && !expenseYearMap.has(by.year)) {
+          seen.add(by.year)
+          toCompute.push(by)
+          if (toCompute.length >= 5) break
+        }
+      }
+
+      for (const by of toCompute) {
+        const [expenses, savings, incomeResult] = await Promise.all([
+          prisma.expense.findMany({ where: { budgetYearId: by.id }, include: { customSplits: true } }),
+          prisma.savingsEntry.findMany({ where: { budgetYearId: by.id }, include: { customSplits: true } }),
+          calcIncomeForYear(by.id, getIncomeReferenceDate(by.year, by.status)),
+        ])
+        const totalHouseholdGross = incomeResult.totalMonthlyGross
+        const userGross = incomeResult.members.find((m) => m.userId === userId)?.monthlyAllocatedGross ?? 0
+        const sharePct = totalHouseholdGross > 0 ? userGross / totalHouseholdGross : 0
+        const expPartition = partitionByOwnership(expenses)
+        const savPartition = partitionByOwnership(savings)
+        expenseYearMap.set(by.year,
+          (expPartition.individual.get(userId) ?? 0) +
+          expPartition.shared * sharePct +
+          (expPartition.custom.get(userId) ?? 0))
+        savingsYearMap.set(by.year,
+          (savPartition.individual.get(userId) ?? 0) +
+          savPartition.shared * sharePct +
+          (savPartition.custom.get(userId) ?? 0))
+      }
+    }
+
+    // Build sorted sparkline arrays (oldest → newest, max 6 points)
+    const expenseSparkline = [...expenseYearMap.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .slice(-6)
+      .map(([year, amount]) => ({ label: String(year), amount }))
+    const savingsSparkline = [...savingsYearMap.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .slice(-6)
+      .map(([year, amount]) => ({ label: String(year), amount }))
+
+    // ── Surplus ───────────────────────────────────────────────────────────────
+    const totalExpenses = personalExpenses + householdShareExpenses
+    const totalSavings = personalSavings + householdShareSavings
+    const surplusAmount = netMonthly - totalExpenses - totalSavings
+
+    return reply.send({
+      income: {
+        grossMonthly: grossMonthly.toFixed(2),
+        netMonthly: netMonthly.toFixed(2),
+        allocatedAmount: allocatedAmount.toFixed(2),
+        allocatedPct: allocatedPct.toFixed(2),
+        unallocatedAmount: unallocatedAmount.toFixed(2),
+        sparkline: incomeSparkline,
+      },
+      expenses: {
+        personal: { monthlyEquivalent: personalExpenses.toFixed(2), sparkline: expenseSparkline },
+        householdShare: { monthlyEquivalent: householdShareExpenses.toFixed(2), sparkline: expenseSparkline },
+        total: { monthlyEquivalent: (personalExpenses + householdShareExpenses).toFixed(2) },
+      },
+      savings: {
+        monthlyEquivalent: (personalSavings + householdShareSavings).toFixed(2),
+        pctOfGross: grossMonthly > 0 ? ((totalSavings / grossMonthly) * 100).toFixed(2) : '0.00',
+        pctOfNet: netMonthly > 0 ? ((totalSavings / netMonthly) * 100).toFixed(2) : '0.00',
+        sparkline: savingsSparkline,
+      },
+      surplus: {
+        amount: surplusAmount.toFixed(2),
+        isPositive: surplusAmount >= 0,
+      },
     })
   })
 }
