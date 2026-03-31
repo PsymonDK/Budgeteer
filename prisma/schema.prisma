@@ -91,6 +91,7 @@ model UserPreferences {
   notifyExpensesExceedIncome Boolean   @default(true)
   notifyNoSavings            Boolean   @default(true)
   notifyUncategorised        Boolean   @default(true)
+  showDashboardSparklines    Boolean   @default(true)
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 }

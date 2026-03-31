@@ -28,6 +28,7 @@ interface UserMe {
     notifyExpensesExceedIncome: boolean
     notifyNoSavings: boolean
     notifyUncategorised: boolean
+    showDashboardSparklines: boolean
   } | null
 }
 
@@ -321,6 +322,21 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
                 <span className="text-sm text-gray-300">{label}</span>
               </label>
             ))}
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <p className="text-xs font-medium text-gray-400">Dashboard</p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={prefs?.showDashboardSparklines ?? true}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handlePrefChange('showDashboardSparklines', e.target.checked)
+                }
+                className="w-4 h-4 rounded accent-amber-400"
+              />
+              <span className="text-sm text-gray-300">Show sparkline charts on dashboard tiles</span>
+            </label>
           </div>
 
           {prefError && <p className="text-red-400 text-xs">{prefError}</p>}

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { TrendingUp, TrendingDown, Minus, ArrowRight, AlertTriangle, PiggyBank } from 'lucide-react'
+import { ArrowRight, AlertTriangle, PiggyBank, Briefcase, Receipt } from 'lucide-react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
   Legend, ResponsiveContainer, Dot,
@@ -11,18 +11,33 @@ import { api } from '../api/client'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart } from '../components/SankeyChart'
+import { Sparkline } from '../components/Sparkline'
 import { inputClass } from '../lib/styles'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-interface PreviousYear {
-  year: number
-  monthlyGrossIncome: string
-  monthlyIncome: string
-  monthlyExpenses: string
-  monthlySavings: string
-  monthlySurplus: string
+interface PersonalDashboard {
+  income: {
+    grossMonthly: string
+    netMonthly: string
+    allocatedAmount: string
+    allocatedPct: string
+    unallocatedAmount: string
+    sparkline: { month: string; gross: number; net: number }[]
+  }
+  expenses: {
+    personal: { monthlyEquivalent: string; sparkline: { label: string; amount: number }[] }
+    householdShare: { monthlyEquivalent: string; sparkline: { label: string; amount: number }[] }
+    total: { monthlyEquivalent: string }
+  }
+  savings: {
+    monthlyEquivalent: string
+    pctOfGross: string
+    pctOfNet: string
+    sparkline: { label: string; amount: number }[]
+  }
+  surplus: { amount: string; isPositive: boolean }
 }
 
 interface HouseholdSummary {
@@ -37,28 +52,29 @@ interface HouseholdSummary {
   monthlySurplus: string
   budgetYear: { id: string; year: number; status: string } | null
   warnings: { expensesExceedIncome: boolean; noSavings: boolean }
-  previousYear: PreviousYear | null
-}
-
-interface Totals {
-  monthlyGrossIncome: string
-  monthlyIncome: string
-  monthlyExpenses: string
-  monthlySavings: string
-  monthlySurplus: string
+  previousYear: {
+    year: number
+    monthlyGrossIncome: string
+    monthlyIncome: string
+    monthlyExpenses: string
+    monthlySavings: string
+    monthlySurplus: string
+  } | null
 }
 
 interface UserSummary {
-  totals: Totals
-  previousTotals: Totals | null
+  totals: { monthlyGrossIncome: string; monthlyIncome: string; monthlyExpenses: string; monthlySavings: string; monthlySurplus: string }
+  previousTotals: { monthlyGrossIncome: string } | null
   householdCount: number
   households: HouseholdSummary[]
 }
 
-interface NewHousehold {
-  id: string
-  name: string
+interface UserMe {
+  role: string
+  preferences: { showDashboardSparklines: boolean } | null
 }
+
+interface NewHousehold { id: string; name: string }
 
 interface IncomeTrend {
   months: string[]
@@ -81,53 +97,18 @@ const JOB_COLORS = [
   '#ec4899', '#06b6d4', '#84cc16',
 ]
 
-const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatMonth(yyyymm: string): string {
-  const [year, mon] = yyyymm.split('-')
-  const date = new Date(Number(year), Number(mon) - 1, 1)
-  return date.toLocaleString('en-GB', { month: 'short', year: '2-digit' })
-}
-
-function delta(current: string, previous: string) {
-  const cur = parseFloat(current)
-  const prev = parseFloat(previous)
-  if (prev === 0) return null
-  return ((cur - prev) / prev) * 100
-}
-
-type DeltaMode = 'higher-good' | 'lower-good'
-
-function DeltaBadge({ current, previous, mode }: { current: string; previous: string; mode: DeltaMode }) {
-  const pct = delta(current, previous)
-  if (pct === null) return null
-  const abs = Math.abs(pct)
-  if (abs < 0.05) {
-    return (
-      <span className="flex items-center gap-1 text-xs text-gray-500">
-        <Minus size={12} /> No change vs prev year
-      </span>
-    )
-  }
-  const up = pct > 0
-  const good = mode === 'higher-good' ? up : !up
-  const color = good ? 'text-emerald-400' : 'text-red-400'
-  const Icon = up ? TrendingUp : TrendingDown
-  return (
-    <span className={`flex items-center gap-1 text-xs ${color}`}>
-      <Icon size={12} />
-      {up ? '+' : ''}{pct.toFixed(1)}% vs prev year
-    </span>
-  )
-}
-
 const STATUS_STYLES: Record<string, string> = {
   ACTIVE: 'bg-green-900/50 text-green-300',
   FUTURE: 'bg-blue-900/50 text-blue-300',
   RETIRED: 'bg-gray-800 text-gray-400',
   SIMULATION: 'bg-purple-900/50 text-purple-300',
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatMonth(yyyymm: string): string {
+  const [year, mon] = yyyymm.split('-')
+  return new Date(Number(year), Number(mon) - 1, 1).toLocaleString('en-GB', { month: 'short', year: '2-digit' })
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -141,10 +122,25 @@ export function UserDashboardPage() {
   const [name, setName] = useState('')
   const [createError, setCreateError] = useState('')
   const [showGross, setShowGross] = useState(true)
+  const [period, setPeriod] = useState<'monthly' | 'annual'>('monthly')
 
-  const { data: summary, isLoading } = useQuery<UserSummary>({
+  const scale = period === 'annual' ? 12 : 1
+  const periodLabel = period === 'annual' ? '/ year' : '/ month'
+  function pfmt(v: number | string) { return fmt(parseFloat(String(v)) * scale) }
+
+  const { data: dashboard, isLoading: dashLoading } = useQuery<PersonalDashboard>({
+    queryKey: ['me', 'dashboard'],
+    queryFn: async () => (await api.get<PersonalDashboard>('/users/me/dashboard')).data,
+  })
+
+  const { data: summary, isLoading: summaryLoading } = useQuery<UserSummary>({
     queryKey: ['me', 'summary'],
     queryFn: async () => (await api.get<UserSummary>('/me/summary')).data,
+  })
+
+  const { data: me } = useQuery<UserMe>({
+    queryKey: ['users-me'],
+    queryFn: async () => (await api.get<UserMe>('/users/me')).data,
   })
 
   const { data: incomeTrend } = useQuery<IncomeTrend>({
@@ -157,11 +153,12 @@ export function UserDashboardPage() {
     queryFn: async () => (await api.get<IncomeSankeyData>('/users/me/income/sankey')).data,
   })
 
+  const showSparklines = me?.preferences?.showDashboardSparklines ?? true
+
   const chartData = incomeTrend
     ? incomeTrend.months.map((m, i) => {
         const row: Record<string, unknown> = {
-          month: formatMonth(m),
-          monthKey: m,
+          month: formatMonth(m), monthKey: m,
           total: showGross ? incomeTrend.total[i] : incomeTrend.totalNet[i],
         }
         incomeTrend.jobs.forEach((j) => { row[j.name] = showGross ? j.monthly[i] : j.monthlyNet[i] })
@@ -200,7 +197,8 @@ export function UserDashboardPage() {
     createMutation.mutate(name)
   }
 
-  const { totals, previousTotals, households = [] } = summary ?? {}
+  const { households = [] } = summary ?? {}
+  const isLoading = dashLoading || summaryLoading
 
   return (
     <div className="flex-1 flex flex-col">
@@ -210,89 +208,174 @@ export function UserDashboardPage() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Your financial overview across all households</p>
+            <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
-          <button
-            onClick={() => { setShowCreate(true); setCreateError('') }}
-            className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            + New household
-          </button>
+          <div className="flex items-center gap-3">
+            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
+              <button
+                onClick={() => setPeriod('monthly')}
+                className={`px-3 py-1.5 transition-colors ${period === 'monthly' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >Monthly</button>
+              <button
+                onClick={() => setPeriod('annual')}
+                className={`px-3 py-1.5 transition-colors ${period === 'annual' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+              >Annual</button>
+            </div>
+            {me?.role === 'SYSTEM_ADMIN' && (
+              <button
+                onClick={() => { setShowCreate(true); setCreateError('') }}
+                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+              >
+                + New household
+              </button>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <PageLoader />
         ) : (
           <>
-            {/* Summary cards */}
+            {/* ── Four primary tiles ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
-              <SummaryCard
-                label="Monthly income"
-                value={totals?.monthlyGrossIncome ?? '0.00'}
-                subLabel="Net"
-                subValue={totals?.monthlyIncome ?? '0.00'}
-                previous={previousTotals?.monthlyGrossIncome}
-                mode="higher-good"
-                accent="text-emerald-400"
-                fmt={fmt}
-              />
-              <SummaryCard
-                label="Monthly expenses"
-                value={totals?.monthlyExpenses ?? '0.00'}
-                previous={previousTotals?.monthlyExpenses}
-                mode="lower-good"
-                accent="text-red-400"
-                fmt={fmt}
-              />
-              <SummaryCard
-                label="Monthly savings"
-                value={totals?.monthlySavings ?? '0.00'}
-                previous={previousTotals?.monthlySavings}
-                mode="higher-good"
-                accent="text-blue-400"
-                fmt={fmt}
-              />
+
+              {/* Income tile */}
+              <Link
+                to="/income"
+                className="block bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-5 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <Briefcase size={14} className="text-amber-400" />
+                  <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Income</p>
+                </div>
+                <p className="text-2xl font-bold text-amber-400">{pfmt(dashboard?.income.grossMonthly ?? '0')}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Net: <span className="text-gray-300">{pfmt(dashboard?.income.netMonthly ?? '0')}</span></p>
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Allocated</span>
+                    <span className="text-gray-300">
+                      {pfmt(dashboard?.income.allocatedAmount ?? '0')}
+                      <span className="text-gray-600 ml-1">({parseFloat(dashboard?.income.allocatedPct ?? '0').toFixed(0)}%)</span>
+                    </span>
+                  </div>
+                  {parseFloat(dashboard?.income.unallocatedAmount ?? '0') > 0.005 && (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Unallocated</span>
+                      <span className="text-amber-500">{pfmt(dashboard?.income.unallocatedAmount ?? '0')}</span>
+                    </div>
+                  )}
+                </div>
+                {showSparklines && dashboard && dashboard.income.sparkline.length >= 2 && (
+                  <div className="mt-4">
+                    <Sparkline data={dashboard.income.sparkline.map((s) => ({ value: s.gross }))} color="#f59e0b" />
+                  </div>
+                )}
+                <p className="text-xs text-gray-600 mt-2">{periodLabel}</p>
+              </Link>
+
+              {/* Expenses tile */}
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Households</p>
-                <p className="text-2xl font-semibold text-white">{summary?.householdCount ?? 0}</p>
-                <p className="text-xs text-gray-600 mt-1">active budget periods</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <Receipt size={14} className="text-red-400" />
+                  <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Expenses</p>
+                </div>
+                <p className="text-2xl font-bold text-red-400">{pfmt(dashboard?.expenses.total.monthlyEquivalent ?? '0')}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Personal</span>
+                    <span className="text-gray-300">{pfmt(dashboard?.expenses.personal.monthlyEquivalent ?? '0')}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Household share</span>
+                    <span className="text-gray-300">{pfmt(dashboard?.expenses.householdShare.monthlyEquivalent ?? '0')}</span>
+                  </div>
+                </div>
+                {showSparklines && dashboard && dashboard.expenses.householdShare.sparkline.length >= 2 && (
+                  <div className="mt-4">
+                    <Sparkline data={dashboard.expenses.householdShare.sparkline.map((s) => ({ value: s.amount }))} color="#ef4444" />
+                  </div>
+                )}
               </div>
+
+              {/* Savings tile */}
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <PiggyBank size={14} className="text-blue-400" />
+                  <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Savings</p>
+                </div>
+                <p className="text-2xl font-bold text-blue-400">{pfmt(dashboard?.savings.monthlyEquivalent ?? '0')}</p>
+                <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
+                <div className="mt-3 space-y-1">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">% of gross</span>
+                    <span className="text-gray-300">{parseFloat(dashboard?.savings.pctOfGross ?? '0').toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">% of net</span>
+                    <span className="text-gray-300">{parseFloat(dashboard?.savings.pctOfNet ?? '0').toFixed(1)}%</span>
+                  </div>
+                </div>
+                {showSparklines && dashboard && dashboard.savings.sparkline.length >= 2 && (
+                  <div className="mt-4">
+                    <Sparkline data={dashboard.savings.sparkline.map((s) => ({ value: s.amount }))} color="#3b82f6" />
+                  </div>
+                )}
+              </div>
+
+              {/* Surplus tile */}
+              {dashboard && (() => {
+                const surplusAmt = parseFloat(dashboard.surplus.amount)
+                const pos = dashboard.surplus.isPositive
+                return (
+                  <div className={`rounded-xl border p-5 ${pos ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-red-950/30 border-red-900/50'}`}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">{pos ? 'Surplus' : 'Deficit'}</p>
+                    </div>
+                    <p className={`text-2xl font-bold ${pos ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {!pos && '−'}{pfmt(Math.abs(surplusAmt).toFixed(2))}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
+                    <p className="text-xs text-gray-500 mt-3">Net income − expenses − savings</p>
+                  </div>
+                )
+              })()}
             </div>
 
-            {/* Households */}
+            {/* ── Households ── */}
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-semibold text-gray-200">Your households</h2>
             </div>
 
             {households.length === 0 ? (
-              <div className="text-center py-20 text-gray-500">
+              <div className="text-center py-16 text-gray-500">
                 <PiggyBank size={40} className="mx-auto mb-4 opacity-30" />
                 <p className="text-lg mb-2">No crews assembled yet</p>
                 <p className="text-sm">Create a household to get started.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 mb-10">
                 {households.map((h) => (
-                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={fmt} />
+                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={pfmt} periodLabel={periodLabel} />
                 ))}
               </div>
             )}
 
-            {/* Income flow (Sankey) */}
-            <h2 className="text-base font-semibold text-gray-200 mt-10 mb-4">Personal income</h2>
-            <div className={`${cardClass} mb-6`}>
-              <h2 className="text-base font-semibold mb-4">Income flow</h2>
+            {/* ── Income detail (Sankey + 12-month trend) ── */}
+            <h2 className="text-base font-semibold text-gray-200 mt-2 mb-4">Income detail</h2>
+
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+              <h3 className="text-sm font-semibold mb-4 text-gray-200">Income flow</h3>
               {sankeyData && sankeyData.nodes.length > 0 ? (
                 <SankeyChart data={sankeyData} currency={baseCurrency} />
               ) : (
-                <p className="text-gray-500 text-sm">No allocation data to display. Allocate income to households first.</p>
+                <p className="text-gray-500 text-sm">No allocation data. Allocate income to households first.</p>
               )}
             </div>
 
-            {/* 12-month income trend */}
-            <div className={`${cardClass} mb-6`}>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-semibold">12-month income trend</h2>
+                <h3 className="text-sm font-semibold text-gray-200">12-month income trend</h3>
                 <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
                   <button onClick={() => setShowGross(true)}
                     className={`px-3 py-1.5 transition-colors ${showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Gross</button>
@@ -397,37 +480,7 @@ export function UserDashboardPage() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SummaryCard({
-  label, value, subLabel, subValue, previous, mode, accent, fmt,
-}: {
-  label: string
-  value: string
-  subLabel?: string
-  subValue?: string
-  previous?: string
-  mode: DeltaMode
-  accent: string
-  fmt: (v: number | string) => string
-}) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">{label}</p>
-      <p className={`text-2xl font-semibold ${accent}`}>{fmt(value)}</p>
-      {subLabel && subValue !== undefined && (
-        <p className="text-xs text-gray-500 mt-0.5">{subLabel}: <span className="text-gray-400">{fmt(subValue)}</span></p>
-      )}
-      <div className="mt-2">
-        {previous !== undefined ? (
-          <DeltaBadge current={value} previous={previous} mode={mode} />
-        ) : (
-          <span className="text-xs text-gray-600">No previous year data</span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSummary; onClick: () => void; fmt: (v: number | string) => string }) {
+function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { household: HouseholdSummary; onClick: () => void; fmt: (v: number | string) => string; periodLabel: string }) {
   const surplus = parseFloat(h.monthlySurplus)
   const surplusColor = surplus >= 0 ? 'text-emerald-400' : 'text-red-400'
 
@@ -437,7 +490,6 @@ function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSum
       className="w-full bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-5 text-left transition-colors group"
     >
       <div className="flex items-start justify-between gap-4">
-        {/* Left: name + meta */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-3">
             <h3 className="text-base font-semibold text-white truncate">{h.name}</h3>
@@ -451,20 +503,14 @@ function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSum
                 {h.budgetYear.year} · {h.budgetYear.status}
               </span>
             )}
-            {!h.budgetYear && (
-              <span className="text-xs text-gray-600">No active budget</span>
-            )}
+            {!h.budgetYear && <span className="text-xs text-gray-600">No active budget</span>}
           </div>
-
-          {/* Mini stats grid */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
-            <Stat label="Income" value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
-            <Stat label="Expenses" value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
-            <Stat label="Savings" value={h.monthlySavings} color="text-gray-200" fmt={fmt} />
-            <Stat label="Surplus (net)" value={h.monthlySurplus} color={surplusColor} fmt={fmt} />
+            <Stat label={`Income ${periodLabel}`} value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Expenses ${periodLabel}`} value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Savings ${periodLabel}`} value={h.monthlySavings} color="text-gray-200" fmt={fmt} />
+            <Stat label={`Surplus ${periodLabel}`} value={h.monthlySurplus} color={surplusColor} fmt={fmt} />
           </div>
-
-          {/* Warning badges */}
           {(h.warnings.expensesExceedIncome || h.warnings.noSavings) && (
             <div className="flex gap-2 mt-3 flex-wrap">
               {h.warnings.expensesExceedIncome && (
@@ -480,8 +526,6 @@ function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSum
             </div>
           )}
         </div>
-
-        {/* Right: members + arrow */}
         <div className="flex flex-col items-end gap-2 flex-shrink-0">
           <ArrowRight size={16} className="text-gray-600 group-hover:text-gray-400 transition-colors mt-1" />
           <span className="text-xs text-gray-500">{h.memberCount} {h.memberCount === 1 ? 'member' : 'members'}</span>
@@ -491,7 +535,9 @@ function HouseholdCard({ household: h, onClick, fmt }: { household: HouseholdSum
   )
 }
 
-function Stat({ label, value, subLabel, subValue, color, fmt }: { label: string; value: string; subLabel?: string; subValue?: string; color: string; fmt: (v: number | string) => string }) {
+function Stat({ label, value, subLabel, subValue, color, fmt }: {
+  label: string; value: string; subLabel?: string; subValue?: string; color: string; fmt: (v: number | string) => string
+}) {
   return (
     <div>
       <p className="text-xs text-gray-500">{label}</p>
@@ -502,4 +548,3 @@ function Stat({ label, value, subLabel, subValue, color, fmt }: { label: string;
     </div>
   )
 }
-

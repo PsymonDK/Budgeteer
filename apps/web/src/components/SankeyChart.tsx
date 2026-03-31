@@ -144,14 +144,20 @@ export function SankeyChart({ data, currency = '' }: { data: { nodes: SankeyNode
             const y0 = node.y0 ?? 0; const y1 = node.y1 ?? 0
             const color = colorMap.get(node.id) ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]
             const isLeft = x0 < width / 2
+            const midY = (y0 + y1) / 2
+            const nodeValue = (node as unknown as { value?: number }).value ?? 0
+            const labelX = isLeft ? x1 + 6 : x0 - 6
+            const anchor = isLeft ? 'start' : 'end'
             return (
               <g key={node.id}>
                 <rect x={x0} y={y0} height={Math.max(1, y1 - y0)} width={x1 - x0} fill={color} fillOpacity={0.9} rx={2}>
-                  <title>{`${node.name}: ${fmt((node as unknown as { value?: number }).value ?? 0)}`}</title>
+                  <title>{`${node.name}: ${fmt(nodeValue)}`}</title>
                 </rect>
-                <text x={isLeft ? x1 + 6 : x0 - 6} y={(y0 + y1) / 2}
-                  textAnchor={isLeft ? 'start' : 'end'} dominantBaseline="middle" fontSize={11} fill="#d1d5db">
+                <text x={labelX} y={midY - 7} textAnchor={anchor} dominantBaseline="middle" fontSize={11} fill="#d1d5db">
                   {node.name}
+                </text>
+                <text x={labelX} y={midY + 7} textAnchor={anchor} dominantBaseline="middle" fontSize={10} fill="#9ca3af">
+                  {fmt(nodeValue)}
                 </text>
               </g>
             )

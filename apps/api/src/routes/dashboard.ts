@@ -42,9 +42,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
         const refDate = getIncomeReferenceDate(activeBY.year, activeBY.status)
         const incomeResult = await calcIncomeForYear(activeBY.id, refDate)
-        const myIncome = incomeResult.members.find(m => m.userId === userId)
-        const totalGrossIncome = myIncome?.monthlyAllocatedGross ?? 0
-        const totalIncome = myIncome?.monthlyAllocatedNet ?? 0
+        const totalGrossIncome = incomeResult.totalMonthlyGross
+        const totalIncome = incomeResult.totalMonthlyNet
+        const householdNetIncome = incomeResult.totalMonthlyNet
 
         const [expenses, savingsEntries] = await Promise.all([
           prisma.expense.findMany({ where: { budgetYearId: activeBY.id }, select: { monthlyEquivalent: true } }),
@@ -63,7 +63,6 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         if (previousBY) {
           const prevRef = getIncomeReferenceDate(previousBY.year, previousBY.status)
           const prevIncome = await calcIncomeForYear(previousBY.id, prevRef)
-          const myPrevIncome = prevIncome.members.find(m => m.userId === userId)
           const [prevExp, prevSav] = await Promise.all([
             prisma.expense.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
             prisma.savingsEntry.findMany({ where: { budgetYearId: previousBY.id }, select: { monthlyEquivalent: true } }),
@@ -72,11 +71,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           const prevTotalSavings = prevSav.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
           previousYear = {
             year: previousBY.year,
-            monthlyGrossIncome: (myPrevIncome?.monthlyAllocatedGross ?? 0).toFixed(2),
-            monthlyIncome: (myPrevIncome?.monthlyAllocatedNet ?? 0).toFixed(2),
+            monthlyGrossIncome: prevIncome.totalMonthlyGross.toFixed(2),
+            monthlyIncome: prevIncome.totalMonthlyNet.toFixed(2),
             monthlyExpenses: prevTotalExpenses.toFixed(2),
             monthlySavings: prevTotalSavings.toFixed(2),
-            monthlySurplus: ((myPrevIncome?.monthlyAllocatedNet ?? 0) - prevTotalExpenses - prevTotalSavings).toFixed(2),
+            monthlySurplus: (prevIncome.totalMonthlyNet - prevTotalExpenses - prevTotalSavings).toFixed(2),
           }
         }
 
@@ -86,7 +85,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           monthlyIncome: totalIncome.toFixed(2),
           monthlyExpenses: totalExpenses.toFixed(2),
           monthlySavings: totalSavings.toFixed(2),
-          monthlySurplus: (totalIncome - totalExpenses - totalSavings).toFixed(2),
+          monthlySurplus: (householdNetIncome - totalExpenses - totalSavings).toFixed(2),
           budgetYear: { id: activeBY.id, year: activeBY.year, status: activeBY.status },
           warnings: {
             expensesExceedIncome: totalExpenses > totalIncome && totalIncome > 0,

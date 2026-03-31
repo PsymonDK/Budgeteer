@@ -24,6 +24,7 @@ const UpdatePreferencesSchema = z
     notifyExpensesExceedIncome: z.boolean(),
     notifyNoSavings: z.boolean(),
     notifyUncategorised: z.boolean(),
+    showDashboardSparklines: z.boolean(),
   })
   .partial()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
@@ -169,6 +170,7 @@ export async function userRoutes(fastify: FastifyInstance) {
             notifyExpensesExceedIncome: true,
             notifyNoSavings: true,
             notifyUncategorised: true,
+            showDashboardSparklines: true,
           },
         },
       },
