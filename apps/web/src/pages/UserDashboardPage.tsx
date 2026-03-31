@@ -70,6 +70,7 @@ interface UserSummary {
 }
 
 interface UserMe {
+  role: string
   preferences: { showDashboardSparklines: boolean } | null
 }
 
@@ -204,12 +205,14 @@ export function UserDashboardPage() {
             <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
-          <button
-            onClick={() => { setShowCreate(true); setCreateError('') }}
-            className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            + New household
-          </button>
+          {me?.role === 'SYSTEM_ADMIN' && (
+            <button
+              onClick={() => { setShowCreate(true); setCreateError('') }}
+              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+            >
+              + New household
+            </button>
+          )}
         </div>
 
         {isLoading ? (
