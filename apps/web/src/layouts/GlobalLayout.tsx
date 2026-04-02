@@ -1,13 +1,12 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { useHousehold } from '../contexts/HouseholdContext'
-import { useAuth } from '../contexts/AuthContext'
 import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
+import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import { ChevronLeft } from 'lucide-react'
 
 export function GlobalLayout() {
   const { activeHouseholdId } = useHousehold()
-  const { user } = useAuth()
   const location = useLocation()
   const isDashboard = location.pathname === '/'
 
@@ -32,14 +31,7 @@ export function GlobalLayout() {
           )}
         </div>
         <div className="flex items-center gap-4">
-          <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
-            My Income
-          </Link>
-          {user?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Admin
-            </Link>
-          )}
+          <HeaderSettingsMenu />
           <HeaderUserMenu />
         </div>
       </header>

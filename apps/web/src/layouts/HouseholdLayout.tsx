@@ -4,10 +4,10 @@ import {
   LayoutDashboard, TrendingUp, PiggyBank, Receipt, Tag,
   Calendar, Clock, BarChart2, Settings, Menu, X,
 } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
+import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import HouseholdSwitcher from '../components/HouseholdSwitcher'
 
 const NAV_ITEMS = [
@@ -24,7 +24,6 @@ const NAV_ITEMS = [
 export function HouseholdLayout() {
   const { id: householdId } = useParams<{ id: string }>()
   const location = useLocation()
-  const { user } = useAuth()
   const { setActiveHousehold } = useHousehold()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
@@ -113,17 +112,7 @@ export function HouseholdLayout() {
           <HouseholdSwitcher currentHouseholdId={householdId!} />
         </div>
         <div className="flex items-center gap-5">
-          <Link to="/" className="text-sm text-gray-400 hover:text-white transition-colors">
-            Dashboard
-          </Link>
-          <Link to="/income" className="text-sm text-gray-400 hover:text-white transition-colors">
-            Personal Income
-          </Link>
-          {user?.role === 'SYSTEM_ADMIN' && (
-            <Link to="/admin/users" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Admin
-            </Link>
-          )}
+          <HeaderSettingsMenu householdId={householdId} />
           <HeaderUserMenu />
         </div>
       </header>
