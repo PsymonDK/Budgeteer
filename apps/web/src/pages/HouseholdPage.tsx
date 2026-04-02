@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
+import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
@@ -33,6 +34,27 @@ interface UserOption {
   isProxy?: boolean
 }
 
+type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
+
+interface HouseholdAccount {
+  id: string
+  name: string
+  type: AccountType
+  isActive: boolean
+  _count: { expenses: number; savingsEntries: number }
+}
+
+interface AccountForm {
+  name: string
+  type: AccountType
+}
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  BANK: 'Bank',
+  CREDIT_CARD: 'Credit card',
+  MOBILE_PAY: 'Mobile pay',
+}
+
 export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
   const { user: me } = useAuth()
@@ -43,6 +65,14 @@ export function HouseholdPage() {
   const [addUserId, setAddUserId] = useState('')
   const [addRole, setAddRole] = useState<'ADMIN' | 'MEMBER'>('MEMBER')
   const [addError, setAddError] = useState('')
+
+  // Account state
+  const [showAddAccount, setShowAddAccount] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<HouseholdAccount | null>(null)
+  const [deleteAccountTarget, setDeleteAccountTarget] = useState<HouseholdAccount | null>(null)
+  const [accountForm, setAccountForm] = useState<AccountForm>({ name: '', type: 'BANK' })
+  const [accountFormError, setAccountFormError] = useState('')
+  const [accountDeleteError, setAccountDeleteError] = useState('')
 
   const [editingName, setEditingName] = useState(false)
   const [nameValue, setNameValue] = useState('')
@@ -67,6 +97,88 @@ export function HouseholdPage() {
   })
 
   const isAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
+
+  const { data: householdAccounts = [] } = useQuery<HouseholdAccount[]>({
+    queryKey: ['accounts', 'household', id],
+    queryFn: async () => (await api.get<HouseholdAccount[]>(`/households/${id}/accounts`)).data,
+    enabled: !!id,
+  })
+
+  const createAccountMutation = useMutation({
+    mutationFn: (data: AccountForm) => api.post(`/households/${id}/accounts`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      setShowAddAccount(false)
+      setAccountForm({ name: '', type: 'BANK' })
+      setAccountFormError('')
+      toast.success('Account added')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setAccountFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
+    },
+  })
+
+  const updateAccountMutation = useMutation({
+    mutationFn: (data: AccountForm) => api.put(`/households/${id}/accounts/${editingAccount!.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      setEditingAccount(null)
+      setAccountFormError('')
+      toast.success('Account updated')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setAccountFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
+    },
+  })
+
+  const toggleAccountActiveMutation = useMutation({
+    mutationFn: ({ accountId, isActive }: { accountId: string; isActive: boolean }) =>
+      api.put(`/households/${id}/accounts/${accountId}`, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        toast.error((err.response?.data as { error?: string })?.error ?? 'Failed to update')
+    },
+  })
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: (accountId: string) => api.delete(`/households/${id}/accounts/${accountId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      setDeleteAccountTarget(null)
+      setAccountDeleteError('')
+      toast.success('Account deleted')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setAccountDeleteError((err.response?.data as { error?: string })?.error ?? 'Failed to delete')
+    },
+  })
+
+  function handleAccountSubmit(e: FormEvent) {
+    e.preventDefault()
+    setAccountFormError('')
+    if (!accountForm.name.trim()) { setAccountFormError('Name is required'); return }
+    if (editingAccount) updateAccountMutation.mutate(accountForm)
+    else createAccountMutation.mutate(accountForm)
+  }
+
+  function openEditAccount(account: HouseholdAccount) {
+    setAccountForm({ name: account.name, type: account.type })
+    setAccountFormError('')
+    setEditingAccount(account)
+  }
+
+  function closeAccountModal() {
+    setShowAddAccount(false)
+    setEditingAccount(null)
+    setAccountForm({ name: '', type: 'BANK' })
+    setAccountFormError('')
+  }
 
   // Users not already in this household
   const memberUserIds = new Set(household?.members.map((m) => m.userId) ?? [])
@@ -302,6 +414,81 @@ export function HouseholdPage() {
           </table>
         </div>
 
+        {/* Household accounts */}
+        <div className="mt-10">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Accounts</h2>
+            {isAdmin && (
+              <button
+                onClick={() => { setShowAddAccount(true); setAccountFormError('') }}
+                className="flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-3 py-1.5 rounded-lg transition-colors"
+              >
+                <Plus size={14} /> Add account
+              </button>
+            )}
+          </div>
+
+          {householdAccounts.length === 0 ? (
+            <p className="text-sm text-gray-500">No household accounts yet.</p>
+          ) : (
+            <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-800 text-gray-400 text-left">
+                    <th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium">Type</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    {isAdmin && <th className="px-4 py-3 font-medium sr-only">Actions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {householdAccounts.map((account) => (
+                    <tr key={account.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
+                      <td className="px-4 py-3 text-white">
+                        <span className={account.isActive ? 'text-white' : 'text-gray-500 line-through'}>
+                          {account.name}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 border border-gray-700">
+                          {ACCOUNT_TYPE_LABELS[account.type]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">
+                        {account.isActive ? 'Active' : 'Inactive'}
+                      </td>
+                      {isAdmin && (
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => toggleAccountActiveMutation.mutate({ accountId: account.id, isActive: !account.isActive })}
+                              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                            >
+                              {account.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button
+                              onClick={() => openEditAccount(account)}
+                              className="text-gray-500 hover:text-gray-300 transition-colors p-1"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              onClick={() => { setDeleteAccountTarget(account); setAccountDeleteError('') }}
+                              className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
         {/* Danger zone */}
         {isAdmin && (
           <div className="mt-12 border border-red-900/50 rounded-xl p-6">
@@ -444,6 +631,94 @@ export function HouseholdPage() {
               Confirm
             </button>
             <button onClick={() => setConfirmRoleChange(null)}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Add/Edit account modal */}
+      {(showAddAccount || editingAccount) && (
+        <Modal
+          title={editingAccount ? 'Edit account' : 'Add account'}
+          onClose={closeAccountModal}
+          size="sm"
+        >
+          <form onSubmit={handleAccountSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
+              <input
+                type="text"
+                value={accountForm.name}
+                onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })}
+                placeholder="e.g. Shared current account"
+                className={inputClass}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Type</label>
+              <select
+                value={accountForm.type}
+                onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value as AccountType })}
+                className={inputClass}
+              >
+                {Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            {accountFormError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
+                {accountFormError}
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={createAccountMutation.isPending || updateAccountMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {createAccountMutation.isPending || updateAccountMutation.isPending ? 'Saving…' : editingAccount ? 'Save changes' : 'Add account'}
+              </button>
+              <button type="button" onClick={closeAccountModal}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete account confirmation */}
+      {deleteAccountTarget && (
+        <Modal title="Delete account" onClose={() => { setDeleteAccountTarget(null); setAccountDeleteError('') }} size="sm">
+          <p className="text-gray-300 text-sm mb-2">
+            Delete <span className="font-semibold text-white">"{deleteAccountTarget.name}"</span>?
+          </p>
+          {deleteAccountTarget._count.expenses > 0 || deleteAccountTarget._count.savingsEntries > 0 ? (
+            <p className="text-amber-400 text-xs mb-4">
+              This account has {deleteAccountTarget._count.expenses + deleteAccountTarget._count.savingsEntries} associated entries.
+              Remove them before deleting, or deactivate the account instead.
+            </p>
+          ) : (
+            <p className="text-gray-500 text-xs mb-4">This action cannot be undone.</p>
+          )}
+          {accountDeleteError && (
+            <div className="bg-red-950 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-xs mb-4">
+              {accountDeleteError}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => deleteAccountMutation.mutate(deleteAccountTarget.id)}
+              disabled={deleteAccountMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {deleteAccountMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+            <button onClick={() => { setDeleteAccountTarget(null); setAccountDeleteError('') }}
               className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
               Cancel
             </button>

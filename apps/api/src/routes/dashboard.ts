@@ -210,6 +210,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         category: { select: { id: true, name: true, icon: true } },
         ownedBy: { select: { id: true, name: true } },
         customSplits: true,
+        account: { select: { id: true, name: true, type: true } },
       },
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
@@ -227,6 +228,22 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const byCategory = [...byCategoryMap.values()]
       .sort((a, b) => b.totalMonthly - a.totalMonthly)
       .map((c) => ({ ...c, totalMonthly: c.totalMonthly.toFixed(2) }))
+
+    const byAccountMap = new Map<string, { accountId: string; accountName: string; accountType: string; totalMonthly: number }>()
+    for (const e of expenses) {
+      if (!e.accountId || !e.account) continue
+      const existing = byAccountMap.get(e.accountId) ?? {
+        accountId: e.accountId,
+        accountName: e.account.name,
+        accountType: e.account.type,
+        totalMonthly: 0,
+      }
+      existing.totalMonthly += toNum(e.monthlyEquivalent)
+      byAccountMap.set(e.accountId, existing)
+    }
+    const byAccount = [...byAccountMap.values()]
+      .sort((a, b) => b.totalMonthly - a.totalMonthly)
+      .map((a) => ({ ...a, totalMonthly: a.totalMonthly.toFixed(2) }))
 
     // ── Savings ──────────────────────────────────────────────────────────────
     const savingsEntries = await prisma.savingsEntry.findMany({
@@ -288,6 +305,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
           customSplits: e.customSplits,
         })),
         byCategory,
+        byAccount,
       },
       savings: { totalMonthly: totalMonthlySavings.toFixed(2) },
       surplus: surplus.toFixed(2),

@@ -28,6 +28,7 @@ const ExpenseBaseSchema = z.object({
   ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
   ownedByUserId: z.string().nullable().optional(),
   customSplits: z.array(CustomSplitSchema).optional(),
+  accountId: z.string().nullable().optional(),
 })
 
 const monthRangeRefinement = (d: { startMonth?: number | null; endMonth?: number | null }) => {
@@ -47,6 +48,7 @@ const expenseInclude = {
   category: { select: { id: true, name: true, icon: true, isSystemWide: true, categoryType: true } },
   ownedBy: { select: { id: true, name: true } },
   customSplits: { include: { user: { select: { id: true, name: true } } } },
+  account: { select: { id: true, name: true, type: true } },
 } as const
 
 
@@ -81,10 +83,17 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
 
     const category = await prisma.category.findUnique({ where: { id: categoryId } })
     if (!category) return reply.status(400).send({ error: 'Category not found' })
+
+    if (accountId) {
+      const acct = await prisma.account.findUnique({ where: { id: accountId } })
+      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
+      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
+        return reply.status(400).send({ error: 'Account not accessible' })
+    }
 
     const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
     if (ownershipError) return reply.status(400).send({ error: ownershipError })
@@ -118,6 +127,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
           ownership,
           ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
+          accountId: accountId ?? null,
         },
         include: expenseInclude,
       })
@@ -157,11 +167,18 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, startMonth, endMonth, ...rest } = result.data
+    const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, startMonth, endMonth, accountId, ...rest } = result.data
 
     if (categoryId) {
       const category = await prisma.category.findUnique({ where: { id: categoryId } })
       if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
+    if (accountId) {
+      const acct = await prisma.account.findUnique({ where: { id: accountId } })
+      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
+      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
+        return reply.status(400).send({ error: 'Account not accessible' })
     }
 
     const newOwnership = ownership ?? existing.ownership
@@ -219,6 +236,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
           originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
           rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          ...(accountId !== undefined && { accountId: accountId ?? null }),
         },
         include: expenseInclude,
       })

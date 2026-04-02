@@ -28,6 +28,7 @@ const CreateSavingsSchema = z.object({
   ownedByUserId: z.string().nullable().optional(),
   categoryId: z.string().optional(),
   customSplits: z.array(CustomSplitSchema).optional(),
+  accountId: z.string().nullable().optional(),
 })
 
 const UpdateSavingsSchema = CreateSavingsSchema.partial().refine(
@@ -39,6 +40,7 @@ const savingsInclude = {
   category: { select: { id: true, name: true, icon: true, categoryType: true } },
   ownedBy: { select: { id: true, name: true } },
   customSplits: { include: { user: { select: { id: true, name: true } } } },
+  account: { select: { id: true, name: true, type: true } },
 } as const
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -75,7 +77,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits } = result.data
+    const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
+
+    if (accountId) {
+      const acct = await prisma.account.findUnique({ where: { id: accountId } })
+      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
+      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
+        return reply.status(400).send({ error: 'Account not accessible' })
+    }
 
     const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
     if (ownershipError) return reply.status(400).send({ error: ownershipError })
@@ -102,6 +111,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           ownership,
           ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
           categoryId: categoryId ?? null,
+          accountId: accountId ?? null,
         },
         include: savingsInclude,
       })
@@ -140,7 +150,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { ownership, ownedByUserId, categoryId, customSplits, ...data } = result.data
+    const { ownership, ownedByUserId, categoryId, customSplits, accountId, ...data } = result.data
+
+    if (accountId) {
+      const acct = await prisma.account.findUnique({ where: { id: accountId } })
+      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
+      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
+        return reply.status(400).send({ error: 'Account not accessible' })
+    }
 
     const newOwnership = ownership ?? existing.ownership
     const newOwnedByUserId = ownedByUserId !== undefined ? ownedByUserId : existing.ownedByUserId
@@ -189,6 +206,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           ownership: newOwnership,
           ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
           ...(categoryId !== undefined && { categoryId: categoryId ?? null }),
+          ...(accountId !== undefined && { accountId: accountId ?? null }),
         },
         include: savingsInclude,
       })

@@ -55,6 +55,12 @@ enum SavingsOwnership {
   CUSTOM
 }
 
+enum AccountType {
+  BANK
+  CREDIT_CARD
+  MOBILE_PAY
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -79,6 +85,7 @@ model User {
   expenseCustomSplits       ExpenseCustomSplit[]   @relation("ExpenseCustomSplits")
   ownedSavings              SavingsEntry[]         @relation("OwnedSavings")
   savingsCustomSplits       SavingsCustomSplit[]   @relation("SavingsCustomSplits")
+  ownedAccounts             Account[]              @relation("OwnedAccounts")
 }
 
 model UserPreferences {
@@ -105,6 +112,7 @@ model Household {
 
   members     HouseholdMember[]
   budgetYears BudgetYear[]
+  accounts    Account[]
 }
 
 model HouseholdMember {
@@ -228,6 +236,21 @@ model Category {
   @@map("ExpenseCategory")
 }
 
+model Account {
+  id             String        @id @default(cuid())
+  name           String
+  type           AccountType
+  isActive       Boolean       @default(true)
+  ownedByUserId  String?
+  ownedBy        User?         @relation("OwnedAccounts", fields: [ownedByUserId], references: [id], onDelete: SetNull)
+  householdId    String?
+  household      Household?    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  expenses       Expense[]
+  savingsEntries SavingsEntry[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
 model Expense {
   id                String           @id @default(cuid())
   budgetYear        BudgetYear       @relation(fields: [budgetYearId], references: [id])
@@ -249,6 +272,8 @@ model Expense {
   ownership         ExpenseOwnership @default(SHARED)
   ownedByUserId     String?
   ownedBy           User?            @relation("OwnedExpenses", fields: [ownedByUserId], references: [id], onDelete: SetNull)
+  accountId         String?
+  account           Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
   customSplits      ExpenseCustomSplit[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
@@ -282,6 +307,8 @@ model SavingsEntry {
   ownership         SavingsOwnership @default(SHARED)
   ownedByUserId     String?
   ownedBy           User?            @relation("OwnedSavings", fields: [ownedByUserId], references: [id], onDelete: SetNull)
+  accountId         String?
+  account           Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
   categoryId        String?
   category          Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   customSplits      SavingsCustomSplit[]
