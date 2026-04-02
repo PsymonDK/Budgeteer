@@ -18,6 +18,7 @@ import { compareRoutes } from './routes/compare'
 import { savingsRoutes } from './routes/savings'
 import { currencyRoutes } from './routes/currencies'
 import { profileRoutes } from './routes/profile'
+import { accountRoutes } from './routes/accounts'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { prisma } from './lib/prisma'
 
@@ -50,6 +51,7 @@ app.register(authRoutes)
 app.register(userRoutes)
 app.register(householdRoutes)
 app.register(categoryRoutes)
+app.register(accountRoutes)
 app.register(budgetYearRoutes)
 app.register(expenseRoutes)
 app.register(jobRoutes)

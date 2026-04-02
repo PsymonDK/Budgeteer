@@ -51,6 +51,13 @@ interface ExpenseByCategory {
   totalMonthly: string
 }
 
+interface ExpenseByAccount {
+  accountId: string
+  accountName: string
+  accountType: string
+  totalMonthly: string
+}
+
 interface MemberSplit {
   userId: string
   name: string
@@ -72,7 +79,7 @@ interface Warnings {
 interface DashboardSummary {
   budgetYear: BudgetYear | null
   income: { totalMonthly: string; members: IncomeMember[] }
-  expenses: { totalMonthly: string; items: ExpenseItem[]; byCategory: ExpenseByCategory[] }
+  expenses: { totalMonthly: string; items: ExpenseItem[]; byCategory: ExpenseByCategory[]; byAccount: ExpenseByAccount[] }
   savings: { totalMonthly: string }
   surplus: string
   memberSplits: MemberSplit[]
@@ -476,6 +483,35 @@ export function DashboardPage() {
                         />
                       </div>
                       <span className="text-gray-400 text-sm tabular-nums w-20 text-right">{fmt(c.totalMonthly)}</span>
+                      <span className="text-gray-600 text-xs w-10 text-right">{pct.toFixed(0)}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {summary.expenses.byAccount?.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">By account</h2>
+              <div className="space-y-2">
+                {summary.expenses.byAccount.map((a) => {
+                  const pct = expenses > 0 ? (parseFloat(a.totalMonthly) / expenses) * 100 : 0
+                  return (
+                    <div key={a.accountId} className="flex items-center gap-3">
+                      <span className="text-gray-300 text-sm w-36 shrink-0 truncate flex items-center gap-1.5">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-gray-800 text-gray-500 shrink-0">
+                          {a.accountType.replace('_', ' ')}
+                        </span>
+                        {a.accountName}
+                      </span>
+                      <div className="flex-1 bg-gray-800 rounded-full h-2">
+                        <div
+                          className="bg-blue-400/70 h-2 rounded-full transition-all"
+                          style={{ width: `${Math.min(pct, 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-gray-400 text-sm tabular-nums w-20 text-right">{fmt(a.totalMonthly)}</span>
                       <span className="text-gray-600 text-xs w-10 text-right">{pct.toFixed(0)}%</span>
                     </div>
                   )

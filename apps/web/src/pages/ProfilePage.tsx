@@ -5,10 +5,11 @@ import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { AlertTriangle, User, Home } from 'lucide-react'
+import { AlertTriangle, User, Home, CreditCard, Plus, Pencil, Trash2 } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
+import { Modal } from '../components/Modal'
 import { inputClass } from '../lib/styles'
 
 const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
@@ -47,6 +48,22 @@ interface Household {
 interface IncomeSummary {
   allocationPct: string
   overAllocated: boolean
+}
+
+type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
+
+interface Account {
+  id: string
+  name: string
+  type: AccountType
+  isActive: boolean
+  _count: { expenses: number; savingsEntries: number }
+}
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  BANK: 'Bank',
+  CREDIT_CARD: 'Credit card',
+  MOBILE_PAY: 'Mobile pay',
 }
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
@@ -421,13 +438,278 @@ function HouseholdsTab() {
   )
 }
 
+// ── Tab 3: Accounts ──────────────────────────────────────────────────────────
+
+interface AccountForm {
+  name: string
+  type: AccountType
+}
+
+function emptyAccountForm(): AccountForm {
+  return { name: '', type: 'BANK' }
+}
+
+function AccountsTab() {
+  const queryClient = useQueryClient()
+
+  const { data: accounts = [], isLoading } = useQuery<Account[]>({
+    queryKey: ['accounts', 'personal'],
+    queryFn: async () => (await api.get<Account[]>('/users/me/accounts')).data,
+  })
+
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null)
+  const [form, setForm] = useState<AccountForm>(emptyAccountForm())
+  const [formError, setFormError] = useState('')
+  const [deleteError, setDeleteError] = useState('')
+
+  function openAdd() {
+    setForm(emptyAccountForm())
+    setFormError('')
+    setShowAdd(true)
+  }
+
+  function openEdit(account: Account) {
+    setForm({ name: account.name, type: account.type })
+    setFormError('')
+    setEditingAccount(account)
+  }
+
+  function closeModal() {
+    setShowAdd(false)
+    setEditingAccount(null)
+    setForm(emptyAccountForm())
+    setFormError('')
+  }
+
+  const createMutation = useMutation({
+    mutationFn: (data: AccountForm) => api.post('/users/me/accounts', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      closeModal()
+      toast.success('Account added')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (data: AccountForm) => api.put(`/users/me/accounts/${editingAccount!.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      closeModal()
+      toast.success('Account updated')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save')
+    },
+  })
+
+  const toggleActiveMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      api.put(`/users/me/accounts/${id}`, { isActive }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        toast.error((err.response?.data as { error?: string })?.error ?? 'Failed to update')
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/me/accounts/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      setDeleteTarget(null)
+      setDeleteError('')
+      toast.success('Account deleted')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setDeleteError((err.response?.data as { error?: string })?.error ?? 'Failed to delete')
+    },
+  })
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError('')
+    if (!form.name.trim()) { setFormError('Name is required'); return }
+    if (editingAccount) updateMutation.mutate(form)
+    else createMutation.mutate(form)
+  }
+
+  const isMutating = createMutation.isPending || updateMutation.isPending
+
+  return (
+    <div className="space-y-4">
+      <div className={cardClass}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold">Personal accounts</h2>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold rounded-lg px-3 py-1.5 text-sm transition-colors"
+          >
+            <Plus size={14} /> Add account
+          </button>
+        </div>
+
+        {isLoading ? (
+          <PageLoader />
+        ) : accounts.length === 0 ? (
+          <p className="text-sm text-gray-500">No accounts yet. Add one to start tagging expenses and savings.</p>
+        ) : (
+          <div className="space-y-2">
+            {accounts.map((account) => (
+              <div
+                key={account.id}
+                className="flex items-center justify-between bg-gray-800 rounded-lg px-4 py-3"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-gray-700 text-gray-300 border border-gray-600">
+                    {ACCOUNT_TYPE_LABELS[account.type]}
+                  </span>
+                  <span className={`text-sm font-medium ${account.isActive ? 'text-white' : 'text-gray-500 line-through'}`}>
+                    {account.name}
+                  </span>
+                  {!account.isActive && (
+                    <span className="text-xs text-gray-600">inactive</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => toggleActiveMutation.mutate({ id: account.id, isActive: !account.isActive })}
+                    className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  >
+                    {account.isActive ? 'Deactivate' : 'Activate'}
+                  </button>
+                  <button
+                    onClick={() => openEdit(account)}
+                    className="text-gray-500 hover:text-gray-300 transition-colors p-1"
+                  >
+                    <Pencil size={14} />
+                  </button>
+                  <button
+                    onClick={() => { setDeleteTarget(account); setDeleteError('') }}
+                    className="text-gray-500 hover:text-red-400 transition-colors p-1"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add/Edit modal */}
+      {(showAdd || editingAccount) && (
+        <Modal
+          title={editingAccount ? 'Edit account' : 'Add account'}
+          onClose={closeModal}
+          size="sm"
+        >
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Main bank account"
+                className={inputClass}
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Type</label>
+              <select
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value as AccountType })}
+                className={inputClass}
+              >
+                {Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+            {formError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
+                {formError}
+              </div>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="submit"
+                disabled={isMutating}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {isMutating ? 'Saving…' : editingAccount ? 'Save changes' : 'Add account'}
+              </button>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <Modal title="Delete account" onClose={() => { setDeleteTarget(null); setDeleteError('') }} size="sm">
+          <p className="text-gray-300 text-sm mb-2">
+            Delete <span className="font-semibold text-white">"{deleteTarget.name}"</span>?
+          </p>
+          {deleteTarget._count.expenses > 0 || deleteTarget._count.savingsEntries > 0 ? (
+            <p className="text-amber-400 text-xs mb-4">
+              This account has {deleteTarget._count.expenses + deleteTarget._count.savingsEntries} associated entries.
+              Remove them before deleting, or deactivate the account instead.
+            </p>
+          ) : (
+            <p className="text-gray-500 text-xs mb-4">This action cannot be undone.</p>
+          )}
+          {deleteError && (
+            <div className="bg-red-950 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-xs mb-4">
+              {deleteError}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              onClick={() => deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => { setDeleteTarget(null); setDeleteError('') }}
+              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
 // ── Main ProfilePage ─────────────────────────────────────────────────────────
 
-type TabKey = 'profile' | 'households'
+type TabKey = 'profile' | 'households' | 'accounts'
 
 const TABS: { key: TabKey; label: string; icon: typeof User }[] = [
   { key: 'profile', label: 'Profile', icon: User },
   { key: 'households', label: 'Households', icon: Home },
+  { key: 'accounts', label: 'Accounts', icon: CreditCard },
 ]
 
 export function ProfilePage() {
@@ -463,6 +745,7 @@ export function ProfilePage() {
         {/* Tab content */}
         {tab === 'profile' && <ProfileTab user={user} />}
         {tab === 'households' && <HouseholdsTab />}
+        {tab === 'accounts' && <AccountsTab />}
       </main>
     </div>
   )

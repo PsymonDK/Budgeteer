@@ -35,6 +35,25 @@ interface HouseholdMember {
   user: { id: string; name: string }
 }
 
+type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
+
+interface AccountInfo {
+  id: string
+  name: string
+  type: AccountType
+}
+
+interface AccountGroups {
+  personal: AccountInfo[]
+  household: AccountInfo[]
+}
+
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  BANK: 'Bank',
+  CREDIT_CARD: 'Credit card',
+  MOBILE_PAY: 'Mobile pay',
+}
+
 interface Expense {
   id: string
   label: string
@@ -53,6 +72,8 @@ interface Expense {
   ownedByUserId: string | null
   ownedBy: { id: string; name: string } | null
   customSplits: { userId: string; user: { id: string; name: string }; pct: string }[]
+  accountId: string | null
+  account: AccountInfo | null
 }
 
 interface Currency {
@@ -102,6 +123,7 @@ interface ExpenseForm {
   ownership: ExpenseOwnership
   ownedByUserId: string | null
   customSplits: CustomSplitInput[]
+  accountId: string | null
 }
 
 const MONTH_OPTIONS = [
@@ -128,6 +150,7 @@ const emptyForm = (baseCurrency: string): ExpenseForm => ({
   label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '',
   startMonth: '', endMonth: '', notes: '',
   currencyCode: baseCurrency, ownership: 'SHARED', ownedByUserId: null, customSplits: [],
+  accountId: null,
 })
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -149,6 +172,7 @@ export function ExpensesPage() {
   const [sortKey, setSortKey] = useState<SortKey>('category')
   const [sortAsc, setSortAsc] = useState(true)
   const [filterCategories, setFilterCategories] = useState<Set<string>>(new Set())
+  const [filterAccounts, setFilterAccounts] = useState<Set<string>>(new Set())
   const [view, setView] = useState<'list' | 'calendar'>('list')
 
   // Modal state
@@ -200,13 +224,29 @@ export function ExpensesPage() {
   })
   const members = householdData?.members ?? []
 
+  const { data: accountGroups } = useQuery<AccountGroups>({
+    queryKey: ['accounts-for-budget-year', activeBudgetYear?.id],
+    queryFn: async () => (await api.get<AccountGroups>(`/budget-years/${activeBudgetYear!.id}/accounts`)).data,
+    enabled: !!activeBudgetYear,
+  })
+  const personalAccounts = accountGroups?.personal ?? []
+  const householdAccountOptions = accountGroups?.household ?? []
+  const hasAccounts = personalAccounts.length > 0 || householdAccountOptions.length > 0
 
   // ── Derived data ─────────────────────────────────────────────────────────────
 
+  const accountsInExpenses = useMemo(() => {
+    const map = new Map<string, AccountInfo>()
+    for (const e of expenses) {
+      if (e.account) map.set(e.account.id, e.account)
+    }
+    return [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [expenses])
+
   const filtered = useMemo(() => {
-    let list = filterCategories.size > 0
-      ? expenses.filter((e) => filterCategories.has(e.category.id))
-      : expenses
+    let list = expenses
+    if (filterCategories.size > 0) list = list.filter((e) => filterCategories.has(e.category.id))
+    if (filterAccounts.size > 0) list = list.filter((e) => e.accountId != null && filterAccounts.has(e.accountId))
 
     return [...list].sort((a, b) => {
       let cmp = 0
@@ -253,6 +293,7 @@ export function ExpensesPage() {
         customSplits: data.ownership === 'CUSTOM'
           ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
           : undefined,
+        accountId: data.accountId || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
@@ -279,6 +320,7 @@ export function ExpensesPage() {
         customSplits: data.ownership === 'CUSTOM'
           ? data.customSplits.map((s) => ({ userId: s.userId, pct: parseFloat(s.pct) }))
           : undefined,
+        accountId: data.accountId || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
@@ -326,6 +368,7 @@ export function ExpensesPage() {
       ownership: expense.ownership ?? 'SHARED',
       ownedByUserId: expense.ownedByUserId ?? null,
       customSplits: expense.customSplits?.map((s) => ({ userId: s.userId, pct: s.pct })) ?? [],
+      accountId: expense.account?.id ?? null,
     })
     setFormError('')
     setEditingExpense(expense)
@@ -417,6 +460,34 @@ export function ExpensesPage() {
           <>
             {/* Controls */}
             <div className="flex flex-col gap-3 mb-4">
+              {accountsInExpenses.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-gray-500 mr-1">Account:</span>
+                  {accountsInExpenses.map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => setFilterAccounts((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(a.id)) next.delete(a.id); else next.add(a.id)
+                        return next
+                      })}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        filterAccounts.has(a.id)
+                          ? 'bg-amber-400 border-amber-400 text-gray-950 font-medium'
+                          : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      {a.name}
+                      <span className="ml-1 opacity-60">{ACCOUNT_TYPE_LABELS[a.type]}</span>
+                    </button>
+                  ))}
+                  {filterAccounts.size > 0 && (
+                    <button onClick={() => setFilterAccounts(new Set())} className="text-xs text-gray-600 hover:text-gray-400 transition-colors ml-1">
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex items-center justify-between gap-4">
                 <CategoryFilter
                   categories={categories}
@@ -518,6 +589,11 @@ export function ExpensesPage() {
                             {e.notes && (
                               <span className="text-gray-600 text-xs" title={e.notes}>📝</span>
                             )}
+                            {e.account && (
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                                {e.account.name}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3 text-gray-300">
@@ -565,7 +641,7 @@ export function ExpensesPage() {
                   <tfoot>
                     <tr className="border-t border-gray-700 bg-gray-800/50">
                       <td colSpan={4} className="px-4 py-3 text-sm text-gray-400 font-medium">
-                        Total{filterCategories.size > 0 ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
+                        Total{(filterCategories.size > 0 || filterAccounts.size > 0) ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
                       </td>
                       <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">
                         {fmt(totalMonthly)}
@@ -671,6 +747,34 @@ export function ExpensesPage() {
                   ))}
                 </select>
               </div>
+              {hasAccounts && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Account <span className="text-gray-600">(optional)</span>
+                  </label>
+                  <select
+                    value={form.accountId ?? ''}
+                    onChange={(e) => setForm({ ...form, accountId: e.target.value || null })}
+                    className={inputClass}
+                  >
+                    <option value="">— None —</option>
+                    {personalAccounts.length > 0 && (
+                      <optgroup label="My accounts">
+                        {personalAccounts.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {householdAccountOptions.length > 0 && (
+                      <optgroup label="Household accounts">
+                        {householdAccountOptions.map((a) => (
+                          <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+              )}
               {members.length > 0 && (
                 <>
                   <div>
