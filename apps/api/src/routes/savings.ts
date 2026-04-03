@@ -37,6 +37,15 @@ const UpdateSavingsSchema = CreateSavingsSchema.partial().refine(
   { message: 'At least one field is required' }
 )
 
+const BulkUpdateSavingsSchema = z.object({
+  ids: z.array(z.string()).min(1, { message: 'At least one savings ID required' }),
+  categoryId: z.string().nullable().optional(),
+  accountId: z.string().nullable().optional(),
+}).refine(
+  (d) => d.categoryId !== undefined || d.accountId !== undefined,
+  { message: 'At least one field to update is required' }
+)
+
 const savingsInclude = {
   category: { select: { id: true, name: true, icon: true, categoryType: true } },
   ownedBy: { select: { id: true, name: true } },
@@ -229,6 +238,46 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send(updated)
+  })
+
+  // PATCH /budget-years/:id/savings/bulk
+  fastify.patch('/budget-years/:id/savings/bulk', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    const result = BulkUpdateSavingsSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
+    if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
+
+    const { ids, categoryId, accountId } = result.data
+
+    if (categoryId !== undefined && categoryId !== null) {
+      const category = await prisma.category.findUnique({ where: { id: categoryId } })
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
+    if (accountId !== undefined && accountId !== null) {
+      const acct = await prisma.account.findUnique({ where: { id: accountId } })
+      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
+      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
+        return reply.status(400).send({ error: 'Account not accessible' })
+    }
+
+    const { count } = await prisma.savingsEntry.updateMany({
+      where: { id: { in: ids }, budgetYearId: id },
+      data: {
+        ...(categoryId !== undefined && { categoryId }),
+        ...(accountId !== undefined && { accountId }),
+      },
+    })
+
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    return reply.send({ updated: count })
   })
 
   // DELETE /budget-years/:id/savings/:entryId

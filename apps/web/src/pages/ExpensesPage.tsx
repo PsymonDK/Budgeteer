@@ -182,6 +182,12 @@ export function ExpensesPage() {
   const [form, setForm] = useState<ExpenseForm>(emptyForm('DKK'))
   const [formError, setFormError] = useState('')
 
+  // Bulk edit state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkEditOpen, setBulkEditOpen] = useState(false)
+  const [bulkForm, setBulkForm] = useState<{ categoryId: string; accountId: string }>({ categoryId: '', accountId: '' })
+  const [bulkError, setBulkError] = useState('')
+
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: budgetYears = [], isLoading: yearsLoading } = useQuery<BudgetYear[]>({
@@ -346,6 +352,23 @@ export function ExpensesPage() {
     },
   })
 
+  const bulkUpdateMutation = useMutation({
+    mutationFn: (payload: { ids: string[]; categoryId?: string; accountId?: string | null }) =>
+      api.patch(`/budget-years/${activeBudgetYear!.id}/expenses/bulk`, payload),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
+      setBulkEditOpen(false)
+      setSelectedIds(new Set())
+      setBulkForm({ categoryId: '', accountId: '' })
+      setBulkError('')
+      toast.success(`${variables.ids.length} expense${variables.ids.length !== 1 ? 's' : ''} updated`)
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err))
+        setBulkError((err.response?.data as { error?: string })?.error ?? 'Failed to update')
+    },
+  })
+
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function openAdd() {
@@ -377,6 +400,45 @@ export function ExpensesPage() {
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortAsc((a) => !a)
     else { setSortKey(key); setSortAsc(true) }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (filtered.every((e) => selectedIds.has(e.id))) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        filtered.forEach((e) => next.delete(e.id))
+        return next
+      })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        filtered.forEach((e) => next.add(e.id))
+        return next
+      })
+    }
+  }
+
+  function handleBulkSubmit(e: FormEvent) {
+    e.preventDefault()
+    setBulkError('')
+    if (!bulkForm.categoryId && !bulkForm.accountId) {
+      setBulkError('Select at least one field to change')
+      return
+    }
+    const payload: { ids: string[]; categoryId?: string; accountId?: string | null } = {
+      ids: [...selectedIds],
+    }
+    if (bulkForm.categoryId) payload.categoryId = bulkForm.categoryId
+    if (bulkForm.accountId) payload.accountId = bulkForm.accountId === '__none__' ? null : bulkForm.accountId
+    bulkUpdateMutation.mutate(payload)
   }
 
   function handleSubmit(e: FormEvent) {
@@ -519,6 +581,25 @@ export function ExpensesPage() {
               </div>
             </div>
 
+            {/* Bulk action bar */}
+            {selectedIds.size > 0 && (
+              <div className="flex items-center gap-3 bg-amber-400/10 border border-amber-400/30 rounded-lg px-4 py-2.5 mb-3">
+                <span className="text-amber-400 text-sm font-medium">{selectedIds.size} selected</span>
+                <button
+                  onClick={() => { setBulkForm({ categoryId: '', accountId: '' }); setBulkError(''); setBulkEditOpen(true) }}
+                  className="text-sm bg-amber-400 text-gray-950 font-semibold px-3 py-1 rounded-lg hover:bg-amber-300 transition-colors"
+                >
+                  Edit selected
+                </button>
+                <button
+                  onClick={() => setSelectedIds(new Set())}
+                  className="text-xs text-gray-400 hover:text-white transition-colors ml-auto"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
+
             {/* Table / Calendar */}
             {expensesLoading ? (
               <PageLoader />
@@ -533,6 +614,16 @@ export function ExpensesPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800 text-gray-400 text-left select-none">
+                      <th className="pl-4 pr-2 py-3 w-8">
+                        <input
+                          type="checkbox"
+                          checked={filtered.length > 0 && filtered.every((e) => selectedIds.has(e.id))}
+                          ref={(el) => { if (el) el.indeterminate = filtered.some((e) => selectedIds.has(e.id)) && !filtered.every((e) => selectedIds.has(e.id)) }}
+                          onChange={toggleSelectAll}
+                          className="accent-amber-400 cursor-pointer"
+                          aria-label="Select all"
+                        />
+                      </th>
                       <th className="px-4 py-3 font-medium">
                         <button onClick={() => handleSort('label')} className="hover:text-white flex items-center">
                           Label <SortIcon col="label" />
@@ -567,7 +658,16 @@ export function ExpensesPage() {
                       const isPast = e.endMonth != null && e.endMonth < currentMonth
                       const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
                       return (
-                      <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}`}>
+                      <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}${selectedIds.has(e.id) ? ' bg-amber-400/5' : ''}`}>
+                        <td className="pl-4 pr-2 py-3 w-8">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(e.id)}
+                            onChange={() => toggleSelect(e.id)}
+                            className="accent-amber-400 cursor-pointer"
+                            aria-label={`Select ${e.label}`}
+                          />
+                        </td>
                         <td className="px-4 py-3 text-white">
                           <div className="flex items-center gap-2 flex-wrap">
                             {e.label}
@@ -640,7 +740,7 @@ export function ExpensesPage() {
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-gray-700 bg-gray-800/50">
-                      <td colSpan={4} className="px-4 py-3 text-sm text-gray-400 font-medium">
+                      <td colSpan={5} className="px-4 py-3 text-sm text-gray-400 font-medium">
                         Total{(filterCategories.size > 0 || filterAccounts.size > 0) ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
                       </td>
                       <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">
@@ -923,6 +1023,78 @@ export function ExpensesPage() {
               </div>
             </form>
           </div>
+        </Modal>
+      )}
+
+      {/* Bulk edit modal */}
+      {bulkEditOpen && (
+        <Modal
+          title={`Edit ${selectedIds.size} expense${selectedIds.size !== 1 ? 's' : ''}`}
+          onClose={() => setBulkEditOpen(false)}
+          size="sm"
+        >
+          <p className="text-xs text-gray-500 mb-4">Only fields you change will be updated. Leave a field as "— unchanged —" to keep existing values.</p>
+          <form onSubmit={handleBulkSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Category</label>
+              <select
+                value={bulkForm.categoryId}
+                onChange={(e) => setBulkForm({ ...bulkForm, categoryId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— unchanged —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}{c.isSystemWide ? '' : ' (custom)'}</option>
+                ))}
+              </select>
+            </div>
+            {hasAccounts && (
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Account</label>
+                <select
+                  value={bulkForm.accountId}
+                  onChange={(e) => setBulkForm({ ...bulkForm, accountId: e.target.value })}
+                  className={inputClass}
+                >
+                  <option value="">— unchanged —</option>
+                  <option value="__none__">None (clear account)</option>
+                  {personalAccounts.length > 0 && (
+                    <optgroup label="My accounts">
+                      {personalAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {householdAccountOptions.length > 0 && (
+                    <optgroup label="Household accounts">
+                      {householdAccountOptions.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+              </div>
+            )}
+            {bulkError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{bulkError}</div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={bulkUpdateMutation.isPending}
+                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {bulkUpdateMutation.isPending ? 'Saving…' : 'Apply changes'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setBulkEditOpen(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 
