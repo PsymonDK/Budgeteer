@@ -22,6 +22,7 @@ interface Household {
   id: string
   name: string
   isActive: boolean
+  autoMarkTransferPaid: boolean
   myRole: 'ADMIN' | 'MEMBER' | null
   members: Member[]
 }
@@ -252,6 +253,13 @@ export function HouseholdPage() {
         setNameError((err.response?.data as { error?: string })?.error ?? 'Failed to update name')
       }
     },
+  })
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (settings: { autoMarkTransferPaid: boolean }) =>
+      api.put(`/households/${id}`, { name: household!.name, ...settings }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household', id] }),
+    onError: () => toast.error('Failed to update settings'),
   })
 
   function handleAddMember(e: FormEvent) {
@@ -488,6 +496,36 @@ export function HouseholdPage() {
             </div>
           )}
         </div>
+
+        {/* Budget transfer settings */}
+        {isAdmin && (
+          <div className="mt-8 border border-gray-800 rounded-xl p-6">
+            <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Transfer settings</h2>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-white">Auto-mark transfer as paid</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  On the 1st of each month the previous month's transfer is automatically marked as paid at the planned amount.
+                </p>
+              </div>
+              <button
+                role="switch"
+                aria-checked={household.autoMarkTransferPaid}
+                onClick={() => updateSettingsMutation.mutate({ autoMarkTransferPaid: !household.autoMarkTransferPaid })}
+                disabled={updateSettingsMutation.isPending}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                  household.autoMarkTransferPaid ? 'bg-amber-500' : 'bg-gray-700'
+                }`}
+              >
+                <span
+                  className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                    household.autoMarkTransferPaid ? 'translate-x-5' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Danger zone */}
         {isAdmin && (

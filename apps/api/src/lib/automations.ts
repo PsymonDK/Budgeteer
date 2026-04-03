@@ -25,9 +25,10 @@ export async function runAutomation(
   }
 
   try {
-    const activeBudgetYear = await prisma.budgetYear.findFirst({
-      where: { householdId: automation.householdId, status: 'ACTIVE' },
-    })
+    const [activeBudgetYear, household] = await Promise.all([
+      prisma.budgetYear.findFirst({ where: { householdId: automation.householdId, status: 'ACTIVE' } }),
+      prisma.household.findUnique({ where: { id: automation.householdId }, select: { autoMarkTransferPaid: true } }),
+    ])
 
     if (!activeBudgetYear) {
       const finishedAt = new Date()
@@ -39,6 +40,21 @@ export async function runAutomation(
         data: { lastRunAt: finishedAt, lastRunStatus: 'SKIPPED' },
       })
       return
+    }
+
+    if (household?.autoMarkTransferPaid) {
+      const now = new Date()
+      const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed; prev month is 1-indexed
+      const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+      const prevTransfer = await prisma.budgetTransfer.findUnique({
+        where: { budgetYearId_month_year: { budgetYearId: activeBudgetYear.id, month: prevMonth, year: prevYear } },
+      })
+      if (prevTransfer && prevTransfer.status === 'PENDING') {
+        await prisma.budgetTransfer.update({
+          where: { id: prevTransfer.id },
+          data: { status: 'PAID', actualAmount: prevTransfer.calculatedAmount, paidAt: now },
+        })
+      }
     }
 
     await recalculateTransfer(activeBudgetYear.id)
