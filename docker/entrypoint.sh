@@ -2,7 +2,7 @@
 set -e
 
 echo "→ Pushing database schema..."
-./node_modules/.bin/prisma db push
+./node_modules/.bin/prisma db push --accept-data-loss
 
 echo "→ Seeding database..."
 ./node_modules/.bin/ts-node prisma/seed.ts
