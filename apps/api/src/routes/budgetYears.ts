@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { deriveBudgetStatus } from '../lib/calculations'
 import { assertHouseholdAccess } from '../lib/ownership'
+import { recalculateTransfer } from '../lib/budgetTransfer'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,10 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       data: { householdId, year, status },
       include: { _count: { select: { expenses: true, savingsEntries: true } } },
     })
+
+    if (status === 'ACTIVE') {
+      recalculateTransfer(budgetYear.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    }
 
     return reply.status(201).send(budgetYear)
   })
@@ -275,6 +280,8 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         include: { _count: { select: { expenses: true, savingsEntries: true } } },
       })
     })
+
+    recalculateTransfer(promoted.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(promoted)
   })

@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.44.0] - 2026-04-03 — Bug fixes: calendar view, automations backfill, transfer history
+
+### Fixed
+- **Calendar view respects startMonth/endMonth** — `getMonthValues` was filling all 12 months with the annual-average `monthlyEquivalent`; it now shows the true per-period cash amount only in the months the expense is active; QUARTERLY/BIANNUAL/ANNUAL payment placement is also clipped to the active range
+- **Automations backfill for existing households** — households created before the BudgetTransfer system was introduced had no `monthly_transfer_snapshot` Automation record; a migration now inserts the missing rows so the monthly cron and manual triggers work for all households
+- **Transfer history shows all 12 months** — `recalculateTransfer` was only writing a single record for the current month; past months were blank and the current month amount was inflated (`annualNeed / remainingMonths` instead of `annualNeed / 12`); the function now loops all 12 months: past months get the equal-split plan amount, current and future months use the forward-looking formula; PAID/ADJUSTED months are never overwritten
+- **Transfer grid seeded on budget year creation/promotion** — creating an ACTIVE budget year or promoting a simulation now immediately fires `recalculateTransfer` so the full 12-month transfer grid exists from the start
+
+---
+
+## [0.43.0] - 2026-04-03 — Forward-looking monthly budget calculation (Sprint 23)
+
+### Added
+- **BudgetTransfer system (#133–140)** — expense and savings changes no longer affect past months; a `BudgetTransfer` record per month stores the recommended transfer amount using the formula `max(0, (annualNeed − alreadyPaid) / remainingMonths)`
+- **Automation runner + monthly cron (#136)** — `Automation` and `AutomationRun` models; `runAutomation()` / `runAllEnabledAutomations()`; cron fires on the 1st of each month (`0 0 1 * *`); `monthly_transfer_snapshot` automation seeded on household creation
+- **Budget transfers REST API (#137)** — `GET /budget-years/:id/transfers`; `PATCH .../mark-paid`; `PATCH .../mark-pending`
+- **Admin automations REST API (#138)** — list, toggle, trigger, trigger-all, run history; all routes require `SYSTEM_ADMIN`
+- **Transfer tile on dashboard (#139–140)** — transfer amount tile with mark-as-paid modal and collapsible month history table
+
+### Changed
+- `calcForwardMonthlyNeed()` added to `calculations.ts` with 8 unit tests (Jan/Jul/Dec, paid transfers, edge cases)
+- `recalculateTransfer()` wired fire-and-forget into expenses and savings `POST`/`PUT`/`DELETE` routes
+
+---
+
+## [0.42.0] - 2026-04-02 — Accounts
+
+### Added
+- **#107 Account tracking** — `Account` model (`BANK`, `CREDIT_CARD`, `MOBILE_PAY`) with personal accounts per user and household-level shared accounts; expenses and savings entries gain an optional account tag
+- **Account CRUD API** — `GET/POST/PATCH/DELETE /users/me/accounts` (personal) and `/households/:id/accounts` (household); combined dropdown endpoint at `/budget-years/:id/accounts`; 409 safeguard blocks deletion of accounts still in use
+- **Account UI** — Accounts tab on Profile page (personal); Accounts section on Household page (admin write, member read); account dropdown in expense and savings forms grouped by personal/household; account badge on list rows; account filter pills; by-account breakdown on household dashboard
+
+---
+
+## [0.41.0] - 2026-04-01 — Header navigation consolidation
+
+### Changed
+- **Consolidated header nav into dropdowns** — removed loose links (Dashboard, Personal Income, Admin) from the header bar; reorganised into `HeaderSettingsMenu` (gear icon: Household Settings, Admin Panel) and `HeaderUserMenu` (avatar: Personal Income, Profile, Change Password, Sign out)
+
+---
+
+## [0.40.0] - 2026-04-01 — Personal dashboard refocus (#127)
+
+### Added
+- **New `/users/me/dashboard` endpoint** — income, expenses, savings, and surplus all scoped to the requesting user; household cards retain full household totals
+- **4-tile layout with monthly/annual toggle** — Income, Expenses, Savings, Surplus tiles; the toggle scales all monetary values across tiles and household cards simultaneously
+- **Sparkline charts on dashboard tiles** — optional per-tile sparklines controlled by a new `showDashboardSparklines` user preference (default: on)
+- **Surplus as a full tile** — promoted from a banner to a first-class tile alongside Income, Expenses, Savings
+
+### Fixed
+- **Household card income and surplus** use full household totals (not the viewing user's share)
+- **Sankey nodes show formatted amounts** below each node name; removed unused `DeltaBadge` component
+
+### Changed
+- **`+ New household` button** restricted to `SYSTEM_ADMIN` users
+- Footer version bumped to `0.40.0`
+
+---
+
 ## [0.39.0] - 2026-03-31 — Compare dashboard income fallback
 
 ### Fixed

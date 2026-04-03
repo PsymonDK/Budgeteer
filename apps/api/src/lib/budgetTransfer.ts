@@ -1,3 +1,4 @@
+import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import { calcForwardMonthlyNeed } from './calculations'
 
@@ -5,7 +6,7 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
   const budgetYear = await prisma.budgetYear.findUnique({ where: { id: budgetYearId } })
   if (!budgetYear || budgetYear.status !== 'ACTIVE') return
 
-  const targetMonth = new Date().getMonth() + 1 // 1-12
+  const currentMonth = new Date().getMonth() + 1
   const year = budgetYear.year
 
   const expenses = await prisma.expense.findMany({
@@ -13,30 +14,34 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
     select: { monthlyEquivalent: true },
   })
 
-  const paidTransfers = await prisma.budgetTransfer.findMany({
-    where: { budgetYearId, status: { in: ['PAID', 'ADJUSTED'] } },
-    select: { actualAmount: true },
-  })
+  const annualNeed = expenses.reduce(
+    (sum, e) => sum.add(new Decimal(e.monthlyEquivalent.toString()).mul(12)),
+    new Decimal(0),
+  )
+  const perMonth = annualNeed.div(12)
 
-  const calculatedAmount = calcForwardMonthlyNeed(expenses, paidTransfers, targetMonth)
+  const existingTransfers = await prisma.budgetTransfer.findMany({ where: { budgetYearId } })
+  const byMonth = new Map(existingTransfers.map((t) => [t.month, t]))
+  const paidTransfers = existingTransfers.filter((t) => t.status === 'PAID' || t.status === 'ADJUSTED')
 
-  const existing = await prisma.budgetTransfer.findUnique({
-    where: { budgetYearId_month_year: { budgetYearId, month: targetMonth, year } },
-  })
+  for (let m = 1; m <= 12; m++) {
+    const existing = byMonth.get(m)
 
-  if (!existing || existing.status === 'PENDING') {
+    // Never overwrite locked months
+    if (existing && (existing.status === 'PAID' || existing.status === 'ADJUSTED')) continue
+
+    let calculatedAmount: Decimal
+    if (m < currentMonth) {
+      // Past months: show the equal-split planned amount
+      calculatedAmount = perMonth
+    } else {
+      // Current and future months: forward-looking formula
+      calculatedAmount = calcForwardMonthlyNeed(expenses, paidTransfers, m)
+    }
+
     await prisma.budgetTransfer.upsert({
-      where: { budgetYearId_month_year: { budgetYearId, month: targetMonth, year } },
-      create: { budgetYearId, year, month: targetMonth, calculatedAmount, calculatedAt: new Date() },
-      update: { calculatedAmount, calculatedAt: new Date() },
-    })
-  } else {
-    // Current month is PAID/ADJUSTED — write to next month's row instead
-    const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1
-    const nextYear = targetMonth === 12 ? year + 1 : year
-    await prisma.budgetTransfer.upsert({
-      where: { budgetYearId_month_year: { budgetYearId, month: nextMonth, year: nextYear } },
-      create: { budgetYearId, year: nextYear, month: nextMonth, calculatedAmount, calculatedAt: new Date() },
+      where: { budgetYearId_month_year: { budgetYearId, month: m, year } },
+      create: { budgetYearId, year, month: m, calculatedAmount, calculatedAt: new Date() },
       update: { calculatedAmount, calculatedAt: new Date() },
     })
   }

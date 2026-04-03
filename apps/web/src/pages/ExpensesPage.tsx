@@ -1132,25 +1132,33 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const RECURRING_FREQS = new Set<Frequency>(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY'])
 
 function getMonthValues(expense: Expense): (number | null)[] {
-  const monthly = parseFloat(expense.monthlyEquivalent)
-  const amount = parseFloat(expense.amount)
+  const start = expense.startMonth ?? 1
+  const end = expense.endMonth ?? 12
+  const activeMonths = Math.max(1, end - start + 1)
+  const perPeriod = parseFloat(expense.monthlyEquivalent) * 12 / activeMonths
   const vals: (number | null)[] = Array(12).fill(null)
   switch (expense.frequency) {
     case 'WEEKLY':
     case 'FORTNIGHTLY':
     case 'MONTHLY':
-      return Array(12).fill(monthly)
+      for (let m = start; m <= end; m++) vals[m - 1] = perPeriod
+      return vals
     case 'QUARTERLY':
-      vals[2] = amount; vals[5] = amount; vals[8] = amount; vals[11] = amount
+      for (const m of [3, 6, 9, 12]) {
+        if (m >= start && m <= end) vals[m - 1] = perPeriod * 3
+      }
       return vals
     case 'BIANNUAL':
-      vals[5] = amount; vals[11] = amount
+      for (const m of [6, 12]) {
+        if (m >= start && m <= end) vals[m - 1] = perPeriod * 6
+      }
       return vals
     case 'ANNUAL':
-      vals[11] = amount
+      vals[end - 1] = perPeriod * 12
       return vals
     default:
-      return Array(12).fill(monthly)
+      for (let m = start; m <= end; m++) vals[m - 1] = perPeriod
+      return vals
   }
 }
 
