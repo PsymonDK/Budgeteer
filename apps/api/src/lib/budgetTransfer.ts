@@ -24,6 +24,12 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
   const byMonth = new Map(existingTransfers.map((t) => [t.month, t]))
   const paidTransfers = existingTransfers.filter((t) => t.status === 'PAID' || t.status === 'ADJUSTED')
 
+  // Calculate the forward amount once for the current month so all pending future
+  // months show a consistent plan (same amount per remaining month).
+  // Calling the formula with increasing m values would produce a diverging series
+  // because it doesn't account for planned-but-not-yet-paid future months.
+  const forwardAmount = calcForwardMonthlyNeed(expenses, paidTransfers, currentMonth)
+
   for (let m = 1; m <= 12; m++) {
     const existing = byMonth.get(m)
 
@@ -35,8 +41,8 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
       // Past months: show the equal-split planned amount
       calculatedAmount = perMonth
     } else {
-      // Current and future months: forward-looking formula
-      calculatedAmount = calcForwardMonthlyNeed(expenses, paidTransfers, m)
+      // Current and future months: same forward-looking amount for a consistent plan
+      calculatedAmount = forwardAmount
     }
 
     await prisma.budgetTransfer.upsert({

@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess } from '../lib/ownership'
+import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const MarkPaidSchema = z.object({
   actualAmount: z.number().positive(),
@@ -57,6 +58,8 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       },
     })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+
     return reply.send(updated)
   })
 
@@ -81,6 +84,8 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
         paidAt: null,
       },
     })
+
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(updated)
   })
