@@ -34,6 +34,30 @@ export function calcAnnualAverage(monthlyEquivalent: Decimal, startMonth: number
   return new Decimal(monthlyEquivalent.toString()).mul(months).div(12)
 }
 
+/**
+ * Calculates the recommended transfer amount for a given target month.
+ * Formula: max(0, (annualNeed - alreadyPaid) / remainingMonths)
+ * where remainingMonths = 13 - targetMonth
+ */
+export function calcForwardMonthlyNeed(
+  expenses: { monthlyEquivalent: Decimal }[],
+  paidTransfers: { actualAmount: Decimal | null }[],
+  targetMonth: number, // 1-12
+): Decimal {
+  const annualNeed = expenses.reduce(
+    (sum, e) => sum.add(new Decimal(e.monthlyEquivalent.toString()).mul(12)),
+    new Decimal(0),
+  )
+  const alreadyPaid = paidTransfers.reduce(
+    (sum, t) => sum.add(t.actualAmount ? new Decimal(t.actualAmount.toString()) : new Decimal(0)),
+    new Decimal(0),
+  )
+  const remaining = annualNeed.sub(alreadyPaid)
+  if (remaining.lte(0)) return new Decimal(0)
+  const remainingMonths = new Decimal(13 - targetMonth)
+  return remaining.div(remainingMonths)
+}
+
 export function deriveBudgetStatus(year: number): 'ACTIVE' | 'FUTURE' | 'RETIRED' {
   const current = new Date().getFullYear()
   if (year < current) return 'RETIRED'

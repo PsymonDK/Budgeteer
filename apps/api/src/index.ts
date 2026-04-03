@@ -19,7 +19,10 @@ import { savingsRoutes } from './routes/savings'
 import { currencyRoutes } from './routes/currencies'
 import { profileRoutes } from './routes/profile'
 import { accountRoutes } from './routes/accounts'
+import { budgetTransferRoutes } from './routes/budgetTransfers'
+import { automationRoutes } from './routes/automations'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
+import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
 
 const VERSION = process.env.npm_package_version ?? '0.14.0'
@@ -60,6 +63,8 @@ app.register(compareRoutes)
 app.register(savingsRoutes)
 app.register(currencyRoutes)
 app.register(profileRoutes)
+app.register(budgetTransferRoutes)
+app.register(automationRoutes)
 
 // Health check
 app.get('/health', async () => {
@@ -88,6 +93,13 @@ const start = async () => {
         app.log.warn({ err }, 'Initial currency sync failed — rates will load on next daily sync')
       }
     }
+
+    // Monthly budget transfer snapshot on the 1st of each month at 00:00
+    cron.schedule('0 0 1 * *', () => {
+      runAllEnabledAutomations('SCHEDULE').catch((err) =>
+        app.log.error({ err }, 'monthly_transfer_snapshot automation failed'),
+      )
+    })
 
     // Daily currency rate sync at 06:00
     cron.schedule('0 6 * * *', async () => {

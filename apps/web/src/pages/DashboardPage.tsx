@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRightLeft } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { CategoryIcon } from '../components/CategoryIcon'
@@ -8,6 +9,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart, type SankeyNodeDef, type SankeyLinkDef } from '../components/SankeyChart'
 import { FREQ_LABELS } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
+import { useTransfers, type BudgetTransfer } from '../hooks/useTransfers'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -122,6 +124,12 @@ export function DashboardPage() {
   // SAV-003: affordability slider (extra monthly savings)
   const [extraSavings, setExtraSavings] = useState(0)
 
+  // Budget transfer state
+  const [markPaidTransfer, setMarkPaidTransfer] = useState<BudgetTransfer | null>(null)
+  const [markPaidAmount, setMarkPaidAmount] = useState('')
+  const [markPaidLoading, setMarkPaidLoading] = useState(false)
+  const [historyCollapsed, setHistoryCollapsed] = useState(false)
+
   const { data: household } = useQuery<Household>({
     queryKey: ['household', householdId],
     queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
@@ -139,6 +147,41 @@ export function DashboardPage() {
     queryFn: async () => (await api.get<DashboardSummary>(`/households/${householdId}/summary`)).data,
     enabled: !!householdId,
   })
+
+  const queryClient = useQueryClient()
+  const { data: transfers = [] } = useTransfers(summary?.budgetYear?.id)
+
+  const now = new Date()
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+  const pendingThisMonth = transfers.find(
+    (t) => t.status === 'PENDING' && t.month === currentMonth && t.year === currentYear,
+  )
+
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  async function handleMarkPaid() {
+    if (!markPaidTransfer || !summary?.budgetYear) return
+    setMarkPaidLoading(true)
+    try {
+      await api.patch(
+        `/budget-years/${summary.budgetYear.id}/transfers/${markPaidTransfer.id}/mark-paid`,
+        { actualAmount: parseFloat(markPaidAmount) },
+      )
+      queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+      setMarkPaidTransfer(null)
+    } finally {
+      setMarkPaidLoading(false)
+    }
+  }
+
+  async function handleRevert(transfer: BudgetTransfer) {
+    if (!summary?.budgetYear) return
+    await api.patch(
+      `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
+    )
+    queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+  }
 
   function dismiss(key: string) {
     setDismissed((prev) => new Set([...prev, key]))
@@ -516,6 +559,147 @@ export function DashboardPage() {
                     </div>
                   )
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Budget transfer tile */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <ArrowRightLeft size={16} className="text-amber-400" />
+                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Transfer due this month</h2>
+              </div>
+            </div>
+            {pendingThisMonth ? (
+              <div className="flex items-center justify-between">
+                <span className="text-2xl font-bold text-amber-400">{fmt(pendingThisMonth.calculatedAmount)}</span>
+                <button
+                  onClick={() => {
+                    setMarkPaidTransfer(pendingThisMonth)
+                    setMarkPaidAmount(pendingThisMonth.calculatedAmount)
+                  }}
+                  className="bg-amber-500 hover:bg-amber-400 text-gray-950 font-medium text-sm px-4 py-2 rounded-lg transition-colors"
+                >
+                  Mark as Paid
+                </button>
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No transfer pending this month</p>
+            )}
+          </div>
+
+          {/* Transfer history */}
+          <div className="mb-8">
+            <button
+              onClick={() => setHistoryCollapsed((c) => !c)}
+              className="flex items-center gap-2 text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 hover:text-gray-300 transition-colors"
+            >
+              <span>Transfer History</span>
+              <span className="text-gray-600">{historyCollapsed ? '▸' : '▾'}</span>
+            </button>
+            {!historyCollapsed && (
+              transfers.length === 0 ? (
+                <p className="text-gray-600 text-sm py-4 text-center bg-gray-900 border border-gray-800 rounded-xl">
+                  No transfers recorded yet
+                </p>
+              ) : (
+                <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-800 text-gray-400 text-left">
+                        <th className="px-4 py-3 font-medium">Month</th>
+                        <th className="px-4 py-3 font-medium text-right">Calculated</th>
+                        <th className="px-4 py-3 font-medium text-right">Actual</th>
+                        <th className="px-4 py-3 font-medium">Status</th>
+                        <th className="px-4 py-3 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transfers.map((t) => (
+                        <tr key={t.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
+                          <td className="px-4 py-3 text-white tabular-nums">
+                            {MONTH_NAMES[(t.month - 1) % 12]} {t.year}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-300">{fmt(t.calculatedAmount)}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                            {t.actualAmount ? fmt(t.actualAmount) : '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                              t.status === 'PAID' ? 'bg-green-900/50 text-green-300' :
+                              t.status === 'ADJUSTED' ? 'bg-amber-900/50 text-amber-300' :
+                              'bg-gray-800 text-gray-400'
+                            }`}>
+                              {t.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {t.status === 'PENDING' ? (
+                              <button
+                                onClick={() => {
+                                  setMarkPaidTransfer(t)
+                                  setMarkPaidAmount(t.calculatedAmount)
+                                }}
+                                className="text-amber-400 hover:text-amber-300 text-xs font-medium transition-colors"
+                              >
+                                Mark as Paid
+                              </button>
+                            ) : (
+                              <div className="flex items-center justify-end gap-2 text-xs text-gray-500">
+                                {t.paidAt && <span>{new Date(t.paidAt).toLocaleDateString()}</span>}
+                                <button
+                                  onClick={() => handleRevert(t)}
+                                  className="text-gray-500 hover:text-gray-300 transition-colors"
+                                >
+                                  Revert
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+          </div>
+
+          {/* Mark as Paid modal */}
+          {markPaidTransfer && (
+            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+              <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm">
+                <h3 className="text-lg font-semibold text-white mb-1">Mark Transfer as Paid</h3>
+                <p className="text-gray-400 text-sm mb-4">
+                  {MONTH_NAMES[(markPaidTransfer.month - 1) % 12]} {markPaidTransfer.year}
+                </p>
+                <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">
+                  Actual amount transferred
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={markPaidAmount}
+                  onChange={(e) => setMarkPaidAmount(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm mb-4 focus:outline-none focus:border-amber-500"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleMarkPaid}
+                    disabled={markPaidLoading || !markPaidAmount}
+                    className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-gray-950 font-medium text-sm py-2 rounded-lg transition-colors"
+                  >
+                    {markPaidLoading ? 'Saving…' : 'Confirm'}
+                  </button>
+                  <button
+                    onClick={() => setMarkPaidTransfer(null)}
+                    className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 font-medium text-sm py-2 rounded-lg transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -61,6 +61,23 @@ enum AccountType {
   MOBILE_PAY
 }
 
+enum AutomationTrigger {
+  SCHEDULE
+  MANUAL
+}
+
+enum AutomationRunStatus {
+  SUCCESS
+  ERROR
+  SKIPPED
+}
+
+enum TransferStatus {
+  PENDING
+  PAID
+  ADJUSTED
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -113,6 +130,7 @@ model Household {
   members     HouseholdMember[]
   budgetYears BudgetYear[]
   accounts    Account[]
+  automations Automation[]
 }
 
 model HouseholdMember {
@@ -143,6 +161,7 @@ model BudgetYear {
   expenses        Expense[]
   savingsEntries  SavingsEntry[]
   incomeAllocations HouseholdIncomeAllocation[]
+  transfers       BudgetTransfer[]
 }
 
 model Job {
@@ -354,4 +373,52 @@ model RefreshToken {
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Automation {
+  id            String               @id @default(cuid())
+  key           String
+  label         String
+  description   String
+  schedule      String
+  householdId   String
+  household     Household            @relation(fields: [householdId], references: [id])
+  isEnabled     Boolean              @default(true)
+  lastRunAt     DateTime?
+  lastRunStatus AutomationRunStatus?
+  runs          AutomationRun[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([householdId, key])
+}
+
+model AutomationRun {
+  id                String               @id @default(cuid())
+  automationId      String
+  automation        Automation           @relation(fields: [automationId], references: [id])
+  triggeredBy       AutomationTrigger
+  triggeredByUserId String?
+  startedAt         DateTime
+  finishedAt        DateTime
+  status            AutomationRunStatus
+  message           String?
+}
+
+model BudgetTransfer {
+  id               String         @id @default(cuid())
+  budgetYearId     String
+  budgetYear       BudgetYear     @relation(fields: [budgetYearId], references: [id])
+  year             Int
+  month            Int
+  calculatedAmount Decimal        @db.Decimal(10, 2)
+  actualAmount     Decimal?       @db.Decimal(10, 2)
+  status           TransferStatus @default(PENDING)
+  calculatedAt     DateTime       @default(now())
+  paidAt           DateTime?
+  automationRunId  String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([budgetYearId, month, year])
 }

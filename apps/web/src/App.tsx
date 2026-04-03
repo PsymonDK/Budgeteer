@@ -13,6 +13,7 @@ import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
 import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
 import { CurrenciesAdminPage } from './pages/admin/CurrenciesAdminPage'
+import { AutomationsAdminPage } from './pages/admin/AutomationsAdminPage'
 import { ForbiddenPage } from './pages/ForbiddenPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { IncomePage } from './pages/IncomePage'
@@ -70,6 +71,7 @@ function App() {
               <Route path="households" element={<HouseholdsAdminPage />} />
               <Route path="currencies" element={<CurrenciesAdminPage />} />
               <Route path="categories" element={<CategoriesAdminPage />} />
+              <Route path="automations" element={<AutomationsAdminPage />} />
             </Route>
 
             {/* Standalone personal routes — shared GlobalLayout */}
