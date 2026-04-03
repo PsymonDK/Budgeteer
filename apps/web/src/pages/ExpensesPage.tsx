@@ -63,6 +63,7 @@ interface Expense {
   startMonth: number | null
   endMonth: number | null
   monthlyEquivalent: string
+  monthlyWhenActive: string
   notes: string | null
   category: Category
   currencyCode: string | null
@@ -261,14 +262,14 @@ export function ExpensesPage() {
         case 'category':  cmp = a.category.name.localeCompare(b.category.name); break
         case 'amount':    cmp = parseFloat(a.amount) - parseFloat(b.amount); break
         case 'frequency': cmp = FREQ_ORDER[a.frequency] - FREQ_ORDER[b.frequency]; break
-        case 'monthly':   cmp = parseFloat(a.monthlyEquivalent) - parseFloat(b.monthlyEquivalent); break
+        case 'monthly':   cmp = parseFloat(a.monthlyWhenActive) - parseFloat(b.monthlyWhenActive); break
       }
       return sortAsc ? cmp : -cmp
     })
   }, [expenses, filterCategories, sortKey, sortAsc])
 
   const totalMonthly = useMemo(
-    () => filtered.reduce((sum, e) => sum + parseFloat(e.monthlyEquivalent), 0),
+    () => filtered.reduce((sum, e) => sum + parseFloat(e.monthlyWhenActive), 0),
     [filtered]
   )
 
@@ -717,7 +718,7 @@ export function ExpensesPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
-                          {fmt(parseFloat(e.monthlyEquivalent))}
+                          {fmt(parseFloat(e.monthlyWhenActive))}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">

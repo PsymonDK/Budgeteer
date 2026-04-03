@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcMonthlyEquivalent, calcAnnualAverage } from '../lib/calculations'
+import { calcMonthlyEquivalent, calcAnnualAverage, activeMonthCount } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
@@ -77,7 +77,13 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       orderBy: [{ category: { name: 'asc' } }, { label: 'asc' }],
     })
 
-    return reply.send(expenses)
+    const result = expenses.map((e) => {
+      const months = activeMonthCount(e.startMonth, e.endMonth)
+      const monthlyWhenActive = new Decimal(e.monthlyEquivalent.toString()).mul(12).div(months).toDecimalPlaces(2)
+      return { ...e, monthlyWhenActive: monthlyWhenActive.toString() }
+    })
+
+    return reply.send(result)
   })
 
   // POST /budget-years/:id/expenses
