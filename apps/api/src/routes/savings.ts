@@ -8,6 +8,7 @@ import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { assertBudgetYearAccess, assertHouseholdAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
+import { recalculateTransfer } from '../lib/budgetTransfer'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return created
     })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(201).send(entry)
   })
 
@@ -225,6 +227,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return savedEntry
     })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send(updated)
   })
 
@@ -242,6 +245,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     await prisma.savingsEntry.delete({ where: { id: entryId } })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()
   })
 

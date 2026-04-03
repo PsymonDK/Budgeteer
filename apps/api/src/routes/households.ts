@@ -80,6 +80,16 @@ export async function householdRoutes(fastify: FastifyInstance) {
       },
     })
 
+    await prisma.automation.create({
+      data: {
+        key: 'monthly_transfer_snapshot',
+        label: 'Monthly budget transfer calculation',
+        description: 'Calculates and records the recommended monthly transfer on the 1st of each month',
+        schedule: '0 0 1 * *',
+        householdId: household.id,
+      },
+    })
+
     return reply.status(201).send({ ...household, myRole: 'ADMIN' })
   })
 

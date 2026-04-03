@@ -7,6 +7,7 @@ import { calcMonthlyEquivalent, calcAnnualAverage } from '../lib/calculations'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
+import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 
@@ -146,6 +147,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return created
     })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(201).send(expense)
   })
 
@@ -255,6 +257,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return updated
     })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send(expense)
   })
 
@@ -273,6 +276,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     await prisma.expense.delete({ where: { id: expenseId } })
 
+    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()
   })
 }
