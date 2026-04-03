@@ -125,7 +125,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const jobTrends = jobs.map((job) => {
       const monthly: number[] = months.map((monthStr) => {
         const [year, mon] = monthStr.split('-').map(Number)
-        const refDate = new Date(year, mon - 1, 1)
+        const refDate = new Date(Date.UTC(year, mon - 1, 1))
 
         if (job.startDate > new Date(year, mon - 1, 28)) return 0
         if (job.endDate && job.endDate < refDate) return 0
@@ -145,7 +145,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
       const monthlyNet: number[] = months.map((monthStr) => {
         const [year, mon] = monthStr.split('-').map(Number)
-        const refDate = new Date(year, mon - 1, 1)
+        const refDate = new Date(Date.UTC(year, mon - 1, 1))
 
         if (job.startDate > new Date(year, mon - 1, 28)) return 0
         if (job.endDate && job.endDate < refDate) return 0
