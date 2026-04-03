@@ -152,7 +152,11 @@ export function DashboardPage() {
   const queryClient = useQueryClient()
   const { data: transfers = [] } = useTransfers(summary?.budgetYear?.id)
   const { data: transferBreakdown } = useTransferBreakdown(summary?.budgetYear?.id)
-  const [breakdownCollapsed, setBreakdownCollapsed] = useState(true)
+
+  const memberBreakdownMap = useMemo(
+    () => new Map(transferBreakdown?.byMember.map((m) => [m.userId, m]) ?? []),
+    [transferBreakdown],
+  )
 
   const now = new Date()
   const currentMonth = now.getMonth() + 1
@@ -389,7 +393,7 @@ export function DashboardPage() {
               <div className={`grid gap-4 mb-4 ${summary.memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
                 {summary.memberSplits.map((m) => {
                   const isMe = m.userId === me?.id
-                  const personal = parseFloat(m.monthlyIndividualOwed) + parseFloat(m.monthlyCustomOwed)
+                  const memberBd = memberBreakdownMap.get(m.userId)
                   return (
                     <div
                       key={m.userId}
@@ -402,18 +406,18 @@ export function DashboardPage() {
                         </div>
                         <span className="text-xs text-gray-500">{m.sharePct}% of gross income</span>
                       </div>
-                      <div className="space-y-1.5 mb-4">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-400">Shared expenses</span>
-                          <span className="text-gray-300 tabular-nums">{fmt(m.monthlySharedOwed)}</span>
+                      {memberBd && memberBd.byAccount.length > 0 ? (
+                        <div className="space-y-1.5 mb-4">
+                          {memberBd.byAccount.map((a) => (
+                            <div key={a.accountId ?? '__untagged__'} className="flex justify-between text-sm">
+                              <span className="text-gray-400">{a.accountName}</span>
+                              <span className="text-gray-300 tabular-nums">{fmt(a.monthlyAmount)}</span>
+                            </div>
+                          ))}
                         </div>
-                        {personal > 0 && (
-                          <div className="flex justify-between text-sm">
-                            <span className="text-gray-400">Personal expenses</span>
-                            <span className="text-gray-300 tabular-nums">{fmt(personal)}</span>
-                          </div>
-                        )}
-                      </div>
+                      ) : (
+                        <div className="mb-4" />
+                      )}
                       <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
                         <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
                         <span className={`text-xl font-bold tabular-nums ${isMe ? 'text-amber-400' : 'text-white'}`}>
@@ -669,71 +673,29 @@ export function DashboardPage() {
             )}
           </div>
 
-          {/* Transfer breakdown by account and member */}
-          {transferBreakdown && (transferBreakdown.byAccount.length > 0 || transferBreakdown.byMember.length > 0) && (
+          {/* Transfer breakdown by account */}
+          {transferBreakdown && transferBreakdown.byAccount.length > 0 && (
             <div className="mb-8">
-              <button
-                onClick={() => setBreakdownCollapsed((c) => !c)}
-                className="flex items-center gap-2 text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 hover:text-gray-300 transition-colors"
-              >
-                <span>Transfer Breakdown</span>
-                <span className="text-gray-600">{breakdownCollapsed ? '▸' : '▾'}</span>
-              </button>
-              {!breakdownCollapsed && (
-                <div className="space-y-4">
-                  {/* By account */}
-                  {transferBreakdown.byAccount.length > 0 && (
-                    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-800">
-                        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">By account</h3>
-                      </div>
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {transferBreakdown.byAccount.map((a) => (
-                            <tr key={a.accountId ?? '__untagged__'} className="border-b border-gray-800 last:border-0">
-                              <td className="px-4 py-3 text-white">
-                                {a.accountName}
-                                {a.accountType && (
-                                  <span className="ml-2 text-xs text-gray-500">{a.accountType.replace('_', ' ')}</span>
-                                )}
-                              </td>
-                              <td className="px-4 py-3 text-right tabular-nums text-gray-300">{fmt(a.monthlyAmount)}<span className="text-gray-600 text-xs">/mo</span></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {/* By member */}
-                  {transferBreakdown.byMember.length > 0 && (
-                    <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                      <div className="px-4 py-3 border-b border-gray-800">
-                        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wide">By member</h3>
-                      </div>
-                      <div className="divide-y divide-gray-800">
-                        {transferBreakdown.byMember.map((member) => (
-                          <div key={member.userId} className="px-4 py-3">
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-sm font-medium text-white">{member.name}</span>
-                              <span className="text-sm tabular-nums text-amber-400 font-medium">{fmt(member.monthlyTotal)}<span className="text-gray-600 text-xs font-normal">/mo</span></span>
-                            </div>
-                            {member.byAccount.length > 0 && (
-                              <div className="space-y-1">
-                                {member.byAccount.map((a) => (
-                                  <div key={a.accountId ?? '__untagged__'} className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-500">{a.accountName}</span>
-                                    <span className="tabular-nums text-gray-400">{fmt(a.monthlyAmount)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Transfer by account</h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {transferBreakdown.byAccount.map((a) => (
+                      <tr key={a.accountId ?? '__untagged__'} className="border-b border-gray-800 last:border-0">
+                        <td className="px-4 py-3 text-white">
+                          {a.accountName}
+                          {a.accountType && (
+                            <span className="ml-2 text-xs text-gray-500">{a.accountType.replace('_', ' ')}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                          {fmt(a.monthlyAmount)}<span className="text-gray-600 text-xs">/mo</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
