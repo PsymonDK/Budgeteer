@@ -1,6 +1,6 @@
 import { AutomationTrigger } from '@prisma/client'
 import { prisma } from './prisma'
-import { recalculateTransfer } from './budgetTransfer'
+import { recalculateTransfer, rolloverPayNoPayOccurrences } from './budgetTransfer'
 
 export async function runAutomation(
   automationId: string,
@@ -27,7 +27,7 @@ export async function runAutomation(
   try {
     const [activeBudgetYear, household] = await Promise.all([
       prisma.budgetYear.findFirst({ where: { householdId: automation.householdId, status: 'ACTIVE' } }),
-      prisma.household.findUnique({ where: { id: automation.householdId }, select: { autoMarkTransferPaid: true } }),
+      prisma.household.findUnique({ where: { id: automation.householdId }, select: { autoMarkTransferPaid: true, budgetModel: true } }),
     ])
 
     if (!activeBudgetYear) {
@@ -42,10 +42,13 @@ export async function runAutomation(
       return
     }
 
+    const now = new Date()
+    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed; prev month is 1-indexed
+    const currentMonth = now.getMonth() + 1
+    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
+    const currentYear = now.getFullYear()
+
     if (household?.autoMarkTransferPaid) {
-      const now = new Date()
-      const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed; prev month is 1-indexed
-      const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
       const prevTransfer = await prisma.budgetTransfer.findUnique({
         where: { budgetYearId_month_year: { budgetYearId: activeBudgetYear.id, month: prevMonth, year: prevYear } },
       })
@@ -55,6 +58,10 @@ export async function runAutomation(
           data: { status: 'PAID', actualAmount: prevTransfer.calculatedAmount, paidAt: now },
         })
       }
+    }
+
+    if (household?.budgetModel === 'PAY_NO_PAY') {
+      await rolloverPayNoPayOccurrences(activeBudgetYear.id, currentYear, prevMonth, currentMonth)
     }
 
     await recalculateTransfer(activeBudgetYear.id)
