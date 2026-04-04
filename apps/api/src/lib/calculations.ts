@@ -35,27 +35,29 @@ export function calcAnnualAverage(monthlyEquivalent: Decimal, startMonth: number
 }
 
 /**
- * Calculates the recommended transfer amount for a given target month.
- * Formula: max(0, (annualNeed - alreadyPaid) / remainingMonths)
- * where remainingMonths = 13 - targetMonth
+ * Calculates the recommended transfer amount for remaining months of the year.
+ * Only counts expenses that are still active in currentMonth or later.
+ * No deficit carry-over from past months — purely forward-looking.
+ * Formula: sum(monthlyWhenActive × activeRemainingMonths) / (13 - currentMonth)
  */
 export function calcForwardMonthlyNeed(
-  expenses: { monthlyEquivalent: Decimal }[],
-  paidTransfers: { actualAmount: Decimal | null }[],
-  targetMonth: number, // 1-12
+  expenses: { monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }[],
+  currentMonth: number, // 1-12
 ): Decimal {
-  const annualNeed = expenses.reduce(
-    (sum, e) => sum.add(new Decimal(e.monthlyEquivalent.toString()).mul(12)),
-    new Decimal(0),
-  )
-  const alreadyPaid = paidTransfers.reduce(
-    (sum, t) => sum.add(t.actualAmount ? new Decimal(t.actualAmount.toString()) : new Decimal(0)),
-    new Decimal(0),
-  )
-  const remaining = annualNeed.sub(alreadyPaid)
-  if (remaining.lte(0)) return new Decimal(0)
-  const remainingMonths = new Decimal(13 - targetMonth)
-  return remaining.div(remainingMonths)
+  const remainingMonths = new Decimal(13 - currentMonth)
+  if (remainingMonths.lte(0)) return new Decimal(0)
+
+  const remainingNeed = expenses.reduce((sum, e) => {
+    const start = Math.max(e.startMonth ?? 1, currentMonth)
+    const end = e.endMonth ?? 12
+    if (start > end) return sum // expense already ended — no cost remaining
+    const activeRemaining = end - start + 1
+    const totalMonths = activeMonthCount(e.startMonth, e.endMonth)
+    const monthlyWhenActive = new Decimal(e.monthlyEquivalent.toString()).mul(12).div(totalMonths)
+    return sum.add(monthlyWhenActive.mul(activeRemaining))
+  }, new Decimal(0))
+
+  return remainingNeed.div(remainingMonths)
 }
 
 export function deriveBudgetStatus(year: number): 'ACTIVE' | 'FUTURE' | 'RETIRED' {
