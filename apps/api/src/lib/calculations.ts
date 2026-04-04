@@ -60,6 +60,24 @@ export function calcForwardMonthlyNeed(
   return remainingNeed.div(remainingMonths)
 }
 
+/**
+ * Returns the scheduled amount due for a single occurrence of an expense in a given month.
+ * Returns null if the expense is not active in that month (outside startMonth/endMonth).
+ * For partial-year expenses, reverses the annual-average to get the per-active-month amount.
+ */
+export function calcOccurrenceScheduledAmount(
+  expense: { monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null },
+  month: number,
+): Decimal | null {
+  const start = expense.startMonth ?? 1
+  const end = expense.endMonth ?? 12
+  if (month < start || month > end) return null
+  const active = activeMonthCount(expense.startMonth, expense.endMonth)
+  if (active === 12) return new Decimal(expense.monthlyEquivalent.toString())
+  // monthlyEquivalent = perActiveMonth * active / 12 → invert to get perActiveMonth
+  return new Decimal(expense.monthlyEquivalent.toString()).mul(12).div(active)
+}
+
 export function deriveBudgetStatus(year: number): 'ACTIVE' | 'FUTURE' | 'RETIRED' {
   const current = new Date().getFullYear()
   if (year < current) return 'RETIRED'
