@@ -78,6 +78,18 @@ enum TransferStatus {
   ADJUSTED
 }
 
+enum BudgetModelType {
+  AVERAGE
+  FORWARD_LOOKING
+  PAY_NO_PAY
+}
+
+enum OccurrenceStatus {
+  PENDING
+  PAID
+  SKIPPED
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -125,6 +137,7 @@ model Household {
   name                  String
   isActive              Boolean           @default(true)
   autoMarkTransferPaid  Boolean           @default(false)
+  budgetModel           BudgetModelType   @default(AVERAGE)
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
 
@@ -283,7 +296,8 @@ model Expense {
   frequencyPeriod   String?
   startMonth        Int?
   endMonth          Int?
-  monthlyEquivalent Decimal          @db.Decimal(10, 2)
+  monthlyEquivalent        Decimal          @db.Decimal(10, 2)
+  forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)
@@ -295,6 +309,7 @@ model Expense {
   accountId         String?
   account           Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
   customSplits      ExpenseCustomSplit[]
+  occurrences       ExpenseOccurrence[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -318,7 +333,8 @@ model SavingsEntry {
   amount            Decimal          @db.Decimal(10, 2)
   frequency         Frequency
   frequencyPeriod   String?
-  monthlyEquivalent Decimal          @db.Decimal(10, 2)
+  monthlyEquivalent        Decimal          @db.Decimal(10, 2)
+  forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)
@@ -332,6 +348,7 @@ model SavingsEntry {
   categoryId        String?
   category          Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   customSplits      SavingsCustomSplit[]
+  occurrences       SavingsOccurrence[]
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 }
@@ -422,4 +439,40 @@ model BudgetTransfer {
   updatedAt        DateTime       @updatedAt
 
   @@unique([budgetYearId, month, year])
+}
+
+model ExpenseOccurrence {
+  id              String           @id @default(cuid())
+  expenseId       String
+  expense         Expense          @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  year            Int
+  month           Int
+  scheduledAmount Decimal          @db.Decimal(10, 2)
+  carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
+  status          OccurrenceStatus @default(PENDING)
+  paidAt          DateTime?
+  actualAmount    Decimal?         @db.Decimal(10, 2)
+  note            String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([expenseId, year, month])
+}
+
+model SavingsOccurrence {
+  id              String           @id @default(cuid())
+  savingsEntryId  String
+  savingsEntry    SavingsEntry     @relation(fields: [savingsEntryId], references: [id], onDelete: Cascade)
+  year            Int
+  month           Int
+  scheduledAmount Decimal          @db.Decimal(10, 2)
+  carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
+  status          OccurrenceStatus @default(PENDING)
+  paidAt          DateTime?
+  actualAmount    Decimal?         @db.Decimal(10, 2)
+  note            String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([savingsEntryId, year, month])
 }
