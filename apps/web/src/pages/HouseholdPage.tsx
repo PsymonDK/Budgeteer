@@ -18,11 +18,14 @@ interface Member {
   user: { id: string; name: string; email: string; isActive: boolean; isProxy?: boolean }
 }
 
+type BudgetModel = 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
+
 interface Household {
   id: string
   name: string
   isActive: boolean
   autoMarkTransferPaid: boolean
+  budgetModel: BudgetModel
   myRole: 'ADMIN' | 'MEMBER' | null
   members: Member[]
 }
@@ -256,7 +259,7 @@ export function HouseholdPage() {
   })
 
   const updateSettingsMutation = useMutation({
-    mutationFn: (settings: { autoMarkTransferPaid: boolean }) =>
+    mutationFn: (settings: { autoMarkTransferPaid?: boolean; budgetModel?: BudgetModel }) =>
       api.put(`/households/${id}`, { name: household!.name, ...settings }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household', id] }),
     onError: () => toast.error('Failed to update settings'),
@@ -501,7 +504,39 @@ export function HouseholdPage() {
         {isAdmin && (
           <div className="mt-8 border border-gray-800 rounded-xl p-6">
             <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Transfer settings</h2>
-            <div className="flex items-start justify-between gap-4">
+
+            {/* Budget model selector */}
+            <div className="mb-6">
+              <p className="text-sm font-medium text-white mb-3">Budget model</p>
+              <div className="space-y-2">
+                {(
+                  [
+                    { value: 'AVERAGE', label: 'Average', description: '1/12 of annual expenses each month. Simple and predictable.' },
+                    { value: 'FORWARD_LOOKING', label: 'Forward-looking', description: 'Recalculates each month based on what\'s left to cover for the rest of the year.' },
+                    { value: 'PAY_NO_PAY', label: 'Pay / No pay', description: 'Track each expense individually. Unpaid amounts roll over to the next month.' },
+                  ] as { value: BudgetModel; label: string; description: string }[]
+                ).map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => updateSettingsMutation.mutate({ budgetModel: option.value })}
+                    disabled={updateSettingsMutation.isPending || household.budgetModel === option.value}
+                    className={`w-full text-left px-4 py-3 rounded-lg border transition-colors disabled:cursor-default ${
+                      household.budgetModel === option.value
+                        ? 'border-amber-500 bg-amber-500/10'
+                        : 'border-gray-700 hover:border-gray-600 bg-gray-800/50 disabled:opacity-50'
+                    }`}
+                  >
+                    <p className={`text-sm font-medium ${household.budgetModel === option.value ? 'text-amber-400' : 'text-white'}`}>
+                      {option.label}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">{option.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Auto-mark toggle */}
+            <div className="flex items-start justify-between gap-4 pt-4 border-t border-gray-800">
               <div>
                 <p className="text-sm font-medium text-white">Auto-mark transfer as paid</p>
                 <p className="text-xs text-gray-500 mt-0.5">
