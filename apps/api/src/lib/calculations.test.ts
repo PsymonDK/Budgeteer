@@ -51,49 +51,51 @@ describe('calcMonthlyEquivalent', () => {
 describe('calcForwardMonthlyNeed', () => {
   const d = (v: string) => new Decimal(v)
 
-  // expenses with monthlyEquivalent of 100 → annualNeed = 100 * 12 = 1200
-  const expenses100 = [{ monthlyEquivalent: d('100') }]
-  const noPaid: { actualAmount: Decimal | null }[] = []
+  // Full-year expense: monthlyEquivalent = 100 (= monthly cost, no annual-average reduction)
+  const fullYear = [{ monthlyEquivalent: d('100'), startMonth: null, endMonth: null }]
 
-  it('January (month 1), no paid → annualNeed / 12', () => {
-    // remainingMonths = 13 - 1 = 12; result = 1200 / 12 = 100
-    expect(calcForwardMonthlyNeed(expenses100, noPaid, 1).toNumber()).toBeCloseTo(100, 2)
-  })
-
-  it('July (month 7), no paid → annualNeed / 6', () => {
-    // remainingMonths = 13 - 7 = 6; result = 1200 / 6 = 200
-    expect(calcForwardMonthlyNeed(expenses100, noPaid, 7).toNumber()).toBeCloseTo(200, 2)
-  })
-
-  it('month 12, no paid → full annualNeed (remainingMonths = 1)', () => {
-    // remainingMonths = 13 - 12 = 1; result = 1200 / 1 = 1200
-    expect(calcForwardMonthlyNeed(expenses100, noPaid, 12).toNumber()).toBeCloseTo(1200, 2)
-  })
-
-  it('all transfers already paid (total = annualNeed) → 0', () => {
-    const paid = [{ actualAmount: d('1200') }]
-    expect(calcForwardMonthlyNeed(expenses100, paid, 1).toNumber()).toBe(0)
-  })
-
-  it('multiple paid transfers are correctly subtracted', () => {
-    // annualNeed = 1200, paid = 300 + 200 = 500, remaining = 700, remainingMonths = 6
-    const paid = [{ actualAmount: d('300') }, { actualAmount: d('200') }]
-    expect(calcForwardMonthlyNeed(expenses100, paid, 7).toNumber()).toBeCloseTo(700 / 6, 2)
-  })
-
-  it('result never goes negative when paid exceeds annualNeed', () => {
-    const paid = [{ actualAmount: d('2000') }]
-    expect(calcForwardMonthlyNeed(expenses100, paid, 6).toNumber()).toBe(0)
-  })
-
-  it('null actualAmount in paid transfers is treated as 0', () => {
-    const paid = [{ actualAmount: null }, { actualAmount: d('600') }]
-    // alreadyPaid = 600, remaining = 600, remainingMonths = 12
-    expect(calcForwardMonthlyNeed(expenses100, paid, 1).toNumber()).toBeCloseTo(50, 2)
+  it('full-year expense: forward amount equals monthly cost regardless of current month', () => {
+    // monthlyWhenActive = 100, all remaining months active → always 100/month
+    expect(calcForwardMonthlyNeed(fullYear, 1).toNumber()).toBeCloseTo(100, 2)
+    expect(calcForwardMonthlyNeed(fullYear, 6).toNumber()).toBeCloseTo(100, 2)
+    expect(calcForwardMonthlyNeed(fullYear, 12).toNumber()).toBeCloseTo(100, 2)
   })
 
   it('no expenses → 0 regardless of month', () => {
-    expect(calcForwardMonthlyNeed([], noPaid, 6).toNumber()).toBe(0)
+    expect(calcForwardMonthlyNeed([], 6).toNumber()).toBe(0)
+  })
+
+  it('expense already ended (endMonth < currentMonth) → contributes 0', () => {
+    // Expense active months 1–3, current month is 4
+    const pastExpense = [{ monthlyEquivalent: d('25'), startMonth: 1, endMonth: 3 }]
+    // monthlyWhenActive = 25 × 12 / 3 = 100, but start=max(1,4)=4 > end=3 → skipped
+    expect(calcForwardMonthlyNeed(pastExpense, 4).toNumber()).toBe(0)
+  })
+
+  it('expense ending in same month as currentMonth → counts 1 remaining month', () => {
+    // Expense months 1–4, current month 4: 1 remaining active month at 100/month
+    // monthlyWhenActive = (25 × 12 / 4) = 75; remainingNeed = 75 × 1 = 75; remainingMonths = 9
+    const expense = [{ monthlyEquivalent: d('25'), startMonth: 1, endMonth: 4 }]
+    expect(calcForwardMonthlyNeed(expense, 4).toNumber()).toBeCloseTo(75 / 9, 2)
+  })
+
+  it('expense starting in the future: only counts months from its startMonth', () => {
+    // Expense months 7–12 (6 months), current month 4
+    // monthlyEquivalent stored as annualAverage = 600 × 6/12 = 300
+    // monthlyWhenActive = 300 × 12 / 6 = 600
+    // activeRemaining = 12 - 7 + 1 = 6; remainingNeed = 600 × 6 = 3600
+    // remainingMonths = 13 - 4 = 9; forwardAmount = 3600 / 9 = 400
+    const futureExpense = [{ monthlyEquivalent: d('300'), startMonth: 7, endMonth: 12 }]
+    expect(calcForwardMonthlyNeed(futureExpense, 4).toNumber()).toBeCloseTo(400, 2)
+  })
+
+  it('loan split: Loan A months 1–4, Loan B months 5–12, current month 4', () => {
+    // Loan A: monthlyWhenActive = (333.33 × 12 / 4) = 1000; activeRemaining = 1; cost = 1000
+    // Loan B: monthlyWhenActive = (733.33 × 12 / 8) = 1100; activeRemaining = 8; cost = 8800
+    // remainingNeed = 9800; remainingMonths = 9; forwardAmount = 9800/9 ≈ 1088.89
+    const loanA = { monthlyEquivalent: d('333.33'), startMonth: 1, endMonth: 4 }
+    const loanB = { monthlyEquivalent: d('733.33'), startMonth: 5, endMonth: 12 }
+    expect(calcForwardMonthlyNeed([loanA, loanB], 4).toNumber()).toBeCloseTo(9800 / 9, 1)
   })
 })
 
