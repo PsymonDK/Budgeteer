@@ -10,6 +10,7 @@ const CreateHouseholdSchema = z.object({
 const UpdateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
   autoMarkTransferPaid: z.boolean().optional(),
+  budgetModel: z.enum(['AVERAGE', 'FORWARD_LOOKING', 'PAY_NO_PAY']).optional(),
 })
 
 const AddMemberSchema = z.object({
@@ -135,12 +136,13 @@ export async function householdRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    const { name, autoMarkTransferPaid } = result.data
+    const { name, autoMarkTransferPaid, budgetModel } = result.data
     const household = await prisma.household.update({
       where: { id },
       data: {
         name,
         ...(autoMarkTransferPaid !== undefined && { autoMarkTransferPaid }),
+        ...(budgetModel !== undefined && { budgetModel }),
       },
     })
 
