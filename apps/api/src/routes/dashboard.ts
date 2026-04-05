@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
-import { assertHouseholdAccess, partitionByOwnership } from '../lib/ownership'
+import { assertHouseholdAccess, partitionByEffectiveAmount, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
@@ -216,9 +216,6 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     })
     const totalMonthlyExpenses = expenses.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
-    // Partition expenses by ownership mode
-    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByOwnership(expenses)
-
     const byCategoryMap = new Map<string, { categoryId: string; categoryName: string; categoryIcon: string | null; totalMonthly: number }>()
     for (const e of expenses) {
       const existing = byCategoryMap.get(e.categoryId) ?? { categoryId: e.categoryId, categoryName: e.category.name, categoryIcon: e.category.icon, totalMonthly: 0 }
@@ -252,8 +249,43 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     })
     const totalMonthlySavings = savingsEntries.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
-    // Partition savings by ownership mode
-    const { shared: sharedSavingsPool, individual: individualSavingsMap, custom: customSavingsMap } = partitionByOwnership(savingsEntries)
+    // ── Budget-model-aware member obligation splits ───────────────────────────
+    // Fetch current-month occurrences for PAY_NO_PAY so per-member obligations
+    // reflect carried amounts rather than the annual-average monthlyEquivalent.
+    const budgetModel = household.budgetModel
+    const now = new Date()
+    const currentMonth = now.getMonth() + 1
+    const currentYear = now.getFullYear()
+
+    let expOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
+    let savOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
+
+    if (budgetModel === 'PAY_NO_PAY') {
+      const [expOccs, savOccs] = await Promise.all([
+        prisma.expenseOccurrence.findMany({
+          where: { expense: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
+        }),
+        prisma.savingsOccurrence.findMany({
+          where: { savingsEntry: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
+        }),
+      ])
+      expOccMap = new Map(expOccs.map((o) => [o.expenseId, o]))
+      savOccMap = new Map(savOccs.map((o) => [o.savingsEntryId, o]))
+    }
+
+    const expensesWithEffective = expenses.map((e) => ({
+      ...e,
+      effectiveAmount: resolveEffectiveAmount(e, budgetModel, expOccMap.get(e.id)),
+    }))
+    const savingsWithEffective = savingsEntries.map((s) => ({
+      ...s,
+      effectiveAmount: resolveEffectiveAmount(s, budgetModel, savOccMap.get(s.id)),
+    }))
+
+    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByEffectiveAmount(expensesWithEffective)
+    const { shared: sharedSavingsPoolEff, individual: individualSavingsMapEff, custom: customSavingsMapEff } = partitionByEffectiveAmount(savingsWithEffective)
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
@@ -261,9 +293,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       const sharedOwed = sharedPool * parseFloat(m.sharePct) / 100
       const individualOwed = individualOwedMap.get(m.userId) ?? 0
       const customOwed = customExpensesMap.get(m.userId) ?? 0
-      const sharedSavingsOwed = sharedSavingsPool * parseFloat(m.sharePct) / 100
-      const individualSavingsOwed = individualSavingsMap.get(m.userId) ?? 0
-      const customSavingsOwed = customSavingsMap.get(m.userId) ?? 0
+      const sharedSavingsOwed = sharedSavingsPoolEff * parseFloat(m.sharePct) / 100
+      const individualSavingsOwed = individualSavingsMapEff.get(m.userId) ?? 0
+      const customSavingsOwed = customSavingsMapEff.get(m.userId) ?? 0
       const totalSavingsOwed = sharedSavingsOwed + individualSavingsOwed + customSavingsOwed
       return {
         userId: m.userId,
@@ -273,7 +305,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlySharedOwed: sharedOwed.toFixed(2),
         monthlyIndividualOwed: individualOwed.toFixed(2),
         monthlyCustomOwed: customOwed.toFixed(2),
-        monthlyTotalOwed: (sharedOwed + individualOwed + customOwed).toFixed(2),
+        monthlyTotalOwed: (sharedOwed + individualOwed + customOwed + sharedSavingsOwed + individualSavingsOwed + customSavingsOwed).toFixed(2),
         monthlySavingsSharedOwed: sharedSavingsOwed.toFixed(2),
         monthlySavingsIndividualOwed: individualSavingsOwed.toFixed(2),
         monthlySavingsCustomOwed: customSavingsOwed.toFixed(2),

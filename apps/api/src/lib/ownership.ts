@@ -109,3 +109,75 @@ export function partitionByOwnership(items: OwnershipItem[]): {
 
   return { shared, individual, custom }
 }
+
+// ── Budget-model-aware amount resolution ─────────────────────────────────────
+
+type BudgetModelType = 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
+
+interface OccurrenceAmounts {
+  scheduledAmount: { toString(): string }
+  carriedAmount: { toString(): string }
+}
+
+/**
+ * Resolves the effective monthly amount for one item given the household's budget model.
+ *
+ * - AVERAGE: always monthlyEquivalent
+ * - FORWARD_LOOKING: forwardMonthlyEquivalent if set, else monthlyEquivalent.
+ *   Note: SavingsEntry.forwardMonthlyEquivalent is not written by recalculateForwardLooking
+ *   (only expenses are), so savings entries always fall back to monthlyEquivalent here.
+ * - PAY_NO_PAY: scheduledAmount + carriedAmount from the occurrence row, or monthlyEquivalent
+ *   if no occurrence has been seeded yet for this month.
+ */
+export function resolveEffectiveAmount(
+  item: {
+    monthlyEquivalent: { toString(): string }
+    forwardMonthlyEquivalent?: { toString(): string } | null
+  },
+  budgetModel: BudgetModelType,
+  occurrence?: OccurrenceAmounts | null,
+): number {
+  if (budgetModel === 'FORWARD_LOOKING' && item.forwardMonthlyEquivalent != null) {
+    return parseFloat(item.forwardMonthlyEquivalent.toString())
+  }
+  if (budgetModel === 'PAY_NO_PAY' && occurrence != null) {
+    return (
+      parseFloat(occurrence.scheduledAmount.toString()) +
+      parseFloat(occurrence.carriedAmount.toString())
+    )
+  }
+  return parseFloat(item.monthlyEquivalent.toString())
+}
+
+/**
+ * Same partitioning logic as partitionByOwnership, but reads a pre-resolved
+ * effectiveAmount field instead of monthlyEquivalent. Use after calling
+ * resolveEffectiveAmount on each item.
+ */
+export function partitionByEffectiveAmount(
+  items: Array<OwnershipItem & { effectiveAmount: number }>,
+): {
+  shared: number
+  individual: Map<string, number>
+  custom: Map<string, number>
+} {
+  let shared = 0
+  const individual = new Map<string, number>()
+  const custom = new Map<string, number>()
+
+  for (const item of items) {
+    const monthly = item.effectiveAmount
+    if (item.ownership === 'SHARED') {
+      shared += monthly
+    } else if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) {
+      individual.set(item.ownedByUserId, (individual.get(item.ownedByUserId) ?? 0) + monthly)
+    } else if (item.ownership === 'CUSTOM') {
+      for (const split of item.customSplits) {
+        const pct = parseFloat(split.pct.toString()) / 100
+        custom.set(split.userId, (custom.get(split.userId) ?? 0) + monthly * pct)
+      }
+    }
+  }
+
+  return { shared, individual, custom }
+}

@@ -158,14 +158,12 @@ export function DashboardPage() {
     [transferBreakdown],
   )
 
-  const now = new Date()
-  const currentMonth = now.getMonth() + 1
-  const currentYear = now.getFullYear()
-  const pendingThisMonth = transfers.find(
-    (t) => t.status === 'PENDING' && t.month === currentMonth && t.year === currentYear,
-  )
-
   const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  // Next pending transfer — the earliest PENDING entry, which may be this month or a future month.
+  const nextPending = [...transfers]
+    .filter((t) => t.status === 'PENDING')
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)[0] ?? null
 
   async function handleMarkPaid() {
     if (!markPaidTransfer || !summary?.budgetYear) return
@@ -317,6 +315,61 @@ export function DashboardPage() {
             </div>
           </div>
 
+          {/* VIZ-001: Income flow diagram */}
+          {sankeyData && sankeyData.links.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
+              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+                <SankeyChart data={sankeyData} currency={baseCurrency} />
+              </div>
+            </div>
+          )}
+
+          {/* HH-005: Member expense splits */}
+          {summary.memberSplits.length > 0 && (
+            <div className="mb-8">
+              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Monthly obligations</h2>
+              <div className={`grid gap-4 mb-4 ${summary.memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {summary.memberSplits.map((m) => {
+                  const isMe = m.userId === me?.id
+                  const memberBd = memberBreakdownMap.get(m.userId)
+                  return (
+                    <div
+                      key={m.userId}
+                      className={`rounded-xl p-5 border ${isMe ? 'bg-amber-950/30 border-amber-700/50' : 'bg-gray-900 border-gray-800'}`}
+                    >
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-sm font-semibold ${isMe ? 'text-amber-300' : 'text-white'}`}>{m.name}</span>
+                          {isMe && <span className="text-xs bg-amber-900/60 text-amber-400 px-1.5 py-0.5 rounded-full">you</span>}
+                        </div>
+                        <span className="text-xs text-gray-500">{m.sharePct}% of gross income</span>
+                      </div>
+                      {memberBd && memberBd.byAccount.length > 0 ? (
+                        <div className="space-y-1.5 mb-4">
+                          {memberBd.byAccount.map((a) => (
+                            <div key={a.accountId ?? '__untagged__'} className="flex justify-between text-sm">
+                              <span className="text-gray-400">{a.accountName}</span>
+                              <span className="text-gray-300 tabular-nums">{fmt(a.monthlyAmount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mb-4" />
+                      )}
+                      <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
+                        <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
+                        <span className={`text-xl font-bold tabular-nums ${isMe ? 'text-amber-400' : 'text-white'}`}>
+                          {fmt(memberBd?.monthlyTotal ?? parseFloat(m.monthlyTotalOwed))}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* SAV-003: Affordability calculator */}
           {surplus > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
@@ -379,51 +432,6 @@ export function DashboardPage() {
                         r.status === 'ACTIVE' ? 'text-green-400' :
                         r.status === 'FUTURE' ? 'text-blue-400' : 'text-gray-600'
                       }`}>{r.status.toLowerCase()}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* HH-005: Member expense splits */}
-          {summary.memberSplits.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Monthly obligations</h2>
-              <div className={`grid gap-4 mb-4 ${summary.memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
-                {summary.memberSplits.map((m) => {
-                  const isMe = m.userId === me?.id
-                  const memberBd = memberBreakdownMap.get(m.userId)
-                  return (
-                    <div
-                      key={m.userId}
-                      className={`rounded-xl p-5 border ${isMe ? 'bg-amber-950/30 border-amber-700/50' : 'bg-gray-900 border-gray-800'}`}
-                    >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-sm font-semibold ${isMe ? 'text-amber-300' : 'text-white'}`}>{m.name}</span>
-                          {isMe && <span className="text-xs bg-amber-900/60 text-amber-400 px-1.5 py-0.5 rounded-full">you</span>}
-                        </div>
-                        <span className="text-xs text-gray-500">{m.sharePct}% of gross income</span>
-                      </div>
-                      {memberBd && memberBd.byAccount.length > 0 ? (
-                        <div className="space-y-1.5 mb-4">
-                          {memberBd.byAccount.map((a) => (
-                            <div key={a.accountId ?? '__untagged__'} className="flex justify-between text-sm">
-                              <span className="text-gray-400">{a.accountName}</span>
-                              <span className="text-gray-300 tabular-nums">{fmt(a.monthlyAmount)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="mb-4" />
-                      )}
-                      <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
-                        <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
-                        <span className={`text-xl font-bold tabular-nums ${isMe ? 'text-amber-400' : 'text-white'}`}>
-                          {fmt(m.monthlyTotalOwed)}
-                        </span>
-                      </div>
                     </div>
                   )
                 })}
@@ -575,16 +583,20 @@ export function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <ArrowRightLeft size={16} className="text-amber-400" />
-                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Transfer due this month</h2>
+                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
+                  {nextPending
+                    ? `Transfer due — ${MONTH_NAMES[nextPending.month - 1]} ${nextPending.year}`
+                    : 'Transfer'}
+                </h2>
               </div>
             </div>
-            {pendingThisMonth ? (
+            {nextPending ? (
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-bold text-amber-400">{fmt(pendingThisMonth.calculatedAmount)}</span>
+                <span className="text-2xl font-bold text-amber-400">{fmt(nextPending.calculatedAmount)}</span>
                 <button
                   onClick={() => {
-                    setMarkPaidTransfer(pendingThisMonth)
-                    setMarkPaidAmount(pendingThisMonth.calculatedAmount)
+                    setMarkPaidTransfer(nextPending)
+                    setMarkPaidAmount(nextPending.calculatedAmount)
                   }}
                   className="bg-amber-500 hover:bg-amber-400 text-gray-950 font-medium text-sm px-4 py-2 rounded-lg transition-colors"
                 >
@@ -592,7 +604,7 @@ export function DashboardPage() {
                 </button>
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No transfer pending this month</p>
+              <p className="text-gray-500 text-sm">All transfers paid</p>
             )}
           </div>
 
@@ -737,15 +749,6 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* VIZ-001: Income flow diagram */}
-          {sankeyData && sankeyData.links.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <SankeyChart data={sankeyData} currency={baseCurrency} />
-              </div>
-            </div>
-          )}
         </>
       )}
     </main>

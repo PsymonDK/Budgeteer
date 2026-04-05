@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
+import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const CreateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
@@ -145,6 +146,18 @@ export async function householdRoutes(fastify: FastifyInstance) {
         ...(budgetModel !== undefined && { budgetModel }),
       },
     })
+
+    // Recalculate transfers whenever budget model changes so the history reflects
+    // the new model immediately rather than on the next expense/savings mutation.
+    if (budgetModel !== undefined) {
+      const activeBY = await prisma.budgetYear.findFirst({
+        where: { householdId: id, status: { in: ['ACTIVE', 'FUTURE'] } },
+        orderBy: [{ status: 'asc' }, { year: 'asc' }],
+      })
+      if (activeBY) {
+        recalculateTransfer(activeBY.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed after budgetModel change'))
+      }
+    }
 
     return reply.send(household)
   })

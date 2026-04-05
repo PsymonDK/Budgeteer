@@ -103,8 +103,8 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
     if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
 
-    const amountInBase = amount * rate
-    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), frequency)
+    const amountInBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
+    const monthlyEquivalent = calcMonthlyEquivalent(amountInBase, frequency)
 
     const entry = await prisma.$transaction(async (tx) => {
       const created = await tx.savingsEntry.create({

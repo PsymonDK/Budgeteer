@@ -80,7 +80,8 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const result = expenses.map((e) => {
       const months = activeMonthCount(e.startMonth, e.endMonth)
       const monthlyWhenActive = new Decimal(e.monthlyEquivalent.toString()).mul(12).div(months).toDecimalPlaces(2)
-      return { ...e, monthlyWhenActive: monthlyWhenActive.toString() }
+      const amountInBase = new Decimal(e.amount.toString()).mul(new Decimal(e.rateUsed?.toString() ?? '1')).toDecimalPlaces(2)
+      return { ...e, monthlyWhenActive: monthlyWhenActive.toString(), amountInBase: amountInBase.toString() }
     })
 
     return reply.send(result)
@@ -118,9 +119,9 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
     if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
 
-    const amountInBase = amount * rate
+    const amountInBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
     const monthlyEquivalent = calcAnnualAverage(
-      calcMonthlyEquivalent(new Decimal(amountInBase), frequency),
+      calcMonthlyEquivalent(amountInBase, frequency),
       startMonth ?? null,
       endMonth ?? null,
     )

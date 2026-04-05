@@ -64,6 +64,7 @@ interface Expense {
   endMonth: number | null
   monthlyEquivalent: string
   monthlyWhenActive: string
+  amountInBase: string
   notes: string | null
   category: Category
   currencyCode: string | null
@@ -1135,30 +1136,33 @@ const RECURRING_FREQS = new Set<Frequency>(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY'])
 function getMonthValues(expense: Expense): (number | null)[] {
   const start = expense.startMonth ?? 1
   const end = expense.endMonth ?? 12
-  const activeMonths = Math.max(1, end - start + 1)
-  const perPeriod = parseFloat(expense.monthlyEquivalent) * 12 / activeMonths
+  // For recurring frequencies show the per-active-month equivalent (already server-computed).
+  // For lump-sum frequencies use the exact base-currency occurrence amount to avoid precision
+  // loss from reconstructing via the rounded monthlyEquivalent field (e.g. 1000/3=333.33*3=999.99).
+  const perMonth = parseFloat(expense.monthlyWhenActive)
+  const perOccurrence = parseFloat(expense.amountInBase)
   const vals: (number | null)[] = Array(12).fill(null)
   switch (expense.frequency) {
     case 'WEEKLY':
     case 'FORTNIGHTLY':
     case 'MONTHLY':
-      for (let m = start; m <= end; m++) vals[m - 1] = perPeriod
+      for (let m = start; m <= end; m++) vals[m - 1] = perMonth
       return vals
     case 'QUARTERLY':
       for (const m of [3, 6, 9, 12]) {
-        if (m >= start && m <= end) vals[m - 1] = perPeriod * 3
+        if (m >= start && m <= end) vals[m - 1] = perOccurrence
       }
       return vals
     case 'BIANNUAL':
       for (const m of [6, 12]) {
-        if (m >= start && m <= end) vals[m - 1] = perPeriod * 6
+        if (m >= start && m <= end) vals[m - 1] = perOccurrence
       }
       return vals
     case 'ANNUAL':
-      vals[end - 1] = perPeriod * 12
+      vals[end - 1] = perOccurrence
       return vals
     default:
-      for (let m = start; m <= end; m++) vals[m - 1] = perPeriod
+      for (let m = start; m <= end; m++) vals[m - 1] = perMonth
       return vals
   }
 }

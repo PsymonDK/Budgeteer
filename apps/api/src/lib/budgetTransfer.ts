@@ -110,8 +110,11 @@ async function recalculatePayNoPay(
   expenses: { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }[],
   byMonth: Map<number, { status: string }>,
 ): Promise<void> {
-  // Ensure the current month has occurrence rows for every active expense/savings entry
-  await seedCurrentMonthOccurrences(budgetYearId, year, currentMonth, expenses)
+  // Seed occurrences for the current month through end of year so that all remaining
+  // months have amounts rather than showing 0 (e.g. after switching to PAY_NO_PAY).
+  for (let m = currentMonth; m <= 12; m++) {
+    await seedCurrentMonthOccurrences(budgetYearId, year, m, expenses)
+  }
 
   // Aggregate PENDING obligations per month from occurrence tables
   const [expOccs, savOccs] = await Promise.all([

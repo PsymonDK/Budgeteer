@@ -3,8 +3,9 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertBudgetYearAccess } from '../lib/ownership'
+import { assertBudgetYearAccess, resolveEffectiveAmount } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
+import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 
 const MarkPaidSchema = z.object({
   actualAmount: z.number().positive(),
@@ -99,11 +100,27 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
 
+    const budgetModel = budgetYear.household.budgetModel
+    const now = new Date()
+    const currentMonth = now.getMonth() + 1
+    const currentYear = now.getFullYear()
+
+    // Find the next pending transfer so the breakdown always reflects what's due next,
+    // not necessarily the current calendar month (which may already be paid).
+    const nextPending = await prisma.budgetTransfer.findFirst({
+      where: { budgetYearId: id, status: 'PENDING' },
+      orderBy: [{ year: 'asc' }, { month: 'asc' }],
+    })
+    const targetMonth = nextPending?.month ?? currentMonth
+    const targetYear = nextPending?.year ?? currentYear
+
     const [expenses, savings, members] = await Promise.all([
       prisma.expense.findMany({
         where: { budgetYearId: id },
         select: {
+          id: true,
           monthlyEquivalent: true,
+          forwardMonthlyEquivalent: true,
           ownership: true,
           ownedByUserId: true,
           account: { select: { id: true, name: true, type: true } },
@@ -113,7 +130,9 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       prisma.savingsEntry.findMany({
         where: { budgetYearId: id },
         select: {
+          id: true,
           monthlyEquivalent: true,
+          forwardMonthlyEquivalent: true,
           ownership: true,
           ownedByUserId: true,
           account: { select: { id: true, name: true, type: true } },
@@ -126,8 +145,42 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       }),
     ])
 
+    // Fetch current-month occurrences for PAY_NO_PAY model
+    let expOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
+    let savOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
+
+    if (budgetModel === 'PAY_NO_PAY') {
+      const [expOccs, savOccs] = await Promise.all([
+        prisma.expenseOccurrence.findMany({
+          where: { expense: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
+        }),
+        prisma.savingsOccurrence.findMany({
+          where: { savingsEntry: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
+        }),
+      ])
+      expOccMap = new Map(expOccs.map((o) => [o.expenseId, o]))
+      savOccMap = new Map(savOccs.map((o) => [o.savingsEntryId, o]))
+    }
+
     const memberIds = members.map((m) => m.userId)
     const memberCount = memberIds.length
+
+    // Compute income share per member for SHARED expense/savings allocation.
+    // Falls back to equal split if no income is allocated.
+    const refDate = getIncomeReferenceDate(budgetYear.year, budgetYear.status)
+    const incomeResult = await calcIncomeForYear(id, refDate)
+    const totalGross = incomeResult.totalMonthlyGross
+    const memberShareMap = new Map<string, number>()
+    if (totalGross > 0) {
+      for (const m of incomeResult.members) {
+        memberShareMap.set(m.userId, m.monthlyAllocatedGross / totalGross)
+      }
+    } else {
+      const equalShare = memberCount > 0 ? 1 / memberCount : 0
+      for (const uid of memberIds) memberShareMap.set(uid, equalShare)
+    }
 
     // Accumulator types
     type AccountKey = string // accountId or '__untagged__'
@@ -153,9 +206,15 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       member.byAccount.set(accountKey, (member.byAccount.get(accountKey) ?? 0) + amount)
     }
 
-    const allItems = [...expenses, ...savings]
+    const taggedExpenses = expenses.map((e) => ({ ...e, _kind: 'expense' as const }))
+    const taggedSavings = savings.map((s) => ({ ...s, _kind: 'savings' as const }))
+    const allItems = [...taggedExpenses, ...taggedSavings]
+
     for (const item of allItems) {
-      const me = parseFloat(item.monthlyEquivalent.toString())
+      const occ = budgetModel === 'PAY_NO_PAY'
+        ? (item._kind === 'expense' ? expOccMap.get(item.id) : savOccMap.get(item.id))
+        : undefined
+      const me = resolveEffectiveAmount(item, budgetModel, occ)
       const accountKey = item.account?.id ?? '__untagged__'
       const accountId = item.account?.id ?? null
       const accountName = item.account?.name ?? 'Untagged'
@@ -170,11 +229,10 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
           addToMember(split.userId, accountKey, me * parseFloat(split.pct.toString()) / 100)
         }
       } else {
-        // SHARED with no custom splits: equal split among all members
-        if (memberCount > 0) {
-          for (const uid of memberIds) {
-            addToMember(uid, accountKey, me / memberCount)
-          }
+        // SHARED: split by income share (consistent with summary memberSplits)
+        for (const uid of memberIds) {
+          const share = memberShareMap.get(uid) ?? (memberCount > 0 ? 1 / memberCount : 0)
+          addToMember(uid, accountKey, me * share)
         }
       }
     }
