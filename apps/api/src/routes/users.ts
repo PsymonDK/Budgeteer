@@ -61,11 +61,22 @@ const userSelect = {
 } as const
 
 export async function userRoutes(fastify: FastifyInstance) {
-  // GET /users — all authenticated users can list; needed so household admins can pick members
-  fastify.get('/users', { preHandler: authenticate }, async (_request, reply) => {
+  // GET /users — scoped by role:
+  //   SYSTEM_ADMIN / BOOKKEEPER → full user list (needed for admin management)
+  //   Regular user / household admin → minimal list of active non-admin users (for member-invite picker)
+  fastify.get('/users', { preHandler: authenticate }, async (request, reply) => {
+    const { role } = request.user
+    if (role === 'SYSTEM_ADMIN' || role === 'BOOKKEEPER') {
+      const users = await prisma.user.findMany({
+        select: userSelect,
+        orderBy: { createdAt: 'asc' },
+      })
+      return reply.send(users)
+    }
     const users = await prisma.user.findMany({
-      select: userSelect,
-      orderBy: { createdAt: 'asc' },
+      where: { isActive: true, role: 'USER', isProxy: false },
+      select: { id: true, name: true },
+      orderBy: { name: 'asc' },
     })
     return reply.send(users)
   })

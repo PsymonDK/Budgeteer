@@ -53,7 +53,7 @@ const UpdateBonusSchema = CreateBonusSchema.partial().refine(
 )
 
 const AllocationSchema = z.object({
-  allocationPct: z.number().min(0).max(999),
+  allocationPct: z.number().min(0).max(100),
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -318,14 +318,17 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // GET /jobs/:id/overrides
   fastify.get('/jobs/:id/overrides', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId } = request.params as { id: string }
-    const { year } = request.query as { year?: string }
     const { sub: userId, role } = request.user
+
+    const queryResult = z.object({ year: z.coerce.number().int().min(2000).max(2100).optional() }).safeParse(request.query)
+    if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
+    const { year } = queryResult.data
 
     const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
     const overrides = await prisma.monthlyIncomeOverride.findMany({
-      where: { jobId, ...(year ? { year: parseInt(year, 10) } : {}) },
+      where: { jobId, ...(year !== undefined ? { year } : {}) },
       orderBy: [{ year: 'desc' }, { month: 'desc' }],
     })
 
@@ -539,11 +542,13 @@ export async function jobRoutes(fastify: FastifyInstance) {
   // GET /users/:id/income/history?from=YYYY-MM&to=YYYY-MM&granularity=monthly|quarterly|yearly
   fastify.get('/users/:id/income/history', { preHandler: authenticate }, async (request, reply) => {
     const { id: targetUserId } = request.params as { id: string }
-    const { from, to, granularity = 'monthly' } = request.query as {
-      from?: string
-      to?: string
-      granularity?: 'monthly' | 'quarterly' | 'yearly'
-    }
+    const queryResult = z.object({
+      granularity: z.enum(['monthly', 'quarterly', 'yearly']).default('monthly'),
+      from: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      to: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+    }).safeParse(request.query)
+    if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
+    const { from, to, granularity } = queryResult.data
     const { sub: userId, role } = request.user
 
     if (role !== 'SYSTEM_ADMIN' && userId !== targetUserId) {

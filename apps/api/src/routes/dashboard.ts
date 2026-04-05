@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify'
+import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
@@ -132,7 +133,9 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
   // Optional ?budgetYearId= to view any year (including retired) as read-only
   fastify.get('/households/:id/summary', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId } = request.params as { id: string }
-    const { budgetYearId: requestedYearId } = request.query as { budgetYearId?: string }
+    const queryResult = z.object({ budgetYearId: z.string().cuid().optional() }).safeParse(request.query)
+    if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
+    const requestedYearId = queryResult.data.budgetYearId
     const { sub: userId, role } = request.user
 
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return

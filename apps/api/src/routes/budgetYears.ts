@@ -36,7 +36,12 @@ type SourceBudgetYear = Prisma.BudgetYearGetPayload<{
   include: { expenses: { include: { customSplits: true } }; savingsEntries: { include: { customSplits: true } } }
 }>
 
-async function copyBudgetYearContent(tx: Prisma.TransactionClient, source: SourceBudgetYear, targetId: string) {
+async function copyBudgetYearContent(
+  tx: Prisma.TransactionClient,
+  source: SourceBudgetYear,
+  targetId: string,
+  memberIds: Set<string>,
+) {
   for (const e of source.expenses) {
     const newExpense = await tx.expense.create({
       data: {
@@ -54,9 +59,10 @@ async function copyBudgetYearContent(tx: Prisma.TransactionClient, source: Sourc
         ownedByUserId: e.ownedByUserId,
       },
     })
-    if (e.customSplits.length > 0) {
+    const validExpenseSplits = e.customSplits.filter((s) => memberIds.has(s.userId))
+    if (validExpenseSplits.length > 0) {
       await tx.expenseCustomSplit.createMany({
-        data: e.customSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
+        data: validExpenseSplits.map((s) => ({ expenseId: newExpense.id, userId: s.userId, pct: s.pct })),
       })
     }
   }
@@ -74,9 +80,10 @@ async function copyBudgetYearContent(tx: Prisma.TransactionClient, source: Sourc
         categoryId: s.categoryId,
       },
     })
-    if (s.customSplits.length > 0) {
+    const validSavingsSplits = s.customSplits.filter((sp) => memberIds.has(sp.userId))
+    if (validSavingsSplits.length > 0) {
       await tx.savingsCustomSplit.createMany({
-        data: s.customSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
+        data: validSavingsSplits.map((sp) => ({ savingsEntryId: newEntry.id, userId: sp.userId, pct: sp.pct })),
       })
     }
   }
@@ -152,15 +159,19 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Provide either { year } or { simulationName }', details: result.error.flatten() })
     }
 
-    const source = await prisma.budgetYear.findFirst({
-      where: { id: yearId, householdId },
-      include: {
-        expenses: { include: { customSplits: true } },
-        savingsEntries: { include: { customSplits: true } },
-      },
-    })
+    const [source, householdMembers] = await Promise.all([
+      prisma.budgetYear.findFirst({
+        where: { id: yearId, householdId },
+        include: {
+          expenses: { include: { customSplits: true } },
+          savingsEntries: { include: { customSplits: true } },
+        },
+      }),
+      prisma.householdMember.findMany({ where: { householdId }, select: { userId: true } }),
+    ])
     if (!source) return reply.status(404).send({ error: 'Budget year not found' })
 
+    const memberIds = new Set(householdMembers.map((m) => m.userId))
     const data = result.data
 
     if ('year' in data) {
@@ -175,7 +186,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         const created = await tx.budgetYear.create({
           data: { householdId, year: data.year, status: deriveBudgetStatus(data.year), copiedFromId: source.id },
         })
-        await copyBudgetYearContent(tx, source, created.id)
+        await copyBudgetYearContent(tx, source, created.id, memberIds)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
           include: { _count: { select: { expenses: true, savingsEntries: true } } },
@@ -194,7 +205,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
             copiedFromId: source.id,
           },
         })
-        await copyBudgetYearContent(tx, source, created.id)
+        await copyBudgetYearContent(tx, source, created.id, memberIds)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
           include: { _count: { select: { expenses: true, savingsEntries: true } } },

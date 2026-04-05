@@ -24,7 +24,7 @@ const UpdateMemberSchema = z.object({
 })
 
 const memberInclude = {
-  user: { select: { id: true, name: true, email: true, isActive: true, isProxy: true } },
+  user: { select: { id: true, name: true, email: true, isActive: true } },
 } as const
 
 // Returns the membership record for userId in householdId, or null if not a member
@@ -40,7 +40,9 @@ export async function householdRoutes(fastify: FastifyInstance) {
   fastify.get('/households', { preHandler: authenticate }, async (request, reply) => {
     const { sub: userId, role } = request.user
 
-    const includeInactive = role === 'SYSTEM_ADMIN' && (request.query as Record<string, string>).all === 'true'
+    const queryResult = z.object({ all: z.enum(['true', 'false']).optional() }).safeParse(request.query)
+    if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
+    const includeInactive = role === 'SYSTEM_ADMIN' && queryResult.data.all === 'true'
     const activeFilter = includeInactive ? {} : { isActive: true }
     const where = role === 'SYSTEM_ADMIN'
       ? { ...activeFilter }
