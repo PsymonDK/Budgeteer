@@ -300,7 +300,33 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Only simulations can be deleted' })
     }
 
-    await prisma.budgetYear.delete({ where: { id: yearId } })
+    await prisma.$transaction(async (tx) => {
+      // Delete expense child records before expenses
+      const expenses = await tx.expense.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
+      const expenseIds = expenses.map((e) => e.id)
+      if (expenseIds.length > 0) {
+        await tx.expenseOccurrence.deleteMany({ where: { expenseId: { in: expenseIds } } })
+        await tx.expenseCustomSplit.deleteMany({ where: { expenseId: { in: expenseIds } } })
+      }
+      await tx.expense.deleteMany({ where: { budgetYearId: yearId } })
+
+      // Delete savings child records before savings entries
+      const savings = await tx.savingsEntry.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
+      const savingsIds = savings.map((s) => s.id)
+      if (savingsIds.length > 0) {
+        await tx.savingsOccurrence.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
+        await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
+      }
+      await tx.savingsEntry.deleteMany({ where: { budgetYearId: yearId } })
+
+      await tx.householdIncomeAllocation.deleteMany({ where: { budgetYearId: yearId } })
+      await tx.budgetTransfer.deleteMany({ where: { budgetYearId: yearId } })
+
+      // Detach any budget years that were copied from this simulation
+      await tx.budgetYear.updateMany({ where: { copiedFromId: yearId }, data: { copiedFromId: null } })
+
+      await tx.budgetYear.delete({ where: { id: yearId } })
+    })
 
     return reply.status(204).send()
   })
