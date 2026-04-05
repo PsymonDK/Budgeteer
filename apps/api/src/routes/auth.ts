@@ -19,7 +19,7 @@ const LOCKOUT_MINUTES = 15
 
 export async function authRoutes(fastify: FastifyInstance) {
   // POST /auth/login
-  fastify.post('/auth/login', async (request, reply) => {
+  fastify.post('/auth/login', { config: { rateLimit: { max: 10, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const result = LoginSchema.safeParse(request.body)
     if (!result.success) {
       return reply.status(400).send({ error: 'Invalid request body' })

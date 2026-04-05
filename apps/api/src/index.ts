@@ -1,6 +1,8 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import helmet from '@fastify/helmet'
+import rateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
 import fastifyMultipart from '@fastify/multipart'
 import fs from 'fs'
@@ -35,9 +37,16 @@ app.register(cors, {
   credentials: true,
 })
 
-app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
-})
+const jwtSecret = process.env.JWT_SECRET
+if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
+
+app.register(jwt, { secret: jwtSecret })
+
+// Security headers
+app.register(helmet)
+
+// Rate limiting — global: 200 req / 15 min
+app.register(rateLimit, { max: 200, timeWindow: '15 minutes' })
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 fs.mkdirSync(path.resolve(UPLOAD_DIR, 'avatars'), { recursive: true })
