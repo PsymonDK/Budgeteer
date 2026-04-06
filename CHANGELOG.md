@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.48.0] - 2026-04-06 — Security: Fastify v5 migration (Sprint 24)
+
+### Security
+- **Fastify v4 → v5** — resolves three high-severity CVEs: host/protocol spoofing via `X-Forwarded-Proto`/`Host` (GHSA-444r-cwp2-x5xf), content-type tab-character body-validation bypass (GHSA-jx2c-rxcm-jvmq), and unbounded memory allocation in `sendWebStream` (GHSA-mrq3-vjjr-p77c)
+- **`@fastify/jwt` v8 → v10** — removes dependence on vulnerable `fast-jwt` versions; aligns with Fastify v5 peer requirements
+
+### Changed
+- `@fastify/cors` upgraded v9 → v11 (Fastify v5 peer)
+- `@fastify/multipart` upgraded v8 → v9 (Fastify v5 peer)
+- `@fastify/static` upgraded v6 → v9 (Fastify v5 peer)
+- Removed unused `@fastify/swagger` and `@fastify/swagger-ui` dependencies
+
+---
+
+## [0.47.0] - 2026-04-05 — Budget-model dashboard UI, security hardening & CI
+
+### Added
+- **Budget-model-aware dashboard** — obligation tiles use model-specific amounts (`AVERAGE → monthlyEquivalent`, `FORWARD_LOOKING → forwardMonthlyEquivalent`, `PAY_NO_PAY → occurrence rows`); income-share splits applied for SHARED expenses
+- **Per-model transfer breakdown** — `transfers/breakdown` and household summary use model-aware amounts; switching budget model triggers `recalculateTransfer` and seeds all remaining PAY_NO_PAY months
+- **Dashboard layout** — Sankey moved directly below the 4-tile grid; monthly obligations follow; next-pending transfer shown instead of current calendar month
+- **Dependabot config, CodeQL workflow, Trivy image scanning** and `npm audit` gate added to CI (#102)
+
+### Fixed
+- **Cascade-delete simulation dependencies** before deleting a budget year — prevents stale FK violations when a simulation is removed (#152)
+- **Expense calendar 999.99 precision bug** — API now returns `amountInBase` as a Decimal-precise field; QUARTERLY/BIANNUAL/ANNUAL calendar cells use it directly instead of reconstructing from rounded `monthlyEquivalent`
+- **Float precision** — expense and savings creation routes use Decimal arithmetic (`Prisma.Decimal`) for `amount × rate` instead of JS floating-point multiplication
+
+### Security
+- Rate limiting registered globally (200 req / 15 min); `/auth/login` tightened to 10 req / 15 min (#109)
+- HTTP security headers via `@fastify/helmet` (#112)
+- `JWT_SECRET` required at startup — server refuses to boot without it; hardcoded fallback removed (#108)
+- `GET /users` scoped by role — regular users receive only `{id, name}` of active non-admin peers (#110)
+- `allocationPct` capped at 100% in `AllocationSchema` (#113)
+- Custom splits filtered to current household membership when copying budget years (#116)
+- `isProxy` removed from member includes to prevent internal architecture disclosure (#115)
+- Query params validated with Zod in jobs, households, and dashboard routes (#114)
+
+---
+
+## [0.46.0] - 2026-04-04 — Budget models (PAY_FULL_AMOUNT / PAY_NO_PAY / SPLIT_EVENLY)
+
+### Added
+- **Flexible budgeting models** — `BudgetModel` enum (`PAY_FULL_AMOUNT`, `PAY_NO_PAY`, `SPLIT_EVENLY`) added to `Household`; controls how the transfer amount is calculated and how shared expenses are split
+- **PAY_NO_PAY occurrence rollover** — `recalculateTransfer` branches on budget model; PAY_NO_PAY creates `ExpenseOccurrence` / `SavingsOccurrence` records so each month's actual payment can be tracked independently
+- **Budget model setting in household UI** — `budgetModel` exposed via `PUT /households/:id` and editable in Household Settings
+
+### Fixed
+- **Transfer calculation: no deficit carry-over** — forward monthly transfer now uses remaining-expense need only; deficits from under-paying past months are not compounded into future months (#83)
+- `calcForwardMonthlyNeed` unit tests updated to match revised 2-argument signature
+
+---
+
+## [0.45.0] - 2026-04-03 — Transfer breakdown, obligation tiles & monthly cost fixes
+
+### Added
+- **Auto-mark transfer paid** — `autoMarkTransferPaid` setting on `Household`; when enabled, the monthly automation marks the previous month's PENDING transfer as PAID at the planned amount; toggle in Household Settings
+- **Per-account transfer breakdown** — `GET /budget-years/:id/transfers/breakdown` aggregates expenses and savings by account; returns `monthlyAmount` per account and per-member per-account breakdown (ownership rules applied)
+- **Obligation tiles show per-account rows** — each member sees which account to transfer to and how much; generic Shared/Personal split replaced by account-level rows
+
+### Fixed
+- **Transfer forecast divergence** — `calcForwardMonthlyNeed` is now called once for the current month and its result applied to all pending months, preventing the diverging series that inflated December amounts
+- **Stale transfer amounts after marking paid** — marking a transfer PAID or reverting to PENDING now triggers `recalculateTransfer` so future months reflect the updated paid total
+- **Income/trend timezone gap** — `refDate` now uses UTC-based date construction to avoid off-by-one month errors at local midnight boundaries
+- **Expenses page monthly cost** — shows actual per-period cash amount rather than the stored `monthlyEquivalent` average; QUARTERLY/BIANNUAL/ANNUAL expenses display correctly
+- Dev entrypoint: `prisma db push` uses `--accept-data-loss` flag to prevent blocking on destructive schema drift in development
+
+---
+
 ## [0.44.0] - 2026-04-03 — Bug fixes: calendar view, automations backfill, transfer history
 
 ### Fixed

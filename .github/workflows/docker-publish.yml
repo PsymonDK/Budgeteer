@@ -33,8 +33,9 @@ jobs:
         run: npm ci
 
       - name: npm audit
-        # continue-on-error: fastify v4→v5 migration required to fix remaining fast-jwt (critical)
-        # and fastify host-spoofing (high) issues. Tracked separately. Lodash/hono fixed in place.
+        # continue-on-error: fast-jwt (transitive via @fastify/jwt) has critical/high advisories
+        # with "no fix available" in npm audit. All fastify CVEs are resolved (Fastify v5).
+        # Remove continue-on-error once @fastify/jwt ships without fast-jwt.
         run: npm audit --audit-level=high
         continue-on-error: true
 
