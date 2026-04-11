@@ -210,6 +210,84 @@ async function resolveDeductions(
   }
 }
 
+/**
+ * Recalculate payslip deductions for all non-MANUAL salary records and
+ * monthly overrides belonging to a job.  Called after a tax card is
+ * created or updated so stored net pay stays in sync.
+ *
+ * Records with deductionsSource = 'MANUAL' are never touched.
+ * For each record the applicable tax card is the most recent one whose
+ * effectiveFrom ≤ the record date.  Records with no applicable card are
+ * skipped (deductionsSource stays null until a card is added for that period).
+ */
+async function recalculateSalaryDeductions(jobId: string, jobCountry: string): Promise<void> {
+  if (jobCountry !== 'DK') return
+
+  const taxCards = await prisma.taxCardSettings.findMany({
+    where: { jobId },
+    orderBy: { effectiveFrom: 'asc' },
+  })
+  if (taxCards.length === 0) return
+
+  function getCard(date: Date) {
+    const applicable = taxCards.filter((c) => c.effectiveFrom <= date)
+    return applicable[applicable.length - 1] ?? null
+  }
+
+  const salaryRecords = await prisma.salaryRecord.findMany({
+    where: { jobId, NOT: { deductionsSource: 'MANUAL' } },
+  })
+  for (const record of salaryRecords) {
+    const card = getCard(record.effectiveFrom)
+    if (!card) continue
+    const calc = calcDanishDeductions(toNum(record.grossAmount), {
+      traekprocent: toNum(card.traekprocent),
+      personfradragMonthly: toNum(card.personfradragMonthly),
+      pensionEmployeePct: card.pensionEmployeePct != null ? toNum(card.pensionEmployeePct) : null,
+      pensionEmployerPct: card.pensionEmployerPct != null ? toNum(card.pensionEmployerPct) : null,
+      atpAmount: card.atpAmount != null ? toNum(card.atpAmount) : null,
+      bruttoItems: card.bruttoItems as { label: string; monthlyAmount: number }[] | null,
+    })
+    await prisma.salaryRecord.update({
+      where: { id: record.id },
+      data: {
+        netAmount: new Decimal(calc.net),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payslipLines: calc.lines as any,
+        pensionEmployerMonthly: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
+        deductionsSource: 'CALCULATED',
+      },
+    })
+  }
+
+  const overrides = await prisma.monthlyIncomeOverride.findMany({
+    where: { jobId, NOT: { deductionsSource: 'MANUAL' } },
+  })
+  for (const override of overrides) {
+    const overrideDate = new Date(override.year, override.month - 1, 1)
+    const card = getCard(overrideDate)
+    if (!card) continue
+    const calc = calcDanishDeductions(toNum(override.grossAmount), {
+      traekprocent: toNum(card.traekprocent),
+      personfradragMonthly: toNum(card.personfradragMonthly),
+      pensionEmployeePct: card.pensionEmployeePct != null ? toNum(card.pensionEmployeePct) : null,
+      pensionEmployerPct: card.pensionEmployerPct != null ? toNum(card.pensionEmployerPct) : null,
+      atpAmount: card.atpAmount != null ? toNum(card.atpAmount) : null,
+      bruttoItems: card.bruttoItems as { label: string; monthlyAmount: number }[] | null,
+    })
+    await prisma.monthlyIncomeOverride.update({
+      where: { id: override.id },
+      data: {
+        netAmount: new Decimal(calc.net),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payslipLines: calc.lines as any,
+        pensionEmployerMonthly: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
+        deductionsSource: 'CALCULATED',
+      },
+    })
+  }
+}
+
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export async function jobRoutes(fastify: FastifyInstance) {
@@ -580,6 +658,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
       },
     })
 
+    await recalculateSalaryDeductions(jobId, job.country)
+
     return reply.status(201).send(settings)
   })
 
@@ -613,6 +693,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
         ...(data.bruttoItems !== undefined && { bruttoItems: data.bruttoItems ?? null }),
       },
     })
+
+    await recalculateSalaryDeductions(jobId, job.country)
 
     return reply.send(updated)
   })

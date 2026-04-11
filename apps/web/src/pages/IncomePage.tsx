@@ -752,12 +752,20 @@ export function IncomePage() {
     }
   }
 
+  function invalidateAfterTaxCardChange() {
+    queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+    queryClient.invalidateQueries({ queryKey: ['salary', taxCardJobId] })
+    queryClient.invalidateQueries({ queryKey: ['overrides', taxCardJobId] })
+    queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+    queryClient.invalidateQueries({ queryKey: ['jobs'] })
+  }
+
   const createTaxCardMutation = useMutation({
     mutationFn: (data: TaxCardForm) => api.post(`/jobs/${taxCardJobId}/taxcard`, buildTaxCardPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      invalidateAfterTaxCardChange()
       setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
-      toast.success('Tax card settings saved')
+      toast.success('Tax card saved — salary records recalculated')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -765,9 +773,9 @@ export function IncomePage() {
   const updateTaxCardMutation = useMutation({
     mutationFn: (data: TaxCardForm) => api.put(`/jobs/${taxCardJobId}/taxcard/${editingTaxCardId}`, buildTaxCardPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      invalidateAfterTaxCardChange()
       setEditingTaxCardId(null); setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
-      toast.success('Tax card updated')
+      toast.success('Tax card updated — salary records recalculated')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to update') },
   })
