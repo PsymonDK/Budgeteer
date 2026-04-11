@@ -1,3 +1,37 @@
+// ── Payslip / deduction types ─────────────────────────────────────────────────
+
+export interface BruttoItem {
+  label: string
+  monthlyAmount: number
+}
+
+export interface OtherDeductionItem {
+  label: string
+  amount: number
+}
+
+/** Payslip deduction breakdown — present on SalaryRecord and MonthlyIncomeOverride */
+export interface DeductionFields {
+  amBidragAmount?: number | null
+  aSkattAmount?: number | null
+  pensionEmployeeAmount?: number | null
+  pensionEmployerAmount?: number | null
+  atpAmount?: number | null
+  bruttoDeductionAmount?: number | null
+  otherDeductions?: OtherDeductionItem[] | null
+  deductionsSource?: 'MANUAL' | 'CALCULATED' | null
+}
+
+export interface TaxCardSettingsData {
+  traekprocent: number
+  personfradragMonthly: number
+  municipality?: string | null
+  pensionEmployeePct?: number | null
+  pensionEmployerPct?: number | null
+  atpAmount?: number | null
+  bruttoItems?: BruttoItem[] | null
+}
+
 export const Frequency = {
   WEEKLY: 'WEEKLY',
   FORTNIGHTLY: 'FORTNIGHTLY',

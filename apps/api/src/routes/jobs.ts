@@ -13,6 +13,7 @@ import { toNum } from '../lib/decimal'
 const CreateJobSchema = z.object({
   name: z.string().min(1).max(200),
   employer: z.string().max(200).optional(),
+  country: z.string().min(2).max(10).toUpperCase().default('DK'),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
@@ -22,20 +23,94 @@ const UpdateJobSchema = CreateJobSchema.partial().refine(
   { message: 'At least one field is required' }
 )
 
-const CreateSalarySchema = z.object({
-  grossAmount: z.number().positive(),
-  netAmount: z.number().positive(),
-  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  currencyCode: z.string().length(3).toUpperCase().optional(),
+const OtherDeductionItemSchema = z.object({
+  label: z.string().min(1).max(100),
+  amount: z.number().nonnegative(),
 })
 
-const OverrideSchema = z.object({
-  year: z.number().int().min(2000).max(2100),
-  month: z.number().int().min(1).max(12),
-  grossAmount: z.number().positive(),
-  netAmount: z.number().positive(),
-  note: z.string().max(500).optional(),
+const DeductionFieldsSchema = z.object({
+  amBidragAmount: z.number().nonnegative().optional(),
+  aSkattAmount: z.number().nonnegative().optional(),
+  pensionEmployeeAmount: z.number().nonnegative().optional(),
+  pensionEmployerAmount: z.number().nonnegative().optional(),
+  atpAmount: z.number().nonnegative().optional(),
+  bruttoDeductionAmount: z.number().nonnegative().optional(),
+  otherDeductions: z.array(OtherDeductionItemSchema).optional(),
+  deductionsSource: z.enum(['MANUAL', 'CALCULATED']).optional(),
 })
+
+function validateDeductionNet(
+  grossAmount: number,
+  netAmount: number,
+  d: z.infer<typeof DeductionFieldsSchema>,
+  ctx: z.RefinementCtx
+) {
+  const hasDeductions =
+    d.amBidragAmount !== undefined ||
+    d.aSkattAmount !== undefined ||
+    d.bruttoDeductionAmount !== undefined
+  if (!hasDeductions) return
+  const brutto = d.bruttoDeductionAmount ?? 0
+  const amBidrag = d.amBidragAmount ?? 0
+  const aSkat = d.aSkattAmount ?? 0
+  const pensionEmp = d.pensionEmployeeAmount ?? 0
+  const atp = d.atpAmount ?? 0
+  const other = (d.otherDeductions ?? []).reduce((s, i) => s + i.amount, 0)
+  const expectedNet = grossAmount - brutto - amBidrag - aSkat - pensionEmp - atp - other
+  if (Math.abs(expectedNet - netAmount) > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `netAmount (${netAmount}) does not match gross minus deductions (expected ~${expectedNet.toFixed(2)}, tolerance ±1)`,
+      path: ['netAmount'],
+    })
+  }
+}
+
+const CreateSalarySchema = z
+  .object({
+    grossAmount: z.number().positive(),
+    netAmount: z.number().positive(),
+    effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    currencyCode: z.string().length(3).toUpperCase().optional(),
+  })
+  .merge(DeductionFieldsSchema)
+  .superRefine((data, ctx) => {
+    validateDeductionNet(data.grossAmount, data.netAmount, data, ctx)
+  })
+
+const OverrideSchema = z
+  .object({
+    year: z.number().int().min(2000).max(2100),
+    month: z.number().int().min(1).max(12),
+    grossAmount: z.number().positive(),
+    netAmount: z.number().positive(),
+    note: z.string().max(500).optional(),
+  })
+  .merge(DeductionFieldsSchema)
+  .superRefine((data, ctx) => {
+    validateDeductionNet(data.grossAmount, data.netAmount, data, ctx)
+  })
+
+const BruttoItemSchema = z.object({
+  label: z.string().min(1).max(100),
+  monthlyAmount: z.number().nonnegative(),
+})
+
+const CreateTaxCardSchema = z.object({
+  effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  traekprocent: z.number().min(0).max(100),
+  personfradragMonthly: z.number().nonnegative(),
+  municipality: z.string().max(100).optional(),
+  pensionEmployeePct: z.number().min(0).max(100).optional(),
+  pensionEmployerPct: z.number().min(0).max(100).optional(),
+  atpAmount: z.number().nonnegative().optional(),
+  bruttoItems: z.array(BruttoItemSchema).optional(),
+})
+
+const UpdateTaxCardSchema = CreateTaxCardSchema.partial().refine(
+  (d) => Object.keys(d).length > 0,
+  { message: 'At least one field is required' }
+)
 
 const CreateBonusSchema = z.object({
   label: z.string().min(1).max(200),
@@ -117,6 +192,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
       id: j.id,
       name: j.name,
       employer: j.employer,
+      country: j.country,
       startDate: j.startDate,
       endDate: j.endDate,
       isActive: j.endDate === null || j.endDate > new Date(),
@@ -151,12 +227,13 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { name, employer, startDate, endDate } = result.data
+    const { name, employer, country, startDate, endDate } = result.data
     const job = await prisma.job.create({
       data: {
         userId: targetUserId,
         name,
         employer,
+        country,
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
       },
@@ -178,12 +255,13 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { name, employer, startDate, endDate } = result.data
+    const { name, employer, country, startDate, endDate } = result.data
     const updated = await prisma.job.update({
       where: { id: jobId },
       data: {
         ...(name !== undefined && { name }),
         ...(employer !== undefined && { employer }),
+        ...(country !== undefined && { country }),
         ...(startDate !== undefined && { startDate: new Date(startDate) }),
         ...(endDate !== undefined && { endDate: new Date(endDate) }),
       },
@@ -239,7 +317,11 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { grossAmount, netAmount, effectiveFrom, currencyCode } = result.data
+    const {
+      grossAmount, netAmount, effectiveFrom, currencyCode,
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    } = result.data
     const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
     const rate = currency ? await getLatestRate(currency) : null
     if (currency && rate === null) {
@@ -254,6 +336,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
+        amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
+        aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
+        pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
+        pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
+        atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
+        bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
+        otherDeductions: otherDeductions ?? undefined,
+        deductionsSource: deductionsSource ?? null,
       },
     })
 
@@ -276,7 +366,11 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
 
-    const { grossAmount, netAmount, effectiveFrom, currencyCode } = result.data
+    const {
+      grossAmount, netAmount, effectiveFrom, currencyCode,
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    } = result.data
     const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
     const rate = currency ? await getLatestRate(currency) : null
     if (currency && rate === null) {
@@ -291,6 +385,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
+        amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
+        aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
+        pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
+        pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
+        atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
+        bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
+        otherDeductions: otherDeductions ?? undefined,
+        deductionsSource: deductionsSource ?? null,
       },
     })
 
@@ -348,11 +450,27 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const { year, month, grossAmount, netAmount, note } = result.data
+    const {
+      year, month, grossAmount, netAmount, note,
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    } = result.data
+
+    const deductionData = {
+      amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
+      aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
+      pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
+      pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
+      atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
+      bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
+      otherDeductions: otherDeductions ?? undefined,
+      deductionsSource: deductionsSource ?? null,
+    }
+
     const override = await prisma.monthlyIncomeOverride.upsert({
       where: { jobId_year_month: { jobId, year, month } },
-      create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note },
-      update: { grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note },
+      create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note, ...deductionData },
+      update: { grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note, ...deductionData },
     })
 
     return reply.status(201).send(override)
@@ -370,6 +488,108 @@ export async function jobRoutes(fastify: FastifyInstance) {
     if (!existing) return reply.status(404).send({ error: 'Override not found' })
 
     await prisma.monthlyIncomeOverride.delete({ where: { id: overrideId } })
+    return reply.status(204).send()
+  })
+
+  // ── Tax card settings ─────────────────────────────────────────────────────────
+
+  // GET /jobs/:id/taxcard
+  fastify.get('/jobs/:id/taxcard', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const settings = await prisma.taxCardSettings.findMany({
+      where: { jobId },
+      orderBy: { effectiveFrom: 'desc' },
+    })
+
+    return reply.send(settings)
+  })
+
+  // POST /jobs/:id/taxcard
+  fastify.post('/jobs/:id/taxcard', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const result = CreateTaxCardSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const {
+      effectiveFrom, traekprocent, personfradragMonthly, municipality,
+      pensionEmployeePct, pensionEmployerPct, atpAmount, bruttoItems,
+    } = result.data
+
+    const settings = await prisma.taxCardSettings.create({
+      data: {
+        jobId,
+        effectiveFrom: new Date(effectiveFrom),
+        traekprocent: new Decimal(traekprocent),
+        personfradragMonthly: new Decimal(personfradragMonthly),
+        municipality: municipality ?? null,
+        pensionEmployeePct: pensionEmployeePct != null ? new Decimal(pensionEmployeePct) : null,
+        pensionEmployerPct: pensionEmployerPct != null ? new Decimal(pensionEmployerPct) : null,
+        atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
+        bruttoItems: bruttoItems ?? undefined,
+      },
+    })
+
+    return reply.status(201).send(settings)
+  })
+
+  // PUT /jobs/:id/taxcard/:settingsId
+  fastify.put('/jobs/:id/taxcard/:settingsId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId, settingsId } = request.params as { id: string; settingsId: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const existing = await prisma.taxCardSettings.findFirst({ where: { id: settingsId, jobId } })
+    if (!existing) return reply.status(404).send({ error: 'Tax card settings not found' })
+
+    const result = UpdateTaxCardSchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const data = result.data
+    const updated = await prisma.taxCardSettings.update({
+      where: { id: settingsId },
+      data: {
+        ...(data.effectiveFrom !== undefined && { effectiveFrom: new Date(data.effectiveFrom) }),
+        ...(data.traekprocent !== undefined && { traekprocent: new Decimal(data.traekprocent) }),
+        ...(data.personfradragMonthly !== undefined && { personfradragMonthly: new Decimal(data.personfradragMonthly) }),
+        ...(data.municipality !== undefined && { municipality: data.municipality }),
+        ...(data.pensionEmployeePct !== undefined && { pensionEmployeePct: data.pensionEmployeePct != null ? new Decimal(data.pensionEmployeePct) : null }),
+        ...(data.pensionEmployerPct !== undefined && { pensionEmployerPct: data.pensionEmployerPct != null ? new Decimal(data.pensionEmployerPct) : null }),
+        ...(data.atpAmount !== undefined && { atpAmount: data.atpAmount != null ? new Decimal(data.atpAmount) : null }),
+        ...(data.bruttoItems !== undefined && { bruttoItems: data.bruttoItems ?? null }),
+      },
+    })
+
+    return reply.send(updated)
+  })
+
+  // DELETE /jobs/:id/taxcard/:settingsId
+  fastify.delete('/jobs/:id/taxcard/:settingsId', { preHandler: authenticate }, async (request, reply) => {
+    const { id: jobId, settingsId } = request.params as { id: string; settingsId: string }
+    const { sub: userId, role } = request.user
+
+    const job = await assertJobOwnership(jobId, userId, role)
+    if (!job) return reply.status(404).send({ error: 'Job not found' })
+
+    const existing = await prisma.taxCardSettings.findFirst({ where: { id: settingsId, jobId } })
+    if (!existing) return reply.status(404).send({ error: 'Tax card settings not found' })
+
+    await prisma.taxCardSettings.delete({ where: { id: settingsId } })
     return reply.status(204).send()
   })
 
