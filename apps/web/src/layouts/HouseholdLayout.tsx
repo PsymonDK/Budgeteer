@@ -100,7 +100,7 @@ export function HouseholdLayout() {
           {/* Hamburger — mobile only */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden text-gray-400 hover:text-white transition-colors mr-1"
+            className="sm:hidden text-gray-400 hover:text-white transition-colors mr-1"
             aria-label="Open menu"
           >
             <Menu size={20} />
@@ -122,7 +122,7 @@ export function HouseholdLayout() {
         {/* Mobile overlay */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/60 z-40 md:hidden"
+            className="fixed inset-0 bg-black/60 z-40 sm:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
@@ -131,11 +131,11 @@ export function HouseholdLayout() {
         <nav className={`
           fixed inset-y-0 left-0 z-50 w-56 bg-gray-900 border-r border-gray-800 flex flex-col py-4
           transform transition-transform duration-200
-          md:static md:translate-x-0 md:z-auto md:flex-shrink-0 md:overflow-y-auto
+          sm:static sm:translate-x-0 sm:z-auto sm:flex-shrink-0 sm:overflow-y-auto
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
         `}>
           {/* Close button — mobile only */}
-          <div className="flex items-center justify-between px-4 pb-3 mb-1 border-b border-gray-800 md:hidden">
+          <div className="flex items-center justify-between px-4 pb-3 mb-1 border-b border-gray-800 sm:hidden">
             <span className="text-sm font-medium text-gray-300">Menu</span>
             <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white transition-colors">
               <X size={18} />

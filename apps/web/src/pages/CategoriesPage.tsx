@@ -175,7 +175,8 @@ export function CategoriesPage() {
             <p className="text-gray-500 text-sm">Uncharted territory — no custom expense categories yet.</p>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400 text-left">
                     <th className="px-4 py-3 font-medium">Name</th>
@@ -220,6 +221,7 @@ export function CategoriesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
@@ -244,7 +246,8 @@ export function CategoriesPage() {
             <p className="text-gray-500 text-sm">No custom savings categories yet.</p>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400 text-left">
                     <th className="px-4 py-3 font-medium">Name</th>
@@ -289,6 +292,7 @@ export function CategoriesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>
@@ -297,7 +301,8 @@ export function CategoriesPage() {
         <div>
           <h2 className="text-lg font-semibold mb-4">System categories</h2>
           <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3 font-medium">Name</th>
@@ -341,6 +346,7 @@ export function CategoriesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </main>

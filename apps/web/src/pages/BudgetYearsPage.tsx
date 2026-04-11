@@ -257,7 +257,8 @@ export function BudgetYearsPage() {
                 </div>
               ) : (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[520px]">
                     <thead>
                       <tr className="border-b border-gray-800 text-gray-400 text-left">
                         <th className="px-4 py-3 font-medium">Year</th>
@@ -308,6 +309,7 @@ export function BudgetYearsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </section>
@@ -323,7 +325,8 @@ export function BudgetYearsPage() {
                 </div>
               ) : (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[520px]">
                     <thead>
                       <tr className="border-b border-gray-800 text-gray-400 text-left">
                         <th className="px-4 py-3 font-medium">Name</th>
@@ -376,6 +379,7 @@ export function BudgetYearsPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )}
             </section>

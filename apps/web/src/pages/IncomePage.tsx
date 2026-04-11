@@ -652,7 +652,8 @@ export function IncomePage() {
                         {overrides.length === 0 ? (
                           <p className="text-gray-600 text-sm">No overrides for this job.</p>
                         ) : (
-                          <table className="w-full text-sm">
+                          <div className="overflow-x-auto">
+                          <table className="w-full text-sm min-w-[480px]">
                             <thead>
                               <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
                                 <th className="pb-2 pr-4">Month</th>
@@ -677,6 +678,7 @@ export function IncomePage() {
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     )
@@ -716,7 +718,8 @@ export function IncomePage() {
                         {bonuses.length === 0 ? (
                           <p className="text-gray-600 text-sm">No bonuses for this job.</p>
                         ) : (
-                          <table className="w-full text-sm">
+                          <div className="overflow-x-auto">
+                          <table className="w-full text-sm min-w-[560px]">
                             <thead>
                               <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
                                 <th className="pb-2 pr-4">Label</th>
@@ -754,6 +757,7 @@ export function IncomePage() {
                               ))}
                             </tbody>
                           </table>
+                          </div>
                         )}
                       </div>
                     )
@@ -809,7 +813,8 @@ export function IncomePage() {
         <Modal title={`Salary history — ${jobs.find((j) => j.id === salaryJobId)?.name}`} onClose={() => { setSalaryJobId(null); setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('') }} size="lg">
           {/* Existing records */}
           {salaryRecords.length > 0 && (
-            <table className="w-full text-sm mb-6">
+            <div className="overflow-x-auto mb-6">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-800">
                   <th className="pb-2 pr-4">Effective from</th>
@@ -841,6 +846,7 @@ export function IncomePage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
 
           {/* Add / Edit record */}

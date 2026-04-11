@@ -469,6 +469,7 @@ export function DashboardPage() {
               </div>
             ) : (
               <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800 text-gray-400 text-left">
@@ -515,6 +516,7 @@ export function DashboardPage() {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
             )}
           </div>
@@ -624,7 +626,8 @@ export function DashboardPage() {
                 </p>
               ) : (
                 <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-sm">
+                  <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[520px]">
                     <thead>
                       <tr className="border-b border-gray-800 text-gray-400 text-left">
                         <th className="px-4 py-3 font-medium">Month</th>
@@ -680,6 +683,7 @@ export function DashboardPage() {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 </div>
               )
             )}
@@ -690,6 +694,7 @@ export function DashboardPage() {
             <div className="mb-8">
               <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Transfer by account</h2>
               <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+                <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <tbody>
                     {transferBreakdown.byAccount.map((a) => (
@@ -707,6 +712,7 @@ export function DashboardPage() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </div>
           )}

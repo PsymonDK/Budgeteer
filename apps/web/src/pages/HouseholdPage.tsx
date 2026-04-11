@@ -351,7 +351,8 @@ export function HouseholdPage() {
         </div>
 
         <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="px-4 py-3 font-medium">Name</th>
@@ -423,6 +424,7 @@ export function HouseholdPage() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* Household accounts */}
@@ -443,7 +445,8 @@ export function HouseholdPage() {
             <p className="text-sm text-gray-500">No household accounts yet.</p>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[480px]">
                 <thead>
                   <tr className="border-b border-gray-800 text-gray-400 text-left">
                     <th className="px-4 py-3 font-medium">Name</th>
@@ -496,6 +499,7 @@ export function HouseholdPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </div>

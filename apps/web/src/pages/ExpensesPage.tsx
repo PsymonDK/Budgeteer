@@ -613,7 +613,8 @@ export function ExpensesPage() {
               <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (
               <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[700px]">
                   <thead>
                     <tr className="border-b border-gray-800 text-gray-400 text-left select-none">
                       <th className="pl-4 pr-2 py-3 w-8">
@@ -752,6 +753,7 @@ export function ExpensesPage() {
                     </tr>
                   </tfoot>
                 </table>
+                </div>
               </div>
             )}
           </>

@@ -15,8 +15,8 @@ export function AdminLayout() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
+      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-4 min-w-max">
           <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
             ☠️ Budgeteer
           </Link>

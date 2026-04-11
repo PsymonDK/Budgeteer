@@ -331,7 +331,8 @@ export function ComparePage() {
 
           {/* COMP-002: Side-by-side expense table */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="border-b border-gray-800 text-gray-400 text-left">
                   <th className="px-4 py-3 font-medium">Expense</th>
@@ -419,6 +420,7 @@ export function ComparePage() {
                 </tfoot>
               )}
             </table>
+            </div>
           </div>
         </>
       ) : null}
