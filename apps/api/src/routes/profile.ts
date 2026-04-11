@@ -200,19 +200,26 @@ export async function profileRoutes(fastify: FastifyInstance) {
         })
 
         const hasDeductions = record?.deductionsSource != null
-        const deductions = hasDeductions && record ? {
-          amBidrag: record.amBidragAmount ? toNum(record.amBidragAmount) : 0,
-          aSkat: record.aSkattAmount ? toNum(record.aSkattAmount) : 0,
-          pensionEmployee: record.pensionEmployeeAmount ? toNum(record.pensionEmployeeAmount) : 0,
-          pensionEmployer: record.pensionEmployerAmount ? toNum(record.pensionEmployerAmount) : 0,
-          atp: record.atpAmount ? toNum(record.atpAmount) : 0,
-          bruttoDeduction: record.bruttoDeductionAmount ? toNum(record.bruttoDeductionAmount) : 0,
-          otherDeductions: record.otherDeductions
-            ? (record.otherDeductions as { label: string; amount: number }[]).reduce((s, i) => s + i.amount, 0)
-            : 0,
-        } : null
+        const deductions = hasDeductions && record ? (() => {
+          const lines = (record.payslipLines ?? []) as { amount: number; sankeyGroup?: string }[]
+          const byGroup = new Map<string, number>()
+          for (const line of lines) {
+            if (line.sankeyGroup) {
+              byGroup.set(line.sankeyGroup, (byGroup.get(line.sankeyGroup) ?? 0) + line.amount)
+            }
+          }
+          return {
+            amBidrag: byGroup.get('am_bidrag') ?? 0,
+            aSkat: byGroup.get('a_skat') ?? 0,
+            pensionEmployee: byGroup.get('pension_employee') ?? 0,
+            atp: byGroup.get('atp') ?? 0,
+            bruttoDeduction: byGroup.get('brutto_benefits') ?? 0,
+            otherDeductions: byGroup.get('other_deductions') ?? 0,
+          }
+        })() : null
+        const pensionEmployer = record?.pensionEmployerMonthly ? toNum(record.pensionEmployerMonthly) : 0
 
-        return { job, gross, net, deductions }
+        return { job, gross, net, deductions, pensionEmployer }
       })
     )
 
@@ -346,7 +353,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const aggAmBidrag = jobIncomes.reduce((s, { deductions }) => s + (deductions?.amBidrag ?? 0), 0)
       const aggASkat = jobIncomes.reduce((s, { deductions }) => s + (deductions?.aSkat ?? 0), 0)
       const aggPensionEmployee = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployee ?? 0), 0)
-      const aggPensionEmployer = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployer ?? 0), 0)
+      const aggPensionEmployer = jobIncomes.reduce((s, { pensionEmployer }) => s + pensionEmployer, 0)
       const aggAtp = jobIncomes.reduce((s, { deductions }) => s + (deductions?.atp ?? 0), 0)
       const aggBrutto = jobIncomes.reduce((s, { deductions }) => s + (deductions?.bruttoDeduction ?? 0), 0)
       const aggOther = jobIncomes.reduce((s, { deductions }) => s + (deductions?.otherDeductions ?? 0), 0)
@@ -398,7 +405,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
         if (unallocatedNet > 0) links.push({ source: 'net_pay', target: 'unallocated', value: unallocatedNet })
       }
 
-      const totalEmployerPension = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployer ?? 0), 0)
+      const totalEmployerPension = jobIncomes.reduce((s, { pensionEmployer }) => s + pensionEmployer, 0)
 
       return reply.send({
         totalIncome: totalIncome.toFixed(2),

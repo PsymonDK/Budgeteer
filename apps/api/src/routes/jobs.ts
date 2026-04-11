@@ -7,7 +7,7 @@ import { getJobMonthlyIncome, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { assertHouseholdAccess } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
-import { calcDanishDeductions } from '../lib/taxCalcDK'
+import { calcDanishDeductions, PayslipLine } from '../lib/taxCalcDK'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -24,19 +24,16 @@ const UpdateJobSchema = CreateJobSchema.partial().refine(
   { message: 'At least one field is required' }
 )
 
-const OtherDeductionItemSchema = z.object({
-  label: z.string().min(1).max(100),
+const PayslipLineSchema = z.object({
+  label: z.string().min(1).max(200),
   amount: z.number().nonnegative(),
+  type: z.enum(['benefit_in_kind', 'pre_am', 'am_bidrag', 'a_skat', 'post_tax']),
+  sankeyGroup: z.enum(['brutto_benefits', 'am_bidrag', 'a_skat', 'pension_employee', 'atp', 'other_deductions']).optional(),
+  isCalculated: z.boolean(),
 })
 
 const DeductionFieldsSchema = z.object({
-  amBidragAmount: z.number().nonnegative().optional(),
-  aSkattAmount: z.number().nonnegative().optional(),
-  pensionEmployeeAmount: z.number().nonnegative().optional(),
-  pensionEmployerAmount: z.number().nonnegative().optional(),
-  atpAmount: z.number().nonnegative().optional(),
-  bruttoDeductionAmount: z.number().nonnegative().optional(),
-  otherDeductions: z.array(OtherDeductionItemSchema).optional(),
+  payslipLines: z.array(PayslipLineSchema).optional(),
   deductionsSource: z.enum(['MANUAL', 'CALCULATED']).optional(),
 })
 
@@ -46,18 +43,12 @@ function validateDeductionNet(
   d: z.infer<typeof DeductionFieldsSchema>,
   ctx: z.RefinementCtx
 ) {
-  const hasDeductions =
-    d.amBidragAmount !== undefined ||
-    d.aSkattAmount !== undefined ||
-    d.bruttoDeductionAmount !== undefined
-  if (!hasDeductions) return
-  const brutto = d.bruttoDeductionAmount ?? 0
-  const amBidrag = d.amBidragAmount ?? 0
-  const aSkat = d.aSkattAmount ?? 0
-  const pensionEmp = d.pensionEmployeeAmount ?? 0
-  const atp = d.atpAmount ?? 0
-  const other = (d.otherDeductions ?? []).reduce((s, i) => s + i.amount, 0)
-  const expectedNet = grossAmount - brutto - amBidrag - aSkat - pensionEmp - atp - other
+  if (!d.payslipLines || d.payslipLines.length === 0) return
+  // benefit_in_kind lines add to taxable income but are not cash deductions
+  const cashDeductions = d.payslipLines
+    .filter((l) => l.type !== 'benefit_in_kind')
+    .reduce((s, l) => s + l.amount, 0)
+  const expectedNet = grossAmount - cashDeductions
   if (Math.abs(expectedNet - netAmount) > 1) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -159,51 +150,31 @@ async function assertJobOwnership(jobId: string, requesterId: string, requesterR
  * Resolve deduction data for a salary record or monthly override.
  *
  * Priority:
- *   1. Explicit deduction fields in request → store verbatim, source = MANUAL
+ *   1. Explicit payslipLines in request → store verbatim, source = MANUAL
  *   2. Job is DK + active tax card exists → auto-calculate, source = CALCULATED
- *   3. Fallback → all null (legacy behaviour)
+ *   3. Fallback → all null (legacy behaviour, no deduction data stored)
  */
 async function resolveDeductions(
   jobId: string,
   jobCountry: string,
   gross: number,
-  requestFields: {
-    amBidragAmount?: number
-    aSkattAmount?: number
-    pensionEmployeeAmount?: number
-    pensionEmployerAmount?: number
-    atpAmount?: number
-    bruttoDeductionAmount?: number
-    otherDeductions?: { label: string; amount: number }[]
-    deductionsSource?: 'MANUAL' | 'CALCULATED'
-  }
+  requestPayslipLines?: PayslipLine[]
 ): Promise<{
-  amBidragAmount: Decimal | null
-  aSkattAmount: Decimal | null
-  pensionEmployeeAmount: Decimal | null
-  pensionEmployerAmount: Decimal | null
-  atpAmount: Decimal | null
-  bruttoDeductionAmount: Decimal | null
-  otherDeductions: { label: string; amount: number }[] | null
+  payslipLines: PayslipLine[] | null
+  pensionEmployerMonthly: Decimal | null
   deductionsSource: string | null
   netAmount: Decimal | null  // null means "use request netAmount as-is"
 }> {
-  const hasExplicitDeductions =
-    requestFields.amBidragAmount !== undefined ||
-    requestFields.aSkattAmount !== undefined ||
-    requestFields.bruttoDeductionAmount !== undefined
-
-  if (hasExplicitDeductions || requestFields.deductionsSource === 'MANUAL') {
+  if (requestPayslipLines && requestPayslipLines.length > 0) {
+    // MANUAL: user submitted explicit payslip lines
+    const cashDeductions = requestPayslipLines
+      .filter((l) => l.type !== 'benefit_in_kind')
+      .reduce((s, l) => s + l.amount, 0)
     return {
-      amBidragAmount: requestFields.amBidragAmount != null ? new Decimal(requestFields.amBidragAmount) : null,
-      aSkattAmount: requestFields.aSkattAmount != null ? new Decimal(requestFields.aSkattAmount) : null,
-      pensionEmployeeAmount: requestFields.pensionEmployeeAmount != null ? new Decimal(requestFields.pensionEmployeeAmount) : null,
-      pensionEmployerAmount: requestFields.pensionEmployerAmount != null ? new Decimal(requestFields.pensionEmployerAmount) : null,
-      atpAmount: requestFields.atpAmount != null ? new Decimal(requestFields.atpAmount) : null,
-      bruttoDeductionAmount: requestFields.bruttoDeductionAmount != null ? new Decimal(requestFields.bruttoDeductionAmount) : null,
-      otherDeductions: requestFields.otherDeductions ?? null,
+      payslipLines: requestPayslipLines,
+      pensionEmployerMonthly: null,
       deductionsSource: 'MANUAL',
-      netAmount: null,
+      netAmount: new Decimal(Math.round((gross - cashDeductions) * 100) / 100),
     }
   }
 
@@ -222,13 +193,8 @@ async function resolveDeductions(
         bruttoItems: taxCard.bruttoItems as { label: string; monthlyAmount: number }[] | null,
       })
       return {
-        amBidragAmount: new Decimal(calc.amBidrag),
-        aSkattAmount: new Decimal(calc.aSkat),
-        pensionEmployeeAmount: calc.pensionEmployee > 0 ? new Decimal(calc.pensionEmployee) : null,
-        pensionEmployerAmount: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
-        atpAmount: new Decimal(calc.atp),
-        bruttoDeductionAmount: calc.bruttoTotal > 0 ? new Decimal(calc.bruttoTotal) : null,
-        otherDeductions: null,
+        payslipLines: calc.lines,
+        pensionEmployerMonthly: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
         deductionsSource: 'CALCULATED',
         netAmount: new Decimal(calc.net),
       }
@@ -237,13 +203,8 @@ async function resolveDeductions(
 
   // Fallback: no deduction data
   return {
-    amBidragAmount: null,
-    aSkattAmount: null,
-    pensionEmployeeAmount: null,
-    pensionEmployerAmount: null,
-    atpAmount: null,
-    bruttoDeductionAmount: null,
-    otherDeductions: null,
+    payslipLines: null,
+    pensionEmployerMonthly: null,
     deductionsSource: null,
     netAmount: null,
   }
@@ -412,21 +373,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const {
-      grossAmount, netAmount, effectiveFrom, currencyCode,
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    } = result.data
+    const { grossAmount, netAmount, effectiveFrom, currencyCode, payslipLines } = result.data
     const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
     const rate = currency ? await getLatestRate(currency) : null
     if (currency && rate === null) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    })
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
 
     const record = await prisma.salaryRecord.create({
       data: {
@@ -436,13 +390,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
-        amBidragAmount: deductions.amBidragAmount,
-        aSkattAmount: deductions.aSkattAmount,
-        pensionEmployeeAmount: deductions.pensionEmployeeAmount,
-        pensionEmployerAmount: deductions.pensionEmployerAmount,
-        atpAmount: deductions.atpAmount,
-        bruttoDeductionAmount: deductions.bruttoDeductionAmount,
-        otherDeductions: deductions.otherDeductions ?? undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payslipLines: deductions.payslipLines ? (deductions.payslipLines as any) : undefined,
+        pensionEmployerMonthly: deductions.pensionEmployerMonthly,
         deductionsSource: deductions.deductionsSource,
       },
     })
@@ -466,21 +416,14 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
 
-    const {
-      grossAmount, netAmount, effectiveFrom, currencyCode,
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    } = result.data
+    const { grossAmount, netAmount, effectiveFrom, currencyCode, payslipLines } = result.data
     const currency = currencyCode && currencyCode !== BASE_CURRENCY ? currencyCode : null
     const rate = currency ? await getLatestRate(currency) : null
     if (currency && rate === null) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    })
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
 
     const record = await prisma.salaryRecord.update({
       where: { id: salaryId },
@@ -490,13 +433,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
-        amBidragAmount: deductions.amBidragAmount,
-        aSkattAmount: deductions.aSkattAmount,
-        pensionEmployeeAmount: deductions.pensionEmployeeAmount,
-        pensionEmployerAmount: deductions.pensionEmployerAmount,
-        atpAmount: deductions.atpAmount,
-        bruttoDeductionAmount: deductions.bruttoDeductionAmount,
-        otherDeductions: deductions.otherDeductions ?? undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        payslipLines: deductions.payslipLines ? (deductions.payslipLines as any) : undefined,
+        pensionEmployerMonthly: deductions.pensionEmployerMonthly,
         deductionsSource: deductions.deductionsSource,
       },
     })
@@ -555,26 +494,15 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
     }
 
-    const {
-      year, month, grossAmount, netAmount, note,
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    } = result.data
+    const { year, month, grossAmount, netAmount, note, payslipLines } = result.data
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
-      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
-      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
-    })
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
 
     const resolvedNet = deductions.netAmount ?? new Decimal(netAmount)
-    const deductionData = {
-      amBidragAmount: deductions.amBidragAmount,
-      aSkattAmount: deductions.aSkattAmount,
-      pensionEmployeeAmount: deductions.pensionEmployeeAmount,
-      pensionEmployerAmount: deductions.pensionEmployerAmount,
-      atpAmount: deductions.atpAmount,
-      bruttoDeductionAmount: deductions.bruttoDeductionAmount,
-      otherDeductions: deductions.otherDeductions ?? undefined,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deductionData: any = {
+      payslipLines: deductions.payslipLines ?? undefined,
+      pensionEmployerMonthly: deductions.pensionEmployerMonthly,
       deductionsSource: deductions.deductionsSource,
     }
 

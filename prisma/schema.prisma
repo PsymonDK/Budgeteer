@@ -207,14 +207,9 @@ model SalaryRecord {
   currencyCode   String?
   rateUsed       Decimal? @db.Decimal(18, 6)
   // Payslip deduction breakdown
-  amBidragAmount        Decimal? @db.Decimal(10, 2)
-  aSkattAmount          Decimal? @db.Decimal(10, 2)
-  pensionEmployeeAmount Decimal? @db.Decimal(10, 2)
-  pensionEmployerAmount Decimal? @db.Decimal(10, 2)
-  atpAmount             Decimal? @db.Decimal(10, 2)
-  bruttoDeductionAmount Decimal? @db.Decimal(10, 2)
-  otherDeductions       Json?
-  deductionsSource      String?
+  payslipLines           Json?
+  pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
+  deductionsSource       String?
   createdAt      DateTime @default(now())
 
   @@index([jobId, effectiveFrom])
@@ -230,14 +225,9 @@ model MonthlyIncomeOverride {
   netAmount   Decimal  @db.Decimal(10, 2)
   note        String?
   // Payslip deduction breakdown
-  amBidragAmount        Decimal? @db.Decimal(10, 2)
-  aSkattAmount          Decimal? @db.Decimal(10, 2)
-  pensionEmployeeAmount Decimal? @db.Decimal(10, 2)
-  pensionEmployerAmount Decimal? @db.Decimal(10, 2)
-  atpAmount             Decimal? @db.Decimal(10, 2)
-  bruttoDeductionAmount Decimal? @db.Decimal(10, 2)
-  otherDeductions       Json?
-  deductionsSource      String?
+  payslipLines           Json?
+  pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
+  deductionsSource       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

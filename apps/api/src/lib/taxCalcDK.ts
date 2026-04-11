@@ -24,16 +24,22 @@ export interface TaxCardInput {
   bruttoItems?: BruttoItem[] | null
 }
 
-export interface DeductionBreakdown {
-  amBidrag: number
-  aSkat: number
-  /** Top-skat component already included inside aSkat */
-  topSkat: number
-  atp: number
-  pensionEmployee: number
+export type PayslipLineType = 'benefit_in_kind' | 'pre_am' | 'am_bidrag' | 'a_skat' | 'post_tax'
+export type SankeyGroup = 'brutto_benefits' | 'am_bidrag' | 'a_skat' | 'pension_employee' | 'atp' | 'other_deductions'
+
+export interface PayslipLine {
+  label: string
+  /** Positive — deduction or benefit amount */
+  amount: number
+  type: PayslipLineType
+  /** Which Sankey node this line aggregates into */
+  sankeyGroup?: SankeyGroup
+  isCalculated: boolean
+}
+
+export interface DeductionResult {
+  lines: PayslipLine[]
   pensionEmployer: number
-  bruttoTotal: number
-  bruttoItems: BruttoItem[]
   net: number
   /** Always true — calculation uses trækprocent directly, not marginal rate tables */
   isApproximate: true
@@ -58,49 +64,79 @@ function round2(n: number): number {
 /**
  * Calculate Danish payroll deductions for a given gross monthly salary.
  *
- * Calculation order:
- *   1. Bruttolønsordning reduces taxable base (tax-advantaged)
- *   2. AM-bidrag (8% of taxable gross)
+ * Correct calculation order (matching real Danish payroll):
+ *   1. Pre-AM deductions: bruttolønsordning items + pension employee % + ATP
+ *      → all reduce AM-indkomst (the base for AM-bidrag)
+ *   2. AM-bidrag = 8% of AM-indkomst, truncated to whole DKK
  *   3. A-skat = bottom tax (trækprocent after personfradrag) + top-skat (15% above threshold)
- *   4. ATP and pension calculated on full gross (not taxable gross)
+ *      → both truncated to whole DKK, matching real payroll systems
+ *   4. Net = gross − preAmTotal − amBidrag − aSkat
+ *
+ * Pension employer contribution is returned separately — it is an employer cost
+ * only and does not appear on the employee's net pay.
  */
-export function calcDanishDeductions(gross: number, settings: TaxCardInput): DeductionBreakdown {
-  // Step 1: Bruttolønsordning — reduce taxable base
+export function calcDanishDeductions(gross: number, settings: TaxCardInput): DeductionResult {
+  const lines: PayslipLine[] = []
+
+  // ── Step 1: Pre-AM deductions (reduce AM base) ─────────────────────────────
   const bruttoItems = settings.bruttoItems ?? []
   const bruttoTotal = round2(bruttoItems.reduce((s, i) => s + i.monthlyAmount, 0))
-  const taxableGross = gross - bruttoTotal
 
-  // Step 2: AM-bidrag — always 8% of taxable gross
-  const amBidrag = round2(taxableGross * AM_BIDRAG_RATE)
-  const aIndkomst = taxableGross - amBidrag
+  for (const item of bruttoItems) {
+    lines.push({
+      label: item.label,
+      amount: item.monthlyAmount,
+      type: 'pre_am',
+      sankeyGroup: 'brutto_benefits',
+      isCalculated: true,
+    })
+  }
 
-  // Step 3: A-skat — bottom tax + top-skat
-  const taxableBase = Math.max(0, aIndkomst - settings.personfradragMonthly)
-  const bottomTax = round2(taxableBase * settings.traekprocent / 100)
-  const topSkat = round2(Math.max(0, aIndkomst - TOP_SKAT_MONTHLY_THRESHOLD) * TOP_SKAT_RATE)
-  const aSkat = bottomTax + topSkat
-
-  // Step 4: ATP and pension — calculated on full gross
-  const atp = round2(settings.atpAmount ?? DEFAULT_ATP)
   const pensionEmployee = settings.pensionEmployeePct
     ? round2(gross * settings.pensionEmployeePct / 100)
     : 0
+  if (pensionEmployee > 0) {
+    lines.push({
+      label: 'Pension (employee)',
+      amount: pensionEmployee,
+      type: 'pre_am',
+      sankeyGroup: 'pension_employee',
+      isCalculated: true,
+    })
+  }
+
+  const atp = Math.floor(settings.atpAmount ?? DEFAULT_ATP)
+  if (atp > 0) {
+    lines.push({ label: 'ATP', amount: atp, type: 'pre_am', sankeyGroup: 'atp', isCalculated: true })
+  }
+
+  const preAmTotal = round2(bruttoTotal + pensionEmployee + atp)
+
+  // ── Step 2: AM-bidrag — 8% of AM-indkomst, truncated ──────────────────────
+  const amBase = gross - preAmTotal
+  const amBidrag = Math.floor(amBase * AM_BIDRAG_RATE)
+  lines.push({ label: 'AM-bidrag (8%)', amount: amBidrag, type: 'am_bidrag', sankeyGroup: 'am_bidrag', isCalculated: true })
+
+  // ── Step 3: A-skat — truncated to whole DKK ───────────────────────────────
+  const aIndkomst = amBase - amBidrag
+  const taxableBase = Math.max(0, aIndkomst - settings.personfradragMonthly)
+  const bottomTax = Math.floor(taxableBase * settings.traekprocent / 100)
+  const topSkat = Math.floor(Math.max(0, aIndkomst - TOP_SKAT_MONTHLY_THRESHOLD) * TOP_SKAT_RATE)
+  const aSkat = bottomTax + topSkat
+  lines.push({
+    label: topSkat > 0 ? `A-skat (incl. top-skat ${topSkat})` : 'A-skat',
+    amount: aSkat,
+    type: 'a_skat',
+    sankeyGroup: 'a_skat',
+    isCalculated: true,
+  })
+
+  // ── Pension employer (employer cost only, not deducted from net) ───────────
   const pensionEmployer = settings.pensionEmployerPct
     ? round2(gross * settings.pensionEmployerPct / 100)
     : 0
 
-  const net = round2(gross - bruttoTotal - amBidrag - aSkat - atp - pensionEmployee)
+  const net = round2(gross - preAmTotal - amBidrag - aSkat)
 
-  return {
-    amBidrag,
-    aSkat,
-    topSkat,
-    atp,
-    pensionEmployee,
-    pensionEmployer,
-    bruttoTotal,
-    bruttoItems,
-    net,
-    isApproximate: true,
-  }
+  return { lines, pensionEmployer, net, isApproximate: true }
 }

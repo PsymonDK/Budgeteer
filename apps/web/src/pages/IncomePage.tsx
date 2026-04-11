@@ -186,27 +186,35 @@ function r2(n: number) { return Math.round(n * 100) / 100 }
 
 interface LiveDeductions {
   amBidrag: number; aSkat: number; topSkat: number; atp: number
-  pensionEmployee: number; pensionEmployer: number; bruttoTotal: number; net: number
+  pensionEmployee: number; pensionEmployer: number; bruttoTotal: number; bruttoItems: { label: string; monthlyAmount: number }[]; net: number
 }
 
+/**
+ * Correct Danish payroll calculation order:
+ *   1. Pre-AM: brutto items + pension employee + ATP → all reduce AM base
+ *   2. AM-bidrag = 8% of AM-indkomst (truncated to whole DKK)
+ *   3. A-skat = bottom tax + top-skat (both truncated to whole DKK)
+ *   4. Net = gross − preAmTotal − amBidrag − aSkat
+ */
 function calcDanishDeductions(
   gross: number,
   settings: { traekprocent: number; personfradragMonthly: number; pensionEmployeePct?: number | null; pensionEmployerPct?: number | null; atpAmount?: number | null; bruttoItems?: { label: string; monthlyAmount: number }[] | null }
 ): LiveDeductions {
-  const items = settings.bruttoItems ?? []
-  const bruttoTotal = r2(items.reduce((s, i) => s + i.monthlyAmount, 0))
-  const taxableGross = gross - bruttoTotal
-  const amBidrag = r2(taxableGross * AM_BIDRAG_RATE)
-  const aIndkomst = taxableGross - amBidrag
-  const taxableBase = Math.max(0, aIndkomst - settings.personfradragMonthly)
-  const bottomTax = r2(taxableBase * settings.traekprocent / 100)
-  const topSkat = r2(Math.max(0, aIndkomst - TOP_SKAT_THRESHOLD) * TOP_SKAT_RATE)
-  const aSkat = bottomTax + topSkat
-  const atp = r2(settings.atpAmount ?? DEFAULT_ATP)
+  const bruttoItems = settings.bruttoItems ?? []
+  const bruttoTotal = r2(bruttoItems.reduce((s, i) => s + i.monthlyAmount, 0))
   const pensionEmployee = settings.pensionEmployeePct ? r2(gross * settings.pensionEmployeePct / 100) : 0
+  const atp = Math.floor(settings.atpAmount ?? DEFAULT_ATP)
+  const preAmTotal = r2(bruttoTotal + pensionEmployee + atp)
+  const amBase = gross - preAmTotal
+  const amBidrag = Math.floor(amBase * AM_BIDRAG_RATE)
+  const aIndkomst = amBase - amBidrag
+  const taxableBase = Math.max(0, aIndkomst - settings.personfradragMonthly)
+  const bottomTax = Math.floor(taxableBase * settings.traekprocent / 100)
+  const topSkat = Math.floor(Math.max(0, aIndkomst - TOP_SKAT_THRESHOLD) * TOP_SKAT_RATE)
+  const aSkat = bottomTax + topSkat
   const pensionEmployer = settings.pensionEmployerPct ? r2(gross * settings.pensionEmployerPct / 100) : 0
-  const net = r2(gross - bruttoTotal - amBidrag - aSkat - atp - pensionEmployee)
-  return { amBidrag, aSkat, topSkat, atp, pensionEmployee, pensionEmployer, bruttoTotal, net }
+  const net = r2(gross - preAmTotal - amBidrag - aSkat)
+  return { amBidrag, aSkat, topSkat, atp, pensionEmployee, pensionEmployer, bruttoTotal, bruttoItems, net }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -327,7 +335,9 @@ interface TaxCardSectionProps {
   isExpanded: boolean
   onToggle: () => void
   showForm: boolean
+  editingCardId: string | null
   onShowForm: () => void
+  onEditCard: (card: TaxCardSettings) => void
   onHideForm: () => void
   form: TaxCardForm
   onFormChange: (f: TaxCardForm) => void
@@ -337,7 +347,7 @@ interface TaxCardSectionProps {
   fmt: (v: number | string) => string
 }
 
-function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, onShowForm, onHideForm, form, onFormChange, onSubmit, isPending, error, fmt }: TaxCardSectionProps) {
+function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, editingCardId, onShowForm, onEditCard, onHideForm, form, onFormChange, onSubmit, isPending, error, fmt }: TaxCardSectionProps) {
   const activeCard = cards[0] ?? null
   return (
     <div className="border-t border-gray-800 pt-4 mt-2">
@@ -358,6 +368,10 @@ function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, 
                       {new Date(card.effectiveFrom).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })}
                     </span>
                     {i === 0 && <span className="text-xs bg-green-900/50 text-green-400 border border-green-700 px-1.5 py-0.5 rounded">Active</span>}
+                    <button type="button" onClick={() => onEditCard(card)}
+                      className="ml-auto text-xs text-gray-500 hover:text-amber-400 transition-colors px-1.5 py-0.5 rounded border border-transparent hover:border-amber-700">
+                      Edit
+                    </button>
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-400">
                     <span>Trækprocent: <span className="text-white">{parseFloat(card.traekprocent).toFixed(2)}%</span></span>
@@ -382,7 +396,7 @@ function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, 
             </button>
           ) : (
             <form onSubmit={onSubmit} className="bg-gray-800 rounded-lg p-4 space-y-3">
-              <p className="text-xs font-medium text-gray-300 mb-2">New tax card settings</p>
+              <p className="text-xs font-medium text-gray-300 mb-2">{editingCardId ? 'Edit tax card settings' : 'New tax card settings'}</p>
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs text-gray-400 mb-1">Effective from</label>
@@ -506,6 +520,7 @@ export function IncomePage() {
   const [showTaxCardForm, setShowTaxCardForm] = useState(false)
   const [taxCardForm, setTaxCardForm] = useState<TaxCardForm>(emptyTaxCard())
   const [taxCardError, setTaxCardError] = useState('')
+  const [editingTaxCardId, setEditingTaxCardId] = useState<string | null>(null)
 
   // Deduction overrides (salary + override forms)
   const [salaryDeductionOverrides, setSalaryDeductionOverrides] = useState<DeductionOverrides>(emptyDeductionOverrides())
@@ -645,12 +660,8 @@ export function IncomePage() {
   const addSalaryMutation = useMutation({
     mutationFn: ({ form, deductionOverrides, liveCalc }: { form: SalaryForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
       const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
-      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
-        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
-        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
-        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
-        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
-        deductionsSource: 'MANUAL',
+      const deductionPayload = (liveCalc && hasManualOverride) ? {
+        payslipLines: buildPayslipLines(liveCalc, deductionOverrides),
       } : {}
       const net = liveCalc
         ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
@@ -673,12 +684,8 @@ export function IncomePage() {
   const updateSalaryMutation = useMutation({
     mutationFn: ({ form, deductionOverrides, liveCalc }: { form: SalaryForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
       const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
-      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
-        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
-        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
-        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
-        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
-        deductionsSource: 'MANUAL',
+      const deductionPayload = (liveCalc && hasManualOverride) ? {
+        payslipLines: buildPayslipLines(liveCalc, deductionOverrides),
       } : {}
       const net = liveCalc
         ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
@@ -710,12 +717,8 @@ export function IncomePage() {
   const upsertOverrideMutation = useMutation({
     mutationFn: ({ form, deductionOverrides, liveCalc }: { form: OverrideForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
       const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
-      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
-        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
-        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
-        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
-        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
-        deductionsSource: 'MANUAL',
+      const deductionPayload = (liveCalc && hasManualOverride) ? {
+        payslipLines: buildPayslipLines(liveCalc, deductionOverrides),
       } : {}
       const net = liveCalc
         ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
@@ -736,24 +739,37 @@ export function IncomePage() {
     onError: (err) => { if (axios.isAxiosError(err)) setOverrideError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
+  function buildTaxCardPayload(data: TaxCardForm) {
+    return {
+      effectiveFrom: data.effectiveFrom,
+      traekprocent: parseFloat(data.traekprocent),
+      personfradragMonthly: parseFloat(data.personfradragMonthly),
+      municipality: data.municipality || undefined,
+      pensionEmployeePct: data.pensionEmployeePct ? parseFloat(data.pensionEmployeePct) : undefined,
+      pensionEmployerPct: data.pensionEmployerPct ? parseFloat(data.pensionEmployerPct) : undefined,
+      atpAmount: data.atpAmount ? parseFloat(data.atpAmount) : undefined,
+      bruttoItems: data.bruttoItems.filter((i) => i.label && i.monthlyAmount).map((i) => ({ label: i.label, monthlyAmount: parseFloat(i.monthlyAmount) })),
+    }
+  }
+
   const createTaxCardMutation = useMutation({
-    mutationFn: (data: TaxCardForm) =>
-      api.post(`/jobs/${taxCardJobId}/taxcard`, {
-        effectiveFrom: data.effectiveFrom,
-        traekprocent: parseFloat(data.traekprocent),
-        personfradragMonthly: parseFloat(data.personfradragMonthly),
-        municipality: data.municipality || undefined,
-        pensionEmployeePct: data.pensionEmployeePct ? parseFloat(data.pensionEmployeePct) : undefined,
-        pensionEmployerPct: data.pensionEmployerPct ? parseFloat(data.pensionEmployerPct) : undefined,
-        atpAmount: data.atpAmount ? parseFloat(data.atpAmount) : undefined,
-        bruttoItems: data.bruttoItems.filter((i) => i.label && i.monthlyAmount).map((i) => ({ label: i.label, monthlyAmount: parseFloat(i.monthlyAmount) })),
-      }),
+    mutationFn: (data: TaxCardForm) => api.post(`/jobs/${taxCardJobId}/taxcard`, buildTaxCardPayload(data)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['taxcards'] })
       setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
       toast.success('Tax card settings saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
+  })
+
+  const updateTaxCardMutation = useMutation({
+    mutationFn: (data: TaxCardForm) => api.put(`/jobs/${taxCardJobId}/taxcard/${editingTaxCardId}`, buildTaxCardPayload(data)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      setEditingTaxCardId(null); setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
+      toast.success('Tax card updated')
+    },
+    onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to update') },
   })
 
   const deleteOverrideMutation = useMutation({
@@ -815,11 +831,30 @@ export function IncomePage() {
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   function computeManualNet(gross: number, calc: LiveDeductions, overrides: DeductionOverrides): number {
-    const amBidrag = parseFloat(overrides.amBidragAmount) || calc.amBidrag
-    const aSkat = parseFloat(overrides.aSkattAmount) || calc.aSkat
     const pension = parseFloat(overrides.pensionEmployeeAmount) || calc.pensionEmployee
     const atp = parseFloat(overrides.atpAmount) || calc.atp
-    return r2(gross - calc.bruttoTotal - amBidrag - aSkat - pension - atp)
+    const amBidrag = parseFloat(overrides.amBidragAmount) || calc.amBidrag
+    const aSkat = parseFloat(overrides.aSkattAmount) || calc.aSkat
+    return r2(gross - calc.bruttoTotal - pension - atp - amBidrag - aSkat)
+  }
+
+  function buildPayslipLines(calc: LiveDeductions, overrides: DeductionOverrides) {
+    type LineType = 'benefit_in_kind' | 'pre_am' | 'am_bidrag' | 'a_skat' | 'post_tax'
+    const lines: { label: string; amount: number; type: LineType; sankeyGroup?: string; isCalculated: boolean }[] = []
+    for (const item of calc.bruttoItems) {
+      lines.push({ label: item.label, amount: item.monthlyAmount, type: 'pre_am', sankeyGroup: 'brutto_benefits', isCalculated: true })
+    }
+    const pension = parseFloat(overrides.pensionEmployeeAmount) || 0
+    if (pension > 0 || calc.pensionEmployee > 0) {
+      lines.push({ label: 'Pension (employee)', amount: pension || calc.pensionEmployee, type: 'pre_am', sankeyGroup: 'pension_employee', isCalculated: !overrides.pensionEmployeeAmount })
+    }
+    const atpVal = parseFloat(overrides.atpAmount) || 0
+    lines.push({ label: 'ATP', amount: atpVal || calc.atp, type: 'pre_am', sankeyGroup: 'atp', isCalculated: !overrides.atpAmount })
+    const amBidragVal = parseFloat(overrides.amBidragAmount) || 0
+    lines.push({ label: 'AM-bidrag (8%)', amount: amBidragVal || calc.amBidrag, type: 'am_bidrag', sankeyGroup: 'am_bidrag', isCalculated: !overrides.amBidragAmount })
+    const aSkatVal = parseFloat(overrides.aSkattAmount) || 0
+    lines.push({ label: 'A-skat', amount: aSkatVal || calc.aSkat, type: 'a_skat', sankeyGroup: 'a_skat', isCalculated: !overrides.aSkattAmount })
+    return lines
   }
 
   function getAllocationPct(job: Job, householdId: string): string {
@@ -1044,12 +1079,32 @@ export function IncomePage() {
                           isExpanded={taxCardJobId === job.id}
                           onToggle={() => setTaxCardJobId((prev) => prev === job.id ? null : job.id)}
                           showForm={taxCardJobId === job.id && showTaxCardForm}
-                          onShowForm={() => { setShowTaxCardForm(true); setTaxCardForm(emptyTaxCard()) }}
-                          onHideForm={() => setShowTaxCardForm(false)}
+                          editingCardId={editingTaxCardId}
+                          onShowForm={() => { setEditingTaxCardId(null); setShowTaxCardForm(true); setTaxCardForm(emptyTaxCard()) }}
+                          onEditCard={(card) => {
+                            setEditingTaxCardId(card.id)
+                            setShowTaxCardForm(true)
+                            setTaxCardForm({
+                              effectiveFrom: new Date(card.effectiveFrom).toISOString().slice(0, 10),
+                              traekprocent: card.traekprocent,
+                              personfradragMonthly: card.personfradragMonthly,
+                              municipality: card.municipality ?? '',
+                              pensionEmployeePct: card.pensionEmployeePct ?? '',
+                              pensionEmployerPct: card.pensionEmployerPct ?? '',
+                              atpAmount: card.atpAmount ?? '',
+                              bruttoItems: card.bruttoItems?.map((b) => ({ label: b.label, monthlyAmount: String(b.monthlyAmount) })) ?? [],
+                            })
+                          }}
+                          onHideForm={() => { setShowTaxCardForm(false); setEditingTaxCardId(null) }}
                           form={taxCardForm}
                           onFormChange={setTaxCardForm}
-                          onSubmit={(e) => { e.preventDefault(); createTaxCardMutation.mutate(taxCardForm) }}
-                          isPending={createTaxCardMutation.isPending}
+                          onSubmit={(e) => {
+                            e.preventDefault()
+                            editingTaxCardId
+                              ? updateTaxCardMutation.mutate(taxCardForm)
+                              : createTaxCardMutation.mutate(taxCardForm)
+                          }}
+                          isPending={createTaxCardMutation.isPending || updateTaxCardMutation.isPending}
                           error={taxCardError}
                           fmt={fmt}
                         />
