@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { ChevronDown, Pin, PinOff, Plus } from 'lucide-react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useHousehold } from '../contexts/HouseholdContext'
@@ -61,18 +61,31 @@ export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
   const defaultId = preferences?.defaultHouseholdId
 
   if (households.length <= 1) {
-    return <span className="text-gray-300 text-sm">{current?.name ?? '…'}</span>
+    return (
+      <Link to={`/households/${currentHouseholdId}`} className="text-gray-300 text-sm hover:text-white transition-colors">
+        {current?.name ?? '…'}
+      </Link>
+    )
   }
 
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-gray-300 text-sm hover:text-white transition-colors"
-      >
-        {current?.name ?? '…'}
-        <ChevronDown size={14} className="text-gray-500" />
-      </button>
+      <div className="flex items-center gap-0.5">
+        <Link
+          to={`/households/${currentHouseholdId}`}
+          className="text-gray-300 text-sm hover:text-white transition-colors"
+          onClick={() => setOpen(false)}
+        >
+          {current?.name ?? '…'}
+        </Link>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="text-gray-500 hover:text-white transition-colors p-0.5"
+          aria-label="Switch household"
+        >
+          <ChevronDown size={14} />
+        </button>
+      </div>
 
       {open && (
         <div className="absolute left-0 mt-2 w-64 bg-gray-900 border border-gray-800 rounded-xl shadow-lg z-50 overflow-hidden">

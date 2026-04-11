@@ -31,7 +31,7 @@ export function Modal({ title, onClose, children, size = 'md' }: ModalProps) {
       className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div ref={dialogRef} className={`bg-gray-900 border border-gray-800 rounded-xl w-full ${sizeClass[size]} p-6`}>
+      <div ref={dialogRef} className={`bg-gray-900 border border-gray-800 rounded-xl w-full ${sizeClass[size]} p-4 sm:p-6`}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors" aria-label="Close">

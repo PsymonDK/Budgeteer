@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.49.0] - 2026-04-11 — Mobile & responsive design fixes
+
+### Added
+- **Household name as dashboard link** — the household name in the top header is now a clickable link back to the household dashboard, making it easy to return to the overview from any page on small screens; multi-household users retain the chevron dropdown for switching
+
+### Fixed
+- **Table horizontal scrolling** — all data tables (expenses, savings, income, dashboard, household settings, categories, budget years, compare, and all admin pages) now scroll horizontally on narrow screens instead of being clipped/invisible inside their `overflow-hidden` card containers; minimum widths set per table based on column count
+- **Sidebar visible on foldable and landscape phones** — the persistent sidebar now appears at ≥ 640 px (was ≥ 768 px), so foldable phones (~673 px wide) and phones in landscape mode (~667 px wide) get the static sidebar layout
+- **Admin navigation overflow** — the admin panel header navigation no longer clips on narrow screens; the header scrolls horizontally when its content exceeds the viewport width
+- **Modal padding on small screens** — modal dialogs use reduced inner padding (`p-4`) on phones, giving form content adequate room; padding restores to `p-6` at ≥ 640 px
+
+---
+
 ## [0.48.0] - 2026-04-06 — Security: Fastify v5 migration (Sprint 24)
 
 ### Security

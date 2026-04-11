@@ -234,7 +234,8 @@ function SystemCategoryTable({
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[560px]">
         <thead>
           <tr className="border-b border-gray-800 text-gray-400 text-left">
             <th className="px-4 py-3 font-medium">Name</th>
@@ -294,6 +295,7 @@ function SystemCategoryTable({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   )
 }
@@ -317,7 +319,8 @@ function CustomCategoryTable({
         Promote a household category to make it available to all households as a system-wide category.
       </p>
       <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead>
             <tr className="border-b border-gray-800 text-gray-400 text-left">
               <th className="px-4 py-3 font-medium">Name</th>
@@ -355,6 +358,7 @@ function CustomCategoryTable({
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </>
   )

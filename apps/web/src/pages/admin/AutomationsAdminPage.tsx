@@ -136,7 +136,8 @@ export function AutomationsAdminPage() {
         <p className="text-gray-600 text-sm">No automations registered.</p>
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="px-4 py-3 font-medium">Household</th>
@@ -196,6 +197,7 @@ export function AutomationsAdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

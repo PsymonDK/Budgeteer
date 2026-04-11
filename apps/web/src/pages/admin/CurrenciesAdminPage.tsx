@@ -140,7 +140,8 @@ export function CurrenciesAdminPage() {
         <div className="text-center py-20 text-gray-500">No currencies yet — add one to get started.</div>
       ) : (
         <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="px-4 py-3 font-medium">Code</th>
@@ -202,6 +203,7 @@ export function CurrenciesAdminPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 
