@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.50.0] - 2026-04-11 — Payslip income breakdown: data foundation (Sprint 25)
+
+### Added
+- **`Job.country` field** — each job now carries a country code (default `"DK"`); drives country-specific payslip UI and tax calculation in later sprints
+- **`TaxCardSettings` model** — per-job, effective-dated tax card configuration for Danish payroll: trækprocent, personfradrag (monthly), municipality label, employee/employer pension percentages, ATP override, and a `bruttoItems` JSON list for pre-tax salary-sacrifice deductions (bruttolønsordning)
+- **Payslip deduction breakdown on `SalaryRecord`** — optional fields `amBidragAmount`, `aSkattAmount`, `pensionEmployeeAmount`, `pensionEmployerAmount`, `atpAmount`, `bruttoDeductionAmount`, `otherDeductions` (JSON), and `deductionsSource` (`"MANUAL"` | `"CALCULATED"`); Zod validates net ≈ gross − deductions (±1 DKK tolerance) when deductions are provided
+- **Same deduction fields on `MonthlyIncomeOverride`** — mirrors the salary-record breakdown so per-month payslip data can be recorded for unusual months (overtime, tax changes, etc.)
+- **Tax card settings API** — `GET/POST/PUT/DELETE /jobs/:id/taxcard` for managing `TaxCardSettings` records; follows same effective-date versioning pattern as salary records
+- **Shared payslip types** — `BruttoItem`, `OtherDeductionItem`, `DeductionFields`, and `TaxCardSettingsData` interfaces exported from `packages/shared`
+
+---
+
 ## [0.49.0] - 2026-04-11 — Mobile & responsive design fixes
 
 ### Added
