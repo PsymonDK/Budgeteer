@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useMemo, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -27,6 +27,13 @@ interface SalaryRecord {
   effectiveFrom: string
   currencyCode: string | null
   rateUsed: string | null
+  amBidragAmount: string | null
+  aSkattAmount: string | null
+  pensionEmployeeAmount: string | null
+  pensionEmployerAmount: string | null
+  atpAmount: string | null
+  bruttoDeductionAmount: string | null
+  deductionsSource: string | null
   createdAt: string
 }
 
@@ -38,6 +45,27 @@ interface MonthlyOverride {
   grossAmount: string
   netAmount: string
   note: string | null
+  amBidragAmount: string | null
+  aSkattAmount: string | null
+  pensionEmployeeAmount: string | null
+  pensionEmployerAmount: string | null
+  atpAmount: string | null
+  bruttoDeductionAmount: string | null
+  deductionsSource: string | null
+  createdAt: string
+}
+
+interface TaxCardSettings {
+  id: string
+  jobId: string
+  effectiveFrom: string
+  traekprocent: string
+  personfradragMonthly: string
+  municipality: string | null
+  pensionEmployeePct: string | null
+  pensionEmployerPct: string | null
+  atpAmount: string | null
+  bruttoItems: { label: string; monthlyAmount: number }[] | null
   createdAt: string
 }
 
@@ -76,6 +104,7 @@ interface Job {
   id: string
   name: string
   employer: string | null
+  country: string
   startDate: string
   endDate: string | null
   isActive: boolean
@@ -116,15 +145,320 @@ type Granularity = 'monthly' | 'quarterly' | 'yearly'
 
 // ── Sub-forms ─────────────────────────────────────────────────────────────────
 
-interface JobForm { name: string; employer: string; startDate: string; endDate: string }
+interface JobForm { name: string; employer: string; country: string; startDate: string; endDate: string }
 interface SalaryForm { grossAmount: string; netAmount: string; effectiveFrom: string; currencyCode: string }
 interface OverrideForm { year: string; month: string; grossAmount: string; netAmount: string; note: string }
 interface BonusForm { label: string; grossAmount: string; netAmount: string; paymentDate: string; includeInBudget: boolean; budgetMode: BudgetMode | ''; currencyCode: string }
 
-const emptyJob: JobForm = { name: '', employer: '', startDate: new Date().toISOString().slice(0, 10), endDate: '' }
+interface TaxCardForm {
+  effectiveFrom: string
+  traekprocent: string
+  personfradragMonthly: string
+  municipality: string
+  pensionEmployeePct: string
+  pensionEmployerPct: string
+  atpAmount: string
+  bruttoItems: { label: string; monthlyAmount: string }[]
+}
+
+interface DeductionOverrides {
+  amBidragAmount: string
+  aSkattAmount: string
+  pensionEmployeeAmount: string
+  atpAmount: string
+}
+
+const emptyJob: JobForm = { name: '', employer: '', country: 'DK', startDate: new Date().toISOString().slice(0, 10), endDate: '' }
 const emptySalary = (baseCurrency: string): SalaryForm => ({ grossAmount: '', netAmount: '', effectiveFrom: new Date().toISOString().slice(0, 10), currencyCode: baseCurrency })
 const emptyOverride: OverrideForm = { year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1), grossAmount: '', netAmount: '', note: '' }
 const emptyBonus = (baseCurrency: string): BonusForm => ({ label: '', grossAmount: '', netAmount: '', paymentDate: new Date().toISOString().slice(0, 10), includeInBudget: true, budgetMode: 'ONE_OFF', currencyCode: baseCurrency })
+const emptyTaxCard = (): TaxCardForm => ({ effectiveFrom: new Date().toISOString().slice(0, 10), traekprocent: '', personfradragMonthly: '3875', municipality: '', pensionEmployeePct: '', pensionEmployerPct: '', atpAmount: '', bruttoItems: [] })
+const emptyDeductionOverrides = (): DeductionOverrides => ({ amBidragAmount: '', aSkattAmount: '', pensionEmployeeAmount: '', atpAmount: '' })
+
+// ── Inline DK tax calculation (mirrors packages/shared/src/index.ts) ──────────
+
+const TOP_SKAT_THRESHOLD = 49_075
+const TOP_SKAT_RATE = 0.15
+const AM_BIDRAG_RATE = 0.08
+const DEFAULT_ATP = 99
+
+function r2(n: number) { return Math.round(n * 100) / 100 }
+
+interface LiveDeductions {
+  amBidrag: number; aSkat: number; topSkat: number; atp: number
+  pensionEmployee: number; pensionEmployer: number; bruttoTotal: number; net: number
+}
+
+function calcDanishDeductions(
+  gross: number,
+  settings: { traekprocent: number; personfradragMonthly: number; pensionEmployeePct?: number | null; pensionEmployerPct?: number | null; atpAmount?: number | null; bruttoItems?: { label: string; monthlyAmount: number }[] | null }
+): LiveDeductions {
+  const items = settings.bruttoItems ?? []
+  const bruttoTotal = r2(items.reduce((s, i) => s + i.monthlyAmount, 0))
+  const taxableGross = gross - bruttoTotal
+  const amBidrag = r2(taxableGross * AM_BIDRAG_RATE)
+  const aIndkomst = taxableGross - amBidrag
+  const taxableBase = Math.max(0, aIndkomst - settings.personfradragMonthly)
+  const bottomTax = r2(taxableBase * settings.traekprocent / 100)
+  const topSkat = r2(Math.max(0, aIndkomst - TOP_SKAT_THRESHOLD) * TOP_SKAT_RATE)
+  const aSkat = bottomTax + topSkat
+  const atp = r2(settings.atpAmount ?? DEFAULT_ATP)
+  const pensionEmployee = settings.pensionEmployeePct ? r2(gross * settings.pensionEmployeePct / 100) : 0
+  const pensionEmployer = settings.pensionEmployerPct ? r2(gross * settings.pensionEmployerPct / 100) : 0
+  const net = r2(gross - bruttoTotal - amBidrag - aSkat - atp - pensionEmployee)
+  return { amBidrag, aSkat, topSkat, atp, pensionEmployee, pensionEmployer, bruttoTotal, net }
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function fmt2(n: number, cur: string) {
+  return `${n.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`
+}
+
+interface DeductionPanelProps {
+  gross: number
+  liveCalc: LiveDeductions | null
+  overrides: DeductionOverrides
+  onOverrideChange: (field: keyof DeductionOverrides, val: string) => void
+  hasTaxCard: boolean
+  baseCurrency: string
+}
+
+function DeductionPanel({ gross, liveCalc, overrides, onOverrideChange, hasTaxCard, baseCurrency }: DeductionPanelProps) {
+  const [editingField, setEditingField] = useState<keyof DeductionOverrides | null>(null)
+
+  if (!hasTaxCard && !liveCalc) {
+    return (
+      <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4 text-sm text-gray-400">
+        <p>Add tax card settings to enable auto-calculation of deductions.</p>
+        <p className="mt-1 text-xs text-gray-500">You can still save a salary record; deductions will be stored as-is.</p>
+      </div>
+    )
+  }
+
+  if (!liveCalc || !gross) {
+    return (
+      <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4 text-sm text-gray-400">
+        Enter a gross amount to see the deduction breakdown.
+      </div>
+    )
+  }
+
+  const hasManualOverride = Object.values(overrides).some((v) => v !== '')
+  const displayNet = hasManualOverride
+    ? r2(gross - liveCalc.bruttoTotal - (parseFloat(overrides.amBidragAmount) || liveCalc.amBidrag) - (parseFloat(overrides.aSkattAmount) || liveCalc.aSkat) - (parseFloat(overrides.pensionEmployeeAmount) || liveCalc.pensionEmployee) - (parseFloat(overrides.atpAmount) || liveCalc.atp))
+    : liveCalc.net
+
+  function DeductionRow({ label, field, calcValue }: { label: string; field: keyof DeductionOverrides; calcValue: number }) {
+    const isManual = overrides[field] !== ''
+    const displayVal = isManual ? (parseFloat(overrides[field]) || 0) : calcValue
+    return (
+      <div className="flex items-center justify-between py-1.5 border-b border-gray-700/50 last:border-0">
+        <div className="flex items-center gap-2">
+          <span className="text-gray-300 text-sm">{label}</span>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${isManual ? 'bg-amber-900/50 text-amber-400 border border-amber-700' : 'bg-gray-700 text-gray-400'}`}>
+            {isManual ? 'manual' : 'calc'}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {editingField === field ? (
+            <input
+              type="number" step="0.01" autoFocus
+              defaultValue={isManual ? overrides[field] : calcValue.toFixed(2)}
+              onBlur={(e) => { onOverrideChange(field, e.target.value); setEditingField(null) }}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur() } if (e.key === 'Escape') { onOverrideChange(field, ''); setEditingField(null) } }}
+              className="w-28 bg-gray-700 border border-amber-500 rounded px-2 py-0.5 text-white text-sm text-right focus:outline-none"
+            />
+          ) : (
+            <>
+              <span className="text-sm tabular-nums text-red-400">−{fmt2(displayVal, baseCurrency)}</span>
+              <button type="button" onClick={() => setEditingField(field)} className="text-gray-500 hover:text-gray-300 text-xs" title="Override">✏</button>
+              {isManual && (
+                <button type="button" onClick={() => onOverrideChange(field, '')} className="text-gray-600 hover:text-gray-400 text-xs" title="Reset to calculated">↺</button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4 space-y-1">
+      {liveCalc.bruttoTotal > 0 && (
+        <div className="flex justify-between py-1.5 border-b border-gray-700/50 text-sm">
+          <span className="text-purple-300">Brutto benefits</span>
+          <span className="tabular-nums text-purple-400">−{fmt2(liveCalc.bruttoTotal, baseCurrency)}</span>
+        </div>
+      )}
+      {liveCalc.bruttoTotal > 0 && (
+        <div className="flex justify-between py-1 text-xs text-gray-500 border-b border-gray-700/50">
+          <span>Taxable gross</span>
+          <span className="tabular-nums">{fmt2(gross - liveCalc.bruttoTotal, baseCurrency)}</span>
+        </div>
+      )}
+      <DeductionRow label="AM-bidrag (8%)" field="amBidragAmount" calcValue={liveCalc.amBidrag} />
+      <DeductionRow label={`A-skat${liveCalc.topSkat > 0 ? ` (incl. top-skat ${fmt2(liveCalc.topSkat, baseCurrency)})` : ''}`} field="aSkattAmount" calcValue={liveCalc.aSkat} />
+      {liveCalc.pensionEmployee > 0 && (
+        <DeductionRow label="Employee pension" field="pensionEmployeeAmount" calcValue={liveCalc.pensionEmployee} />
+      )}
+      <DeductionRow label="ATP" field="atpAmount" calcValue={liveCalc.atp} />
+      <div className="flex justify-between pt-2 border-t border-gray-600 font-semibold text-sm mt-1">
+        <span className="text-white">Net pay</span>
+        <span className="tabular-nums text-amber-400">{fmt2(displayNet, baseCurrency)}</span>
+      </div>
+      {liveCalc.pensionEmployer > 0 && (
+        <div className="flex justify-between pt-1 text-xs text-gray-500">
+          <span>Employer pension (not deducted)</span>
+          <span className="tabular-nums">{fmt2(liveCalc.pensionEmployer, baseCurrency)}</span>
+        </div>
+      )}
+      {hasManualOverride && (
+        <button type="button" onClick={() => { onOverrideChange('amBidragAmount', ''); onOverrideChange('aSkattAmount', ''); onOverrideChange('pensionEmployeeAmount', ''); onOverrideChange('atpAmount', '') }}
+          className="text-xs text-gray-500 hover:text-gray-300 transition-colors mt-1">Reset all to calculated</button>
+      )}
+    </div>
+  )
+}
+
+interface TaxCardSectionProps {
+  jobId: string
+  cards: TaxCardSettings[]
+  isExpanded: boolean
+  onToggle: () => void
+  showForm: boolean
+  onShowForm: () => void
+  onHideForm: () => void
+  form: TaxCardForm
+  onFormChange: (f: TaxCardForm) => void
+  onSubmit: (e: FormEvent) => void
+  isPending: boolean
+  error: string
+  fmt: (v: number | string) => string
+}
+
+function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, onShowForm, onHideForm, form, onFormChange, onSubmit, isPending, error, fmt }: TaxCardSectionProps) {
+  const activeCard = cards[0] ?? null
+  return (
+    <div className="border-t border-gray-800 pt-4 mt-2">
+      <button type="button" onClick={onToggle}
+        className="flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-white transition-colors mb-2">
+        <span>Tax card settings</span>
+        {activeCard && <span className="text-green-400">● Active</span>}
+        <span>{isExpanded ? '▲' : '▼'}</span>
+      </button>
+      {isExpanded && (
+        <div className="space-y-3">
+          {cards.length > 0 && (
+            <div className="space-y-2">
+              {cards.map((card, i) => (
+                <div key={card.id} className="bg-gray-800 rounded-lg p-3 text-sm">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-gray-300 font-medium">
+                      {new Date(card.effectiveFrom).toLocaleDateString('en', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </span>
+                    {i === 0 && <span className="text-xs bg-green-900/50 text-green-400 border border-green-700 px-1.5 py-0.5 rounded">Active</span>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs text-gray-400">
+                    <span>Trækprocent: <span className="text-white">{parseFloat(card.traekprocent).toFixed(2)}%</span></span>
+                    <span>Personfradrag: <span className="text-white">{fmt(card.personfradragMonthly)}</span></span>
+                    {card.pensionEmployeePct && <span>Pension emp.: <span className="text-white">{parseFloat(card.pensionEmployeePct).toFixed(2)}%</span></span>}
+                    {card.pensionEmployerPct && <span>Pension er.: <span className="text-white">{parseFloat(card.pensionEmployerPct).toFixed(2)}%</span></span>}
+                    {card.municipality && <span>Municipality: <span className="text-white">{card.municipality}</span></span>}
+                  </div>
+                  {card.bruttoItems && card.bruttoItems.length > 0 && (
+                    <div className="mt-1.5 text-xs text-gray-500">
+                      Brutto: {card.bruttoItems.map((b) => `${b.label} (${fmt(b.monthlyAmount)})`).join(', ')}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {!showForm ? (
+            <button type="button" onClick={onShowForm}
+              className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
+              + Add tax card record
+            </button>
+          ) : (
+            <form onSubmit={onSubmit} className="bg-gray-800 rounded-lg p-4 space-y-3">
+              <p className="text-xs font-medium text-gray-300 mb-2">New tax card settings</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Effective from</label>
+                  <input type="date" value={form.effectiveFrom} onChange={(e) => onFormChange({ ...form, effectiveFrom: e.target.value })}
+                    required className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Trækprocent (%)</label>
+                  <input type="number" value={form.traekprocent} onChange={(e) => onFormChange({ ...form, traekprocent: e.target.value })}
+                    required min="0" max="100" step="0.01" placeholder="38.00"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Personfradrag / month</label>
+                  <input type="number" value={form.personfradragMonthly} onChange={(e) => onFormChange({ ...form, personfradragMonthly: e.target.value })}
+                    required min="0" step="0.01" placeholder="3875"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Pension employee %</label>
+                  <input type="number" value={form.pensionEmployeePct} onChange={(e) => onFormChange({ ...form, pensionEmployeePct: e.target.value })}
+                    min="0" max="100" step="0.01" placeholder="4.00"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Pension employer %</label>
+                  <input type="number" value={form.pensionEmployerPct} onChange={(e) => onFormChange({ ...form, pensionEmployerPct: e.target.value })}
+                    min="0" max="100" step="0.01" placeholder="8.00"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">ATP override (DKK)</label>
+                  <input type="number" value={form.atpAmount} onChange={(e) => onFormChange({ ...form, atpAmount: e.target.value })}
+                    min="0" step="0.01" placeholder="99 (default)"
+                    className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Municipality <span className="text-gray-600">(optional)</span></label>
+                <input type="text" value={form.municipality} onChange={(e) => onFormChange({ ...form, municipality: e.target.value })}
+                  placeholder="e.g. Copenhagen"
+                  className="w-full bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+              </div>
+              {/* Bruttolønsordning */}
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Bruttolønsordning items</label>
+                {form.bruttoItems.map((item, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input type="text" value={item.label} onChange={(e) => { const items = [...form.bruttoItems]; items[idx] = { ...items[idx], label: e.target.value }; onFormChange({ ...form, bruttoItems: items }) }}
+                      placeholder="Label (e.g. Phone)" className="flex-1 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                    <input type="number" value={item.monthlyAmount} onChange={(e) => { const items = [...form.bruttoItems]; items[idx] = { ...items[idx], monthlyAmount: e.target.value }; onFormChange({ ...form, bruttoItems: items }) }}
+                      placeholder="Amount" min="0" step="0.01" className="w-28 bg-gray-700 border border-gray-600 rounded px-2 py-1.5 text-white text-sm focus:outline-none focus:ring-1 focus:ring-amber-400" />
+                    <button type="button" onClick={() => onFormChange({ ...form, bruttoItems: form.bruttoItems.filter((_, i) => i !== idx) })}
+                      className="text-red-500 hover:text-red-400 text-sm px-1">×</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => onFormChange({ ...form, bruttoItems: [...form.bruttoItems, { label: '', monthlyAmount: '' }] })}
+                  className="text-xs text-gray-400 hover:text-white border border-gray-600 px-2 py-1 rounded transition-colors">+ Add item</button>
+              </div>
+              {error && <div className="bg-red-950 border border-red-800 text-red-300 px-3 py-2 rounded text-xs">{error}</div>}
+              <div className="flex gap-2">
+                <button type="submit" disabled={isPending}
+                  className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-xs px-3 py-1.5 rounded transition-colors">
+                  {isPending ? 'Saving…' : 'Save'}
+                </button>
+                <button type="button" onClick={onHideForm} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Cancel</button>
+              </div>
+            </form>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -166,6 +500,17 @@ export function IncomePage() {
   const [pendingAllocations, setPendingAllocations] = useState<Record<string, string>>({})
   const [allocError, setAllocError] = useState('')
   const [allocationsDirty, setAllocationsDirty] = useState(false)
+
+  // Tax card settings
+  const [taxCardJobId, setTaxCardJobId] = useState<string | null>(null)
+  const [showTaxCardForm, setShowTaxCardForm] = useState(false)
+  const [taxCardForm, setTaxCardForm] = useState<TaxCardForm>(emptyTaxCard())
+  const [taxCardError, setTaxCardError] = useState('')
+
+  // Deduction overrides (salary + override forms)
+  const [salaryDeductionOverrides, setSalaryDeductionOverrides] = useState<DeductionOverrides>(emptyDeductionOverrides())
+  const [overrideDeductionOpen, setOverrideDeductionOpen] = useState(false)
+  const [overrideDeductionOverrides, setOverrideDeductionOverrides] = useState<DeductionOverrides>(emptyDeductionOverrides())
 
   // Confirmation dialogs
   const [confirmCloseJob, setConfirmCloseJob] = useState<Job | null>(null)
@@ -248,6 +593,21 @@ export function IncomePage() {
     enabled: activeTab === 'bonuses' && jobs.length > 0,
   })
 
+  const { data: taxCards = {} } = useQuery<Record<string, TaxCardSettings[]>>({
+    queryKey: ['taxcards', jobs.map((j) => j.id).join(',')],
+    queryFn: async () => {
+      const dkJobs = jobs.filter((j) => j.country === 'DK')
+      const results = await Promise.all(
+        dkJobs.map(async (j) => {
+          const res = await api.get<TaxCardSettings[]>(`/jobs/${j.id}/taxcard`)
+          return [j.id, res.data] as [string, TaxCardSettings[]]
+        })
+      )
+      return Object.fromEntries(results)
+    },
+    enabled: jobs.length > 0,
+  })
+
   const { data: historyData } = useQuery<{ buckets: HistoryBucket[] }>({
     queryKey: ['income-history', targetUserId, histFrom, histTo, granularity],
     queryFn: async () =>
@@ -260,7 +620,7 @@ export function IncomePage() {
   const createJobMutation = useMutation({
     mutationFn: (data: JobForm) =>
       api.post(`/users/${targetUserId}/jobs`, {
-        name: data.name, employer: data.employer || undefined,
+        name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
@@ -270,7 +630,7 @@ export function IncomePage() {
   const updateJobMutation = useMutation({
     mutationFn: (data: JobForm) =>
       api.put(`/users/${targetUserId}/jobs/${editingJob!.id}`, {
-        name: data.name, employer: data.employer || undefined,
+        name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
@@ -283,30 +643,56 @@ export function IncomePage() {
   })
 
   const addSalaryMutation = useMutation({
-    mutationFn: (data: SalaryForm) =>
-      api.post(`/jobs/${salaryJobId}/salary`, {
-        grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount), effectiveFrom: data.effectiveFrom,
-        ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
-      }),
+    mutationFn: ({ form, deductionOverrides, liveCalc }: { form: SalaryForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
+      const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
+      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
+        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
+        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
+        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
+        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
+        deductionsSource: 'MANUAL',
+      } : {}
+      const net = liveCalc
+        ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
+        : parseFloat(form.netAmount)
+      return api.post(`/jobs/${salaryJobId}/salary`, {
+        grossAmount: parseFloat(form.grossAmount), netAmount: net, effectiveFrom: form.effectiveFrom,
+        ...(form.currencyCode && form.currencyCode !== baseCurrency ? { currencyCode: form.currencyCode } : {}),
+        ...deductionPayload,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      setSalaryForm(emptySalary(baseCurrency)); setSalaryError('')
+      setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record added')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setSalaryError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
   const updateSalaryMutation = useMutation({
-    mutationFn: (data: SalaryForm) =>
-      api.put(`/jobs/${salaryJobId}/salary/${editingSalary!.id}`, {
-        grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount), effectiveFrom: data.effectiveFrom,
-        ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
-      }),
+    mutationFn: ({ form, deductionOverrides, liveCalc }: { form: SalaryForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
+      const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
+      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
+        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
+        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
+        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
+        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
+        deductionsSource: 'MANUAL',
+      } : {}
+      const net = liveCalc
+        ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
+        : parseFloat(form.netAmount)
+      return api.put(`/jobs/${salaryJobId}/salary/${editingSalary!.id}`, {
+        grossAmount: parseFloat(form.grossAmount), netAmount: net, effectiveFrom: form.effectiveFrom,
+        ...(form.currencyCode && form.currencyCode !== baseCurrency ? { currencyCode: form.currencyCode } : {}),
+        ...deductionPayload,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
-      setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('')
+      setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record updated')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setSalaryError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
@@ -322,19 +708,52 @@ export function IncomePage() {
   })
 
   const upsertOverrideMutation = useMutation({
-    mutationFn: (data: OverrideForm) =>
-      api.post(`/jobs/${overrideJobId}/overrides`, {
-        year: parseInt(data.year), month: parseInt(data.month),
-        grossAmount: parseFloat(data.grossAmount), netAmount: parseFloat(data.netAmount),
-        note: data.note || undefined,
-      }),
+    mutationFn: ({ form, deductionOverrides, liveCalc }: { form: OverrideForm; deductionOverrides: DeductionOverrides; liveCalc: LiveDeductions | null }) => {
+      const hasManualOverride = Object.values(deductionOverrides).some((v) => v !== '')
+      const deductionPayload = liveCalc && !hasManualOverride ? {} : liveCalc ? {
+        amBidragAmount: parseFloat(deductionOverrides.amBidragAmount) || liveCalc.amBidrag,
+        aSkattAmount: parseFloat(deductionOverrides.aSkattAmount) || liveCalc.aSkat,
+        pensionEmployeeAmount: parseFloat(deductionOverrides.pensionEmployeeAmount) || liveCalc.pensionEmployee || undefined,
+        atpAmount: parseFloat(deductionOverrides.atpAmount) || liveCalc.atp,
+        deductionsSource: 'MANUAL',
+      } : {}
+      const net = liveCalc
+        ? (hasManualOverride ? computeManualNet(parseFloat(form.grossAmount), liveCalc, deductionOverrides) : liveCalc.net)
+        : parseFloat(form.netAmount)
+      return api.post(`/jobs/${overrideJobId}/overrides`, {
+        year: parseInt(form.year), month: parseInt(form.month),
+        grossAmount: parseFloat(form.grossAmount), netAmount: net,
+        note: form.note || undefined,
+        ...deductionPayload,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['overrides', overrideJobId] })
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-      setOverrideForm(emptyOverride); setOverrideError('')
+      setOverrideForm(emptyOverride); setOverrideDeductionOverrides(emptyDeductionOverrides()); setOverrideDeductionOpen(false); setOverrideError('')
       toast.success('Monthly override saved')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setOverrideError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
+  })
+
+  const createTaxCardMutation = useMutation({
+    mutationFn: (data: TaxCardForm) =>
+      api.post(`/jobs/${taxCardJobId}/taxcard`, {
+        effectiveFrom: data.effectiveFrom,
+        traekprocent: parseFloat(data.traekprocent),
+        personfradragMonthly: parseFloat(data.personfradragMonthly),
+        municipality: data.municipality || undefined,
+        pensionEmployeePct: data.pensionEmployeePct ? parseFloat(data.pensionEmployeePct) : undefined,
+        pensionEmployerPct: data.pensionEmployerPct ? parseFloat(data.pensionEmployerPct) : undefined,
+        atpAmount: data.atpAmount ? parseFloat(data.atpAmount) : undefined,
+        bruttoItems: data.bruttoItems.filter((i) => i.label && i.monthlyAmount).map((i) => ({ label: i.label, monthlyAmount: parseFloat(i.monthlyAmount) })),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
+      toast.success('Tax card settings saved')
+    },
+    onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
   const deleteOverrideMutation = useMutation({
@@ -395,6 +814,14 @@ export function IncomePage() {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  function computeManualNet(gross: number, calc: LiveDeductions, overrides: DeductionOverrides): number {
+    const amBidrag = parseFloat(overrides.amBidragAmount) || calc.amBidrag
+    const aSkat = parseFloat(overrides.aSkattAmount) || calc.aSkat
+    const pension = parseFloat(overrides.pensionEmployeeAmount) || calc.pensionEmployee
+    const atp = parseFloat(overrides.atpAmount) || calc.atp
+    return r2(gross - calc.bruttoTotal - amBidrag - aSkat - pension - atp)
+  }
+
   function getAllocationPct(job: Job, householdId: string): string {
     const key = `${job.id}:${householdId}`
     if (key in pendingAllocations) return pendingAllocations[key]
@@ -413,7 +840,7 @@ export function IncomePage() {
   }
 
   function openEditJob(job: Job) {
-    setJobForm({ name: job.name, employer: job.employer ?? '', startDate: toDateInput(job.startDate), endDate: job.endDate ? toDateInput(job.endDate) : '' })
+    setJobForm({ name: job.name, employer: job.employer ?? '', country: job.country ?? 'DK', startDate: toDateInput(job.startDate), endDate: job.endDate ? toDateInput(job.endDate) : '' })
     setJobFormError('')
     setEditingJob(job)
   }
@@ -423,6 +850,49 @@ export function IncomePage() {
     if (editingJob) updateJobMutation.mutate(jobForm)
     else createJobMutation.mutate(jobForm)
   }
+
+  // ── DK tax card context ───────────────────────────────────────────────────
+
+  const salaryJob = jobs.find((j) => j.id === salaryJobId) ?? null
+  const overrideJob = jobs.find((j) => j.id === overrideJobId) ?? null
+
+  const activeTaxCard = useMemo((): TaxCardSettings | null => {
+    if (!salaryJobId) return null
+    const cards = taxCards[salaryJobId] ?? []
+    return cards.length > 0 ? cards[0] : null
+  }, [salaryJobId, taxCards])
+
+  const overrideActiveTaxCard = useMemo((): TaxCardSettings | null => {
+    if (!overrideJobId) return null
+    const cards = taxCards[overrideJobId] ?? []
+    return cards.length > 0 ? cards[0] : null
+  }, [overrideJobId, taxCards])
+
+  const salaryLiveCalc = useMemo((): LiveDeductions | null => {
+    const gross = parseFloat(salaryForm.grossAmount)
+    if (!salaryJob || salaryJob.country !== 'DK' || !activeTaxCard || !gross) return null
+    return calcDanishDeductions(gross, {
+      traekprocent: parseFloat(activeTaxCard.traekprocent),
+      personfradragMonthly: parseFloat(activeTaxCard.personfradragMonthly),
+      pensionEmployeePct: activeTaxCard.pensionEmployeePct ? parseFloat(activeTaxCard.pensionEmployeePct) : null,
+      pensionEmployerPct: activeTaxCard.pensionEmployerPct ? parseFloat(activeTaxCard.pensionEmployerPct) : null,
+      atpAmount: activeTaxCard.atpAmount ? parseFloat(activeTaxCard.atpAmount) : null,
+      bruttoItems: activeTaxCard.bruttoItems,
+    })
+  }, [salaryForm.grossAmount, salaryJob, activeTaxCard])
+
+  const overrideLiveCalc = useMemo((): LiveDeductions | null => {
+    const gross = parseFloat(overrideForm.grossAmount)
+    if (!overrideJob || overrideJob.country !== 'DK' || !overrideActiveTaxCard || !gross) return null
+    return calcDanishDeductions(gross, {
+      traekprocent: parseFloat(overrideActiveTaxCard.traekprocent),
+      personfradragMonthly: parseFloat(overrideActiveTaxCard.personfradragMonthly),
+      pensionEmployeePct: overrideActiveTaxCard.pensionEmployeePct ? parseFloat(overrideActiveTaxCard.pensionEmployeePct) : null,
+      pensionEmployerPct: overrideActiveTaxCard.pensionEmployerPct ? parseFloat(overrideActiveTaxCard.pensionEmployerPct) : null,
+      atpAmount: overrideActiveTaxCard.atpAmount ? parseFloat(overrideActiveTaxCard.atpAmount) : null,
+      bruttoItems: overrideActiveTaxCard.bruttoItems,
+    })
+  }, [overrideForm.grossAmount, overrideJob, overrideActiveTaxCard])
 
   // ── Chart data ────────────────────────────────────────────────────────────
 
@@ -566,6 +1036,25 @@ export function IncomePage() {
                         </div>
                       </div>
 
+                      {/* Tax card settings (DK only) */}
+                      {job.country === 'DK' && (
+                        <TaxCardSection
+                          jobId={job.id}
+                          cards={taxCards[job.id] ?? []}
+                          isExpanded={taxCardJobId === job.id}
+                          onToggle={() => setTaxCardJobId((prev) => prev === job.id ? null : job.id)}
+                          showForm={taxCardJobId === job.id && showTaxCardForm}
+                          onShowForm={() => { setShowTaxCardForm(true); setTaxCardForm(emptyTaxCard()) }}
+                          onHideForm={() => setShowTaxCardForm(false)}
+                          form={taxCardForm}
+                          onFormChange={setTaxCardForm}
+                          onSubmit={(e) => { e.preventDefault(); createTaxCardMutation.mutate(taxCardForm) }}
+                          isPending={createTaxCardMutation.isPending}
+                          error={taxCardError}
+                          fmt={fmt}
+                        />
+                      )}
+
                       {/* Allocations */}
                       {households.length > 0 && (
                         <div className="border-t border-gray-800 pt-4">
@@ -666,7 +1155,14 @@ export function IncomePage() {
                             <tbody>
                               {overrides.map((o) => (
                                 <tr key={o.id} className="border-b border-gray-800/50 last:border-0">
-                                  <td className="py-2 pr-4 text-white">{MONTHS[o.month - 1]} {o.year}</td>
+                                  <td className="py-2 pr-4 text-white">
+                                    <div className="flex items-center gap-2">
+                                      <span>{MONTHS[o.month - 1]} {o.year}</span>
+                                      {o.deductionsSource && (
+                                        <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700 px-1.5 py-0.5 rounded">Payslip entered</span>
+                                      )}
+                                    </div>
+                                  </td>
                                   <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(o.grossAmount)}</td>
                                   <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(o.netAmount)}</td>
                                   <td className="py-2 pr-4 text-gray-500 text-xs">{o.note ?? '—'}</td>
@@ -783,6 +1279,13 @@ export function IncomePage() {
               <input type="text" value={jobForm.employer} onChange={(e) => setJobForm({ ...jobForm, employer: e.target.value })}
                 placeholder="e.g. Acme Corp" className={inputClass} />
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Country</label>
+              <select value={jobForm.country} onChange={(e) => setJobForm({ ...jobForm, country: e.target.value })} className={inputClass}>
+                <option value="DK">DK — Denmark</option>
+                <option value="OTHER">Other (generic)</option>
+              </select>
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Start date</label>
@@ -851,8 +1354,8 @@ export function IncomePage() {
 
           {/* Add / Edit record */}
           <h3 className="text-sm font-medium text-gray-400 mb-3">{editingSalary ? 'Edit salary record' : 'Add salary record'}</h3>
-          <form onSubmit={(e) => { e.preventDefault(); editingSalary ? updateSalaryMutation.mutate(salaryForm) : addSalaryMutation.mutate(salaryForm) }} className="space-y-3">
-            <div className="grid grid-cols-4 gap-3">
+          <form onSubmit={(e) => { e.preventDefault(); const payload = { form: salaryForm, deductionOverrides: salaryDeductionOverrides, liveCalc: salaryLiveCalc }; editingSalary ? updateSalaryMutation.mutate(payload) : addSalaryMutation.mutate(payload) }} className="space-y-3">
+            <div className={`grid gap-3 ${salaryJob?.country === 'DK' ? 'grid-cols-3' : 'grid-cols-4'}`}>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
                 <input type="date" value={salaryForm.effectiveFrom} onChange={(e) => setSalaryForm({ ...salaryForm, effectiveFrom: e.target.value })}
@@ -863,11 +1366,13 @@ export function IncomePage() {
                 <input type="number" value={salaryForm.grossAmount} onChange={(e) => setSalaryForm({ ...salaryForm, grossAmount: e.target.value })}
                   required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
-                <input type="number" value={salaryForm.netAmount} onChange={(e) => setSalaryForm({ ...salaryForm, netAmount: e.target.value })}
-                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-              </div>
+              {salaryJob?.country !== 'DK' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
+                  <input type="number" value={salaryForm.netAmount} onChange={(e) => setSalaryForm({ ...salaryForm, netAmount: e.target.value })}
+                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Currency</label>
                 <select value={salaryForm.currencyCode} onChange={(e) => setSalaryForm({ ...salaryForm, currencyCode: e.target.value })}
@@ -884,6 +1389,19 @@ export function IncomePage() {
                 ≈ {(parseFloat(salaryForm.netAmount) * (currencies.find((c) => c.code === salaryForm.currencyCode)?.rate ?? 1)).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency} / month net
               </p>
             )}
+
+            {/* DK deduction breakdown panel */}
+            {salaryJob?.country === 'DK' && (
+              <DeductionPanel
+                gross={parseFloat(salaryForm.grossAmount) || 0}
+                liveCalc={salaryLiveCalc}
+                overrides={salaryDeductionOverrides}
+                onOverrideChange={(field, val) => setSalaryDeductionOverrides((prev) => ({ ...prev, [field]: val }))}
+                hasTaxCard={!!activeTaxCard}
+                baseCurrency={baseCurrency}
+              />
+            )}
+
             {salaryError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{salaryError}</div>}
             <div className="flex items-center gap-3">
               <button type="submit" disabled={addSalaryMutation.isPending || updateSalaryMutation.isPending}
@@ -891,7 +1409,7 @@ export function IncomePage() {
                 {addSalaryMutation.isPending || updateSalaryMutation.isPending ? 'Saving…' : editingSalary ? 'Save changes' : 'Add record'}
               </button>
               {editingSalary && (
-                <button type="button" onClick={() => { setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryError('') }}
+                <button type="button" onClick={() => { setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('') }}
                   className="text-sm text-gray-400 hover:text-white transition-colors">Cancel</button>
               )}
             </div>
@@ -901,8 +1419,8 @@ export function IncomePage() {
 
       {/* ── Add Override modal ──────────────────────────────────────────────── */}
       {overrideJobId && (
-        <Modal title={`Add monthly override — ${jobs.find((j) => j.id === overrideJobId)?.name}`} onClose={() => setOverrideJobId(null)}>
-          <form onSubmit={(e) => { e.preventDefault(); upsertOverrideMutation.mutate(overrideForm) }} className="space-y-4">
+        <Modal title={`Add monthly override — ${jobs.find((j) => j.id === overrideJobId)?.name}`} onClose={() => { setOverrideJobId(null); setOverrideDeductionOpen(false); setOverrideDeductionOverrides(emptyDeductionOverrides()) }}>
+          <form onSubmit={(e) => { e.preventDefault(); upsertOverrideMutation.mutate({ form: overrideForm, deductionOverrides: overrideDeductionOverrides, liveCalc: overrideLiveCalc }) }} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
@@ -916,16 +1434,20 @@ export function IncomePage() {
                 </select>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
-                <input type="number" value={overrideForm.grossAmount} onChange={(e) => setOverrideForm({ ...overrideForm, grossAmount: e.target.value })}
-                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
-                <input type="number" value={overrideForm.netAmount} onChange={(e) => setOverrideForm({ ...overrideForm, netAmount: e.target.value })}
-                  required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+            <div className={`grid gap-4 ${overrideJob?.country === 'DK' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+              <div className={overrideJob?.country === 'DK' ? 'grid grid-cols-2 gap-4' : ''}>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
+                  <input type="number" value={overrideForm.grossAmount} onChange={(e) => setOverrideForm({ ...overrideForm, grossAmount: e.target.value })}
+                    required min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+                </div>
+                {overrideJob?.country !== 'DK' && (
+                  <div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Net / month</label>
+                    <input type="number" value={overrideForm.netAmount} onChange={(e) => setOverrideForm({ ...overrideForm, netAmount: e.target.value })}
+                      required={overrideJob?.country !== 'DK'} min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+                  </div>
+                )}
               </div>
             </div>
             <div>
@@ -933,13 +1455,37 @@ export function IncomePage() {
               <input type="text" value={overrideForm.note} onChange={(e) => setOverrideForm({ ...overrideForm, note: e.target.value })}
                 placeholder="e.g. Sick leave, parental leave" className={inputClass} />
             </div>
+
+            {/* Deduction breakdown for DK jobs */}
+            {overrideJob?.country === 'DK' && (
+              <div className="border border-gray-700 rounded-lg overflow-hidden">
+                <button type="button" onClick={() => setOverrideDeductionOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+                  <span>Deduction breakdown</span>
+                  <span className="text-xs">{overrideDeductionOpen ? '▲' : '▼'}</span>
+                </button>
+                {overrideDeductionOpen && (
+                  <div className="p-4 border-t border-gray-700">
+                    <DeductionPanel
+                      gross={parseFloat(overrideForm.grossAmount) || 0}
+                      liveCalc={overrideLiveCalc}
+                      overrides={overrideDeductionOverrides}
+                      onOverrideChange={(field, val) => setOverrideDeductionOverrides((prev) => ({ ...prev, [field]: val }))}
+                      hasTaxCard={!!overrideActiveTaxCard}
+                      baseCurrency={baseCurrency}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
             {overrideError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{overrideError}</div>}
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={upsertOverrideMutation.isPending}
                 className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
                 {upsertOverrideMutation.isPending ? 'Saving…' : 'Save override'}
               </button>
-              <button type="button" onClick={() => setOverrideJobId(null)}
+              <button type="button" onClick={() => { setOverrideJobId(null); setOverrideDeductionOpen(false); setOverrideDeductionOverrides(emptyDeductionOverrides()) }}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
             </div>
           </form>

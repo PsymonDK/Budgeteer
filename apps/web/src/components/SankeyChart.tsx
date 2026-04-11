@@ -34,9 +34,20 @@ const FALLBACK_COLORS = [
   '#ec4899', '#06b6d4', '#84cc16',
 ]
 
+// Fixed colors for well-known deduction node IDs
+const NODE_ID_COLORS: Record<string, string> = {
+  brutto_benefits: '#8b5cf6',
+  am_bidrag: '#ef4444',
+  a_skat: '#f97316',
+  pension_employee: '#eab308',
+  atp: '#6b7280',
+  other_deductions: '#9ca3af',
+  net_pay: '#10b981',
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function SankeyChart({ data, currency = '' }: { data: { nodes: SankeyNodeDef[]; links: SankeyLinkDef[] }; currency?: string }) {
+export function SankeyChart({ data, currency = '', height: heightProp }: { data: { nodes: SankeyNodeDef[]; links: SankeyLinkDef[] }; currency?: string; height?: number }) {
   function fmt(v: number | string) {
     const n = Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     return currency ? `${n} ${currency}` : n
@@ -51,7 +62,7 @@ export function SankeyChart({ data, currency = '' }: { data: { nodes: SankeyNode
 
   const compute = useCallback(() => {
     const width = containerRef.current?.clientWidth ?? 800
-    const height = 400
+    const height = heightProp ?? 400
     const nodeIndexMap = new Map(data.nodes.map((n, i) => [n.id, i]))
     const sankeyNodes: SankeyExtNode[] = data.nodes.map((n) => ({ ...n }))
     const sankeyLinks = data.links
@@ -96,9 +107,9 @@ export function SankeyChart({ data, currency = '' }: { data: { nodes: SankeyNode
     return () => observer.disconnect()
   }, [compute])
 
-  const colorMap = new Map(data.nodes.map((n, i) => [n.id, n.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]]))
+  const colorMap = new Map(data.nodes.map((n, i) => [n.id, n.color ?? NODE_ID_COLORS[n.id] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]]))
 
-  const { nodes, links, width, height } = svgContent ?? { nodes: [], links: [], width: 0, height: 400 }
+  const { nodes, links, width, height } = svgContent ?? { nodes: [], links: [], width: 0, height: heightProp ?? 400 }
   const linkPath = sankeyLinkHorizontal()
 
   return (
