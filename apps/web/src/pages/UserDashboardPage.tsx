@@ -86,6 +86,7 @@ interface IncomeTrend {
 
 interface IncomeSankeyData {
   totalIncome: string
+  employerPensionMonthly?: string
   nodes: { id: string; name: string; color?: string }[]
   links: { source: string; target: string; value: number }[]
 }
@@ -367,7 +368,17 @@ export function UserDashboardPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
               <h3 className="text-sm font-semibold mb-4 text-gray-200">Income flow</h3>
               {sankeyData && sankeyData.nodes.length > 0 ? (
-                <SankeyChart data={sankeyData} currency={baseCurrency} />
+                <>
+                  {(() => {
+                    const has3Col = sankeyData.nodes.some((n) => n.id === 'net_pay' || n.id === 'am_bidrag')
+                    return <SankeyChart data={sankeyData} currency={baseCurrency} height={has3Col ? 480 : 400} />
+                  })()}
+                  {sankeyData.employerPensionMonthly && parseFloat(sankeyData.employerPensionMonthly) > 0 && (
+                    <p className="text-xs text-gray-500 mt-3">
+                      ℹ Employer pension: <span className="text-gray-300">{parseFloat(sankeyData.employerPensionMonthly).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {baseCurrency}/month</span> (paid directly to pension fund)
+                    </p>
+                  )}
+                </>
               ) : (
                 <p className="text-gray-500 text-sm">No allocation data. Allocate income to households first.</p>
               )}

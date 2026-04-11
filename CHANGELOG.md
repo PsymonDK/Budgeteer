@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.53.0] - 2026-04-11 — Payslip data structure rework + Danish tax calculation fix
+
+### Changed
+- **`payslipLines` replaces seven individual deduction columns** — `SalaryRecord` and `MonthlyIncomeOverride` now store deductions as a typed JSON array of `PayslipLine` objects (`{ label, amount, type, sankeyGroup, isCalculated }`) instead of seven separate `Decimal?` columns (`amBidragAmount`, `aSkattAmount`, `pensionEmployeeAmount`, `pensionEmployerAmount`, `atpAmount`, `bruttoDeductionAmount`, `otherDeductions`); supports arbitrary payslip structures, benefit-in-kind lines, and future line types without schema changes
+- **`pensionEmployerMonthly` is now a dedicated field** — employer pension was previously stored alongside employee deductions; separated to make clear it is an employer cost not deducted from net pay
+- **Sankey endpoint aggregates from `payslipLines.sankeyGroup`** — deduction node values are computed by summing lines that share the same `sankeyGroup`, making it trivial to add new line types without touching the Sankey logic
+
+### Fixed
+- **Critical: pension employee and ATP are pre-AM deductions** — both were incorrectly calculated on full gross after AM-bidrag; they now reduce the AM-indkomst base *before* AM-bidrag is applied, matching real Danish payroll (SKAT rules); this affected all auto-calculated records
+- **AM-bidrag and A-skat now truncate to whole DKK** — real Danish payroll systems floor (not round) both tax amounts; switched `Math.round` → `Math.floor` for these two lines
+- **Calculated net always overwrites manually entered net** — when a tax card is present, the auto-calculated `net` value is stored unconditionally; a stale manually entered net from before a tax card was added can no longer persist after a re-save
+- **Tax card records are now editable in the frontend** — an Edit button on each tax card row pre-fills the form and calls `PUT /jobs/:id/taxcard/:settingsId`; previously only create was exposed in the UI
+
+### Migration
+- Drops old seven deduction columns, adds `payslipLines JSONB` and `pensionEmployerMonthly DECIMAL(10,2)`; resets `deductionsSource = NULL` on all existing rows so they are recalculated (with the corrected formula) on the next save
+
+---
+
+## [0.52.0] - 2026-04-11 — Payslip deduction UI (Sprint 27)
+
+### Added
+- **Country selector on job create/edit form** (#176) — jobs now show a country dropdown (DK default); selecting DK enables tax-card and deduction features; other countries hide the DK-specific sections
+- **Tax card settings form per job** (#177) — collapsible section on each DK job card; add/view tax card records (effective-dated); shows active badge on the current card; fields: trækprocent, personfradrag/month, municipality label, employee/employer pension %, ATP override, and a dynamic bruttolønsordning item list
+- **Enhanced salary record form with deduction breakdown** (#178) — DK jobs show a `DeductionPanel` below the gross amount field; panel displays auto-calculated lines (AM-bidrag, A-skat, ATP, pension employee) with a ✏ override button per line; override resets with ↺; net pay shown live; no tax card shows a prompt to add one
+- **Monthly override with deduction section** (#179) — the add-override modal gains a collapsible deduction section mirroring the salary form panel; overrides are per-field and cleared on close
+- **3-column Sankey visualisation** (#180) — when any active salary record has deduction data the Sankey switches to a 3-column layout: Jobs → deduction nodes (AM-bidrag, A-skat, Pension employee, ATP, Brutto benefits, Other) + Net Pay → Expenses / Savings / Surplus / Unallocated; employer pension info row shown below the chart when present; layout falls back to 2-column when no deduction data exists
+
+---
+
+## [0.51.0] - 2026-04-11 — Danish tax engine & auto-calculation on save (Sprint 26)
+
+### Added
+- **Danish payroll tax calculation engine** (`taxCalcDK.ts`) (#173) — server-side calculation of AM-bidrag, A-skat (with top-skat), ATP, employee/employer pension, and net pay from a gross salary and active `TaxCardSettings` record; 2024 constants (top-skat threshold 49,075 DKK/month, top-skat rate 15%, AM-bidrag 8%, default ATP 99 DKK)
+- **Auto-calculate deductions on salary record save** (#174) — `POST /jobs/:id/salary` and `PUT /jobs/:id/salary/:salaryId` call `resolveDeductions()` which: (1) uses explicit client-supplied deduction fields if present (MANUAL), (2) auto-calculates from the active tax card if the job is DK and a card exists (CALCULATED), or (3) stores no deductions (fallback); same logic applies to `POST /jobs/:id/overrides`
+- **Granular Sankey endpoint** (#175) — `GET /users/me/income/sankey` detects whether any active salary/override record has `deductionsSource != null` and switches between a 3-column granular layout (Jobs → AM-bidrag, A-skat, Pension, ATP, Brutto, Other Deductions, Net Pay → right side) and the previous 2-column fallback; returns `employerPensionMonthly` metadata when employer pension is set
+- **`calcDanishDeductions` in shared package** — mirrors the API engine for frontend live-preview use; exported from `packages/shared` along with `TaxCalcInput` and `TaxCalcResult` types
+
+---
+
 ## [0.50.0] - 2026-04-11 — Payslip income breakdown: data foundation (Sprint 25)
 
 ### Added
