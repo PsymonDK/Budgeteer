@@ -7,6 +7,7 @@ import { getJobMonthlyIncome, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
 import { assertHouseholdAccess } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
+import { calcDanishDeductions } from '../lib/taxCalcDK'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -152,6 +153,100 @@ async function assertJobOwnership(jobId: string, requesterId: string, requesterR
   // Bookkeeper or admin: may only access proxy users' jobs
   if (['SYSTEM_ADMIN', 'BOOKKEEPER'].includes(requesterRole) && job.user.isProxy) return job
   return null
+}
+
+/**
+ * Resolve deduction data for a salary record or monthly override.
+ *
+ * Priority:
+ *   1. Explicit deduction fields in request → store verbatim, source = MANUAL
+ *   2. Job is DK + active tax card exists → auto-calculate, source = CALCULATED
+ *   3. Fallback → all null (legacy behaviour)
+ */
+async function resolveDeductions(
+  jobId: string,
+  jobCountry: string,
+  gross: number,
+  requestFields: {
+    amBidragAmount?: number
+    aSkattAmount?: number
+    pensionEmployeeAmount?: number
+    pensionEmployerAmount?: number
+    atpAmount?: number
+    bruttoDeductionAmount?: number
+    otherDeductions?: { label: string; amount: number }[]
+    deductionsSource?: 'MANUAL' | 'CALCULATED'
+  }
+): Promise<{
+  amBidragAmount: Decimal | null
+  aSkattAmount: Decimal | null
+  pensionEmployeeAmount: Decimal | null
+  pensionEmployerAmount: Decimal | null
+  atpAmount: Decimal | null
+  bruttoDeductionAmount: Decimal | null
+  otherDeductions: { label: string; amount: number }[] | null
+  deductionsSource: string | null
+  netAmount: Decimal | null  // null means "use request netAmount as-is"
+}> {
+  const hasExplicitDeductions =
+    requestFields.amBidragAmount !== undefined ||
+    requestFields.aSkattAmount !== undefined ||
+    requestFields.bruttoDeductionAmount !== undefined
+
+  if (hasExplicitDeductions || requestFields.deductionsSource === 'MANUAL') {
+    return {
+      amBidragAmount: requestFields.amBidragAmount != null ? new Decimal(requestFields.amBidragAmount) : null,
+      aSkattAmount: requestFields.aSkattAmount != null ? new Decimal(requestFields.aSkattAmount) : null,
+      pensionEmployeeAmount: requestFields.pensionEmployeeAmount != null ? new Decimal(requestFields.pensionEmployeeAmount) : null,
+      pensionEmployerAmount: requestFields.pensionEmployerAmount != null ? new Decimal(requestFields.pensionEmployerAmount) : null,
+      atpAmount: requestFields.atpAmount != null ? new Decimal(requestFields.atpAmount) : null,
+      bruttoDeductionAmount: requestFields.bruttoDeductionAmount != null ? new Decimal(requestFields.bruttoDeductionAmount) : null,
+      otherDeductions: requestFields.otherDeductions ?? null,
+      deductionsSource: 'MANUAL',
+      netAmount: null,
+    }
+  }
+
+  if (jobCountry === 'DK') {
+    const taxCard = await prisma.taxCardSettings.findFirst({
+      where: { jobId, effectiveFrom: { lte: new Date() } },
+      orderBy: { effectiveFrom: 'desc' },
+    })
+    if (taxCard) {
+      const calc = calcDanishDeductions(gross, {
+        traekprocent: toNum(taxCard.traekprocent),
+        personfradragMonthly: toNum(taxCard.personfradragMonthly),
+        pensionEmployeePct: taxCard.pensionEmployeePct != null ? toNum(taxCard.pensionEmployeePct) : null,
+        pensionEmployerPct: taxCard.pensionEmployerPct != null ? toNum(taxCard.pensionEmployerPct) : null,
+        atpAmount: taxCard.atpAmount != null ? toNum(taxCard.atpAmount) : null,
+        bruttoItems: taxCard.bruttoItems as { label: string; monthlyAmount: number }[] | null,
+      })
+      return {
+        amBidragAmount: new Decimal(calc.amBidrag),
+        aSkattAmount: new Decimal(calc.aSkat),
+        pensionEmployeeAmount: calc.pensionEmployee > 0 ? new Decimal(calc.pensionEmployee) : null,
+        pensionEmployerAmount: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
+        atpAmount: new Decimal(calc.atp),
+        bruttoDeductionAmount: calc.bruttoTotal > 0 ? new Decimal(calc.bruttoTotal) : null,
+        otherDeductions: null,
+        deductionsSource: 'CALCULATED',
+        netAmount: new Decimal(calc.net),
+      }
+    }
+  }
+
+  // Fallback: no deduction data
+  return {
+    amBidragAmount: null,
+    aSkattAmount: null,
+    pensionEmployeeAmount: null,
+    pensionEmployerAmount: null,
+    atpAmount: null,
+    bruttoDeductionAmount: null,
+    otherDeductions: null,
+    deductionsSource: null,
+    netAmount: null,
+  }
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -328,22 +423,27 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    })
+
     const record = await prisma.salaryRecord.create({
       data: {
         jobId,
         grossAmount: new Decimal(grossAmount),
-        netAmount: new Decimal(netAmount),
+        netAmount: deductions.netAmount ?? new Decimal(netAmount),
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
-        amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
-        aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
-        pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
-        pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
-        atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
-        bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
-        otherDeductions: otherDeductions ?? undefined,
-        deductionsSource: deductionsSource ?? null,
+        amBidragAmount: deductions.amBidragAmount,
+        aSkattAmount: deductions.aSkattAmount,
+        pensionEmployeeAmount: deductions.pensionEmployeeAmount,
+        pensionEmployerAmount: deductions.pensionEmployerAmount,
+        atpAmount: deductions.atpAmount,
+        bruttoDeductionAmount: deductions.bruttoDeductionAmount,
+        otherDeductions: deductions.otherDeductions ?? undefined,
+        deductionsSource: deductions.deductionsSource,
       },
     })
 
@@ -377,22 +477,27 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    })
+
     const record = await prisma.salaryRecord.update({
       where: { id: salaryId },
       data: {
         grossAmount: new Decimal(grossAmount),
-        netAmount: new Decimal(netAmount),
+        netAmount: deductions.netAmount ?? new Decimal(netAmount),
         effectiveFrom: new Date(effectiveFrom),
         currencyCode: currency,
         rateUsed: rate !== null ? new Decimal(rate) : null,
-        amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
-        aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
-        pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
-        pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
-        atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
-        bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
-        otherDeductions: otherDeductions ?? undefined,
-        deductionsSource: deductionsSource ?? null,
+        amBidragAmount: deductions.amBidragAmount,
+        aSkattAmount: deductions.aSkattAmount,
+        pensionEmployeeAmount: deductions.pensionEmployeeAmount,
+        pensionEmployerAmount: deductions.pensionEmployerAmount,
+        atpAmount: deductions.atpAmount,
+        bruttoDeductionAmount: deductions.bruttoDeductionAmount,
+        otherDeductions: deductions.otherDeductions ?? undefined,
+        deductionsSource: deductions.deductionsSource,
       },
     })
 
@@ -456,21 +561,27 @@ export async function jobRoutes(fastify: FastifyInstance) {
       atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
     } = result.data
 
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, {
+      amBidragAmount, aSkattAmount, pensionEmployeeAmount, pensionEmployerAmount,
+      atpAmount, bruttoDeductionAmount, otherDeductions, deductionsSource,
+    })
+
+    const resolvedNet = deductions.netAmount ?? new Decimal(netAmount)
     const deductionData = {
-      amBidragAmount: amBidragAmount != null ? new Decimal(amBidragAmount) : null,
-      aSkattAmount: aSkattAmount != null ? new Decimal(aSkattAmount) : null,
-      pensionEmployeeAmount: pensionEmployeeAmount != null ? new Decimal(pensionEmployeeAmount) : null,
-      pensionEmployerAmount: pensionEmployerAmount != null ? new Decimal(pensionEmployerAmount) : null,
-      atpAmount: atpAmount != null ? new Decimal(atpAmount) : null,
-      bruttoDeductionAmount: bruttoDeductionAmount != null ? new Decimal(bruttoDeductionAmount) : null,
-      otherDeductions: otherDeductions ?? undefined,
-      deductionsSource: deductionsSource ?? null,
+      amBidragAmount: deductions.amBidragAmount,
+      aSkattAmount: deductions.aSkattAmount,
+      pensionEmployeeAmount: deductions.pensionEmployeeAmount,
+      pensionEmployerAmount: deductions.pensionEmployerAmount,
+      atpAmount: deductions.atpAmount,
+      bruttoDeductionAmount: deductions.bruttoDeductionAmount,
+      otherDeductions: deductions.otherDeductions ?? undefined,
+      deductionsSource: deductions.deductionsSource,
     }
 
     const override = await prisma.monthlyIncomeOverride.upsert({
       where: { jobId_year_month: { jobId, year, month } },
-      create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note, ...deductionData },
-      update: { grossAmount: new Decimal(grossAmount), netAmount: new Decimal(netAmount), note, ...deductionData },
+      create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
+      update: { grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
     })
 
     return reply.status(201).send(override)

@@ -177,16 +177,42 @@ export async function profileRoutes(fastify: FastifyInstance) {
   fastify.get('/users/me/income/sankey', { preHandler: authenticate }, async (request, reply) => {
     const { sub: userId } = request.user
     const today = new Date()
+    const year = today.getFullYear()
+    const month = today.getMonth() + 1
 
     // Fetch active jobs
     const activeJobs = await prisma.job.findMany({
       where: { userId, endDate: null },
     })
 
+    // Fetch income + active salary/override record (with deduction fields) per job
     const jobIncomes = await Promise.all(
       activeJobs.map(async (job) => {
         const { gross, net } = await getJobMonthlyIncome(job.id, today)
-        return { job, gross, net }
+
+        // Get the active record to check for deduction data
+        const override = await prisma.monthlyIncomeOverride.findUnique({
+          where: { jobId_year_month: { jobId: job.id, year, month } },
+        })
+        const record = override ?? await prisma.salaryRecord.findFirst({
+          where: { jobId: job.id, effectiveFrom: { lte: today } },
+          orderBy: { effectiveFrom: 'desc' },
+        })
+
+        const hasDeductions = record?.deductionsSource != null
+        const deductions = hasDeductions && record ? {
+          amBidrag: record.amBidragAmount ? toNum(record.amBidragAmount) : 0,
+          aSkat: record.aSkattAmount ? toNum(record.aSkattAmount) : 0,
+          pensionEmployee: record.pensionEmployeeAmount ? toNum(record.pensionEmployeeAmount) : 0,
+          pensionEmployer: record.pensionEmployerAmount ? toNum(record.pensionEmployerAmount) : 0,
+          atp: record.atpAmount ? toNum(record.atpAmount) : 0,
+          bruttoDeduction: record.bruttoDeductionAmount ? toNum(record.bruttoDeductionAmount) : 0,
+          otherDeductions: record.otherDeductions
+            ? (record.otherDeductions as { label: string; amount: number }[]).reduce((s, i) => s + i.amount, 0)
+            : 0,
+        } : null
+
+        return { job, gross, net, deductions }
       })
     )
 
@@ -195,7 +221,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const jobIncomeMap = new Map(jobIncomes.map(({ job, gross }) => [job.id, gross]))
     const jobNetIncomeMap = new Map(jobIncomes.map(({ job, net }) => [job.id, net]))
 
-    // Fetch all allocations for active jobs with ACTIVE/FUTURE budget years, including household name
+    // Determine layout mode: 3-column if any job has deduction data
+    const useGranularLayout = jobIncomes.some(({ deductions }) => deductions !== null)
+
+    // Fetch all allocations for active jobs with ACTIVE/FUTURE budget years
     const allocations = await prisma.householdIncomeAllocation.findMany({
       where: {
         jobId: { in: jobIds },
@@ -254,7 +283,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
         const totalExpenses = expenseRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
         const totalSavings = savingsRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
-        // Compute total household gross income to determine user's proportional share
         const allAllocGross = await Promise.all(
           allAllocations.map(async (alloc) => {
             const { gross } = await getJobMonthlyIncome(alloc.jobId, today)
@@ -273,9 +301,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       })
     )
 
-    // Accumulate per-job contributions to each aggregate bucket across all households.
-    // For each job's allocation to household H, its fraction of the user's H-bucket is:
-    //   frac = (gross_J * pct_Jh) / userAllocGross_H
+    // Accumulate per-job contributions to each aggregate bucket across all households
     const jobBuckets = new Map<string, { taxes: number; expenses: number; savings: number; surplus: number }>()
     for (const { job } of jobIncomes) {
       jobBuckets.set(job.id, { taxes: 0, expenses: 0, savings: 0, surplus: 0 })
@@ -296,7 +322,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
       }
     }
 
-    // Build d3-sankey nodes and links — 2-column: Jobs → aggregate buckets (no household pass-through)
     const JOB_COLOR_PALETTE = [
       '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
       '#ec4899', '#06b6d4', '#84cc16',
@@ -305,26 +330,93 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const nodes: { id: string; name: string; color?: string }[] = []
     const links: { source: string; target: string; value: number }[] = []
 
-    // Compute aggregate bucket totals to decide which right-side nodes to emit
-    const aggTaxes = householdDetails.reduce((s, h) => s + h.taxes, 0)
     const aggExpenses = householdDetails.reduce((s, h) => s + h.expenses, 0)
     const aggSavings = householdDetails.reduce((s, h) => s + h.savings, 0)
     const aggSurplus = householdDetails.reduce((s, h) => s + h.surplus, 0)
 
-    // Job nodes
+    // Job nodes (shared between both layout modes)
     jobIncomes.forEach(({ job, gross }, i) => {
       if (gross <= 0) return
       nodes.push({ id: `job_${job.id}`, name: job.name, color: JOB_COLOR_PALETTE[i % JOB_COLOR_PALETTE.length] })
     })
 
-    // Right-side aggregate nodes
+    // ── 3-column layout: Jobs → Deduction nodes + Net Pay → Expenses/Savings/Surplus ──
+    if (useGranularLayout) {
+      // Aggregate deduction totals across all jobs
+      const aggAmBidrag = jobIncomes.reduce((s, { deductions }) => s + (deductions?.amBidrag ?? 0), 0)
+      const aggASkat = jobIncomes.reduce((s, { deductions }) => s + (deductions?.aSkat ?? 0), 0)
+      const aggPensionEmployee = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployee ?? 0), 0)
+      const aggPensionEmployer = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployer ?? 0), 0)
+      const aggAtp = jobIncomes.reduce((s, { deductions }) => s + (deductions?.atp ?? 0), 0)
+      const aggBrutto = jobIncomes.reduce((s, { deductions }) => s + (deductions?.bruttoDeduction ?? 0), 0)
+      const aggOther = jobIncomes.reduce((s, { deductions }) => s + (deductions?.otherDeductions ?? 0), 0)
+      const totalNetPay = jobIncomes.reduce((s, { net }) => s + net, 0)
+
+      // Middle column: deduction nodes
+      if (aggBrutto > 0) nodes.push({ id: 'brutto_benefits', name: 'Brutto Benefits' })
+      if (aggAmBidrag > 0) nodes.push({ id: 'am_bidrag', name: 'AM-bidrag' })
+      if (aggASkat > 0) nodes.push({ id: 'a_skat', name: 'A-skat' })
+      if (aggPensionEmployee > 0) nodes.push({ id: 'pension_employee', name: 'Pension (Employee)' })
+      if (aggAtp > 0) nodes.push({ id: 'atp', name: 'ATP' })
+      if (aggOther > 0) nodes.push({ id: 'other_deductions', name: 'Other Deductions' })
+      nodes.push({ id: 'net_pay', name: 'Net Pay' })
+
+      // Right column
+      if (aggExpenses > 0) nodes.push({ id: 'expenses', name: 'Expenses' })
+      if (aggSavings > 0) nodes.push({ id: 'savings', name: 'Savings' })
+      if (aggSurplus > 0) nodes.push({ id: 'surplus', name: 'Surplus' })
+      if (unallocatedAmount > 0) nodes.push({ id: 'unallocated', name: 'Unallocated' })
+
+      // Links: job → deduction nodes + net_pay
+      for (const { job, gross, net, deductions } of jobIncomes) {
+        if (gross <= 0) continue
+        const jobId = `job_${job.id}`
+
+        if (deductions) {
+          if (deductions.bruttoDeduction > 0) links.push({ source: jobId, target: 'brutto_benefits', value: deductions.bruttoDeduction })
+          if (deductions.amBidrag > 0) links.push({ source: jobId, target: 'am_bidrag', value: deductions.amBidrag })
+          if (deductions.aSkat > 0) links.push({ source: jobId, target: 'a_skat', value: deductions.aSkat })
+          if (deductions.pensionEmployee > 0) links.push({ source: jobId, target: 'pension_employee', value: deductions.pensionEmployee })
+          if (deductions.atp > 0) links.push({ source: jobId, target: 'atp', value: deductions.atp })
+          if (deductions.otherDeductions > 0) links.push({ source: jobId, target: 'other_deductions', value: deductions.otherDeductions })
+        } else {
+          // Job without deduction data — its taxes component flows to a_skat as fallback
+          const bucket = jobBuckets.get(job.id)!
+          if (bucket.taxes > 0) links.push({ source: jobId, target: 'a_skat', value: bucket.taxes })
+        }
+        if (net > 0) links.push({ source: jobId, target: 'net_pay', value: net })
+      }
+
+      // Links: net_pay → right-side nodes
+      // Proportions from household budget, applied to total net pay
+      if (totalNetPay > 0) {
+        if (aggExpenses > 0) links.push({ source: 'net_pay', target: 'expenses', value: aggExpenses })
+        if (aggSavings > 0) links.push({ source: 'net_pay', target: 'savings', value: aggSavings })
+        if (aggSurplus > 0) links.push({ source: 'net_pay', target: 'surplus', value: aggSurplus })
+        // Unallocated: scale the gross unallocated proportionally to net
+        const unallocatedNet = unallocatedAmount * (totalNetPay / totalIncome)
+        if (unallocatedNet > 0) links.push({ source: 'net_pay', target: 'unallocated', value: unallocatedNet })
+      }
+
+      const totalEmployerPension = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployer ?? 0), 0)
+
+      return reply.send({
+        totalIncome: totalIncome.toFixed(2),
+        ...(totalEmployerPension > 0 && { employerPensionMonthly: totalEmployerPension.toFixed(2) }),
+        nodes,
+        links,
+      })
+    }
+
+    // ── 2-column layout (fallback): Jobs → Taxes + Expenses + Savings + Surplus ──
+    const aggTaxes = householdDetails.reduce((s, h) => s + h.taxes, 0)
+
     if (aggTaxes > 0) nodes.push({ id: 'taxes', name: 'Taxes' })
     if (aggExpenses > 0) nodes.push({ id: 'expenses', name: 'Expenses' })
     if (aggSavings > 0) nodes.push({ id: 'savings', name: 'Savings' })
     if (aggSurplus > 0) nodes.push({ id: 'surplus', name: 'Surplus' })
     if (unallocatedAmount > 0) nodes.push({ id: 'unallocated', name: 'Unallocated' })
 
-    // Links: job → each right-side bucket
     for (const { job, gross } of jobIncomes) {
       if (gross <= 0) continue
       const bucket = jobBuckets.get(job.id)!
@@ -333,7 +425,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
       if (bucket.savings > 0) links.push({ source: `job_${job.id}`, target: 'savings', value: bucket.savings })
       if (bucket.surplus > 0) links.push({ source: `job_${job.id}`, target: 'surplus', value: bucket.surplus })
 
-      // Unallocated portion of this job
       const jobAllocated = allocations
         .filter((a) => a.jobId === job.id)
         .reduce((s, a) => s + gross * parseFloat(a.allocationPct.toString()) / 100, 0)
