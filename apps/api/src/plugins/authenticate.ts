@@ -56,17 +56,3 @@ export async function requireAdmin(
   }
 }
 
-export async function requireBookkeeperOrAdmin(
-  request: FastifyRequest,
-  reply: FastifyReply
-): Promise<void> {
-  try {
-    await request.jwtVerify()
-  } catch {
-    return reply.status(401).send({ error: 'Unauthorized' })
-  }
-  if (!(await verifyUserExists(request, reply))) return
-  if (!['SYSTEM_ADMIN', 'BOOKKEEPER'].includes(request.user.role)) {
-    return reply.status(403).send({ error: 'Forbidden' })
-  }
-}

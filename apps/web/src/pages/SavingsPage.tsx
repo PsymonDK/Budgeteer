@@ -9,7 +9,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
-import { FREQUENCIES, type Frequency } from '../lib/constants'
+import { FREQUENCIES, type Frequency, type AccountType, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -34,8 +34,6 @@ interface HouseholdMember {
   user: { id: string; name: string }
 }
 
-type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
-
 interface AccountInfo {
   id: string
   name: string
@@ -47,11 +45,7 @@ interface AccountGroups {
   household: AccountInfo[]
 }
 
-const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  BANK: 'Bank',
-  CREDIT_CARD: 'Credit card',
-  MOBILE_PAY: 'Mobile pay',
-}
+
 
 interface SavingsEntry {
   id: string
@@ -105,17 +99,6 @@ const emptyForm = (baseCurrency: string): EntryForm => ({
   label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency,
   ownership: 'SHARED', ownedByUserId: null, categoryId: '', customSplits: [], accountId: null,
 })
-
-function calcMonthly(amount: number, freq: Frequency): number {
-  switch (freq) {
-    case 'WEEKLY':      return amount * 52 / 12
-    case 'FORTNIGHTLY': return amount * 26 / 12
-    case 'MONTHLY':     return amount
-    case 'QUARTERLY':   return amount / 3
-    case 'BIANNUAL':    return amount / 6
-    case 'ANNUAL':      return amount / 12
-  }
-}
 
 function yearLabel(y: BudgetYear) {
   if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`

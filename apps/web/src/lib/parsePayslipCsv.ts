@@ -1,4 +1,4 @@
-// ── Local type definitions (mirrors packages/shared/src/index.ts) ─────────────
+// ── Payslip type definitions ──────────────────────────────────────────────────
 
 export type PayslipLineType = 'benefit_in_kind' | 'pre_am' | 'am_bidrag' | 'a_skat' | 'post_tax'
 export type SankeyGroup = 'brutto_benefits' | 'am_bidrag' | 'a_skat' | 'pension_employee' | 'atp' | 'other_deductions'
