@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.55.0] - 2026-04-12 — Codebase cleanup & docs overhaul
+
+### Changed
+- **Removed `packages/shared` orphaned workspace** — had no `package.json`, was never imported by either app; types it defined are already present locally in `apps/web/src/lib/parsePayslipCsv.ts` and `apps/api/src/lib/taxCalcDK.ts`; removed `"packages/*"` from root workspace definition
+- **Consolidated frontend constants** — `AccountType`, `ACCOUNT_TYPE_LABELS`, and `calcMonthly` were each defined identically in 4 separate page files; extracted to `apps/web/src/lib/constants.ts`
+- **Removed duplicate `QueryClient`** in `apps/web/src/main.tsx` — `App.tsx` already creates its own `QueryClientProvider`; the outer one in `main.tsx` was never reached by any query
+- **Removed unused `requireBookkeeperOrAdmin` export** from `apps/api/src/plugins/authenticate.ts` — exported but never imported in any route
+- **Added `ANTHROPIC_API_KEY` to env templates** — `.env.example` and `deploy/.env.example` now document this optional key for AI payslip parsing
+- **Fully updated `docs/architecture.md`** — added Account, BudgetTransfer, ExpenseOccurrence, SavingsOccurrence, Automation/AutomationRun, TaxCardSettings entities; updated salary_records and monthly_income_overrides with payslipLines/deductionsSource fields; complete accurate API endpoint list reflecting all implemented routes
+- **Updated `CLAUDE.md`** — removed stale `packages/shared` reference; updated calculation helpers pointers; added tax card and payslip model notes; added rules to always update CHANGELOG and architecture docs on commits
+
+---
+
+## [0.54.0] - 2026-04-12 — Payslip import & manual entry (PAY-001)
+
+### Added
+- **"Import payslip" button per job in the Monthly Overrides tab** — opens a three-tab import dialog for each job
+- **CSV template import** (primary, privacy-preserving) — download a pre-filled template, enter your payslip numbers, upload; parsed entirely in the browser with no data sent externally; supports all Danish payslip formats via a `row_type` / `key_or_type` / `label` / `value_or_amount` structure
+- **Manual entry** — wizard-style form: year/month, employer, gross, net, employer pension, plus a line-by-line deduction builder with a friendly type picker (no need to know AM-bidrag taxonomy)
+- **AI-assisted parsing** (opt-in only) — explicit privacy consent checkbox required before any data leaves the system; accepts PDF, PNG, JPEG, or pasted text; requires `ANTHROPIC_API_KEY` on the server; returns 503 `AI_NOT_CONFIGURED` if not set; uses Claude Haiku for extraction
+- **Payslip review modal** — all three import paths end in a shared review step: edit employer, period, gross, net, add/remove/reclassify individual deduction lines, balance indicator (✓/⚠ ±1 DKK), reimbursements panel (km-penge, rejseafregning — info only), and AI notes callout; confirm writes a `MonthlyIncomeOverride` with `deductionsSource: PAYSLIP_IMPORT`
+- **`PAYSLIP_IMPORT` deductions source** — new value alongside `MANUAL` and `CALCULATED`; shown as a distinct green "Payslip imported" badge in the overrides table (vs. blue "Payslip entered" for manual)
+- **`PayslipExtraction` shared type** — added to `packages/shared/src/index.ts`; represents the structured output of any import path before confirmation
+- **`POST /jobs/:id/payslips/parse` API endpoint** — AI parse route; validates job ownership; returns `PayslipExtraction` JSON; no database writes (parse-and-return only)
+
+### Taxonomy (payslip line classification)
+Items correctly handled across all four analysed payslip formats (Lime/Lessor 2021, Cepheo Oct 2023, Cepheo Sep 2025, CGI Dec 2025):
+- `benefit_in_kind` — Fri telefon / Fritelefon value
+- `pre_am` — pension employee %, ATP, sundhedssikring brutto, brutto salary-sacrifice (phones/devices)
+- `am_bidrag` — AM-bidrag (8%)
+- `a_skat` — A-skat
+- `post_tax` — sundhedssikring netto, kantine, personaleforening, social club
+- Excluded from income/deductions: km-penge, rejseafregning (→ reimbursements), B-indkomst, feriepenge section, pension firmaandel (→ `pensionEmployerMonthly`)
+
+---
+
 ## [0.53.0] - 2026-04-11 — Payslip data structure rework + Danish tax calculation fix
 
 ### Changed

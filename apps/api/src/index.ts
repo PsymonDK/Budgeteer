@@ -23,6 +23,7 @@ import { profileRoutes } from './routes/profile'
 import { accountRoutes } from './routes/accounts'
 import { budgetTransferRoutes } from './routes/budgetTransfers'
 import { automationRoutes } from './routes/automations'
+import { payslipRoutes } from './routes/payslips'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
@@ -74,6 +75,7 @@ app.register(currencyRoutes)
 app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(automationRoutes)
+app.register(payslipRoutes)
 
 // Health check
 app.get('/health', async () => {

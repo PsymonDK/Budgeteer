@@ -1,4 +1,6 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useRef, type FormEvent, type ChangeEvent } from 'react'
+import { parsePayslipCsv } from '../lib/parsePayslipCsv'
+import type { PayslipExtraction, PayslipLine, PayslipLineType } from '../lib/parsePayslipCsv'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -339,6 +341,7 @@ interface TaxCardSectionProps {
   onShowForm: () => void
   onEditCard: (card: TaxCardSettings) => void
   onHideForm: () => void
+  onImportFromPayslip: () => void
   form: TaxCardForm
   onFormChange: (f: TaxCardForm) => void
   onSubmit: (e: FormEvent) => void
@@ -347,7 +350,7 @@ interface TaxCardSectionProps {
   fmt: (v: number | string) => string
 }
 
-function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, editingCardId, onShowForm, onEditCard, onHideForm, form, onFormChange, onSubmit, isPending, error, fmt }: TaxCardSectionProps) {
+function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, editingCardId, onShowForm, onEditCard, onHideForm, onImportFromPayslip, form, onFormChange, onSubmit, isPending, error, fmt }: TaxCardSectionProps) {
   const activeCard = cards[0] ?? null
   return (
     <div className="border-t border-gray-800 pt-4 mt-2">
@@ -390,10 +393,16 @@ function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, 
             </div>
           )}
           {!showForm ? (
-            <button type="button" onClick={onShowForm}
-              className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
-              + Add tax card record
-            </button>
+            <div className="flex gap-2">
+              <button type="button" onClick={onShowForm}
+                className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
+                + Add tax card record
+              </button>
+              <button type="button" onClick={onImportFromPayslip}
+                className="text-xs text-gray-400 hover:text-white border border-gray-600 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-colors">
+                Import from payslip
+              </button>
+            </div>
           ) : (
             <form onSubmit={onSubmit} className="bg-gray-800 rounded-lg p-4 space-y-3">
               <p className="text-xs font-medium text-gray-300 mb-2">{editingCardId ? 'Edit tax card settings' : 'New tax card settings'}</p>
@@ -474,6 +483,749 @@ function TaxCardSection({ jobId: _jobId, cards, isExpanded, onToggle, showForm, 
   )
 }
 
+// ── Payslip CSV template ──────────────────────────────────────────────────────
+
+const PAYSLIP_CSV_TEMPLATE = `# Payslip Import Template for Budgeteer
+# Fill in the values below and upload this file via the Import Payslip dialog.
+# Lines starting with # are comments and will be ignored.
+#
+# METADATA ROWS (row_type = meta):
+#   meta,year,,YYYY               (required)
+#   meta,month,,M                 (required, 1-12)
+#   meta,employer,,Company Name   (optional)
+#   meta,currency,,DKK            (optional, default: DKK)
+#   meta,gross,,AMOUNT            (required, total monthly salary excl. reimbursements)
+#   meta,net,,AMOUNT              (required, amount transferred to bank account)
+#   meta,pension_employer,,AMOUNT (optional, employer pension DKK/month — used to derive pension employer %)
+#
+# DEDUCTION LINE ROWS (row_type = line):
+#   Valid types:
+#   benefit_in_kind  Taxable benefit value added to gross (Fri telefon, phone/device value)
+#   pre_am           Deductions that reduce AM base: pension employee (DKK amount), ATP, health insurance brutto
+#   am_bidrag        AM-bidrag (8% of AM-indkomst)
+#   a_skat           A-skat (income tax)
+#   post_tax         After-tax deductions: canteen, union fees, health insurance netto
+#
+row_type,key_or_type,label,value_or_amount
+meta,year,,2025
+meta,month,,1
+meta,employer,,Your Employer A/S
+meta,currency,,DKK
+meta,gross,,50000.00
+meta,net,,30000.00
+meta,pension_employer,,0.00
+line,pre_am,Pension (employee),1500.00
+line,pre_am,ATP,99.00
+line,am_bidrag,"AM-bidrag (8%)",3880.00
+line,a_skat,A-skat,14521.00
+`
+
+const LINE_TYPE_LABELS: Record<PayslipLineType, string> = {
+  benefit_in_kind: 'Benefit in kind (brutto)',
+  pre_am: 'Pre-tax deduction (AM base)',
+  am_bidrag: 'AM-bidrag (8%)',
+  a_skat: 'A-skat',
+  post_tax: 'Post-tax deduction',
+}
+
+const LINE_TYPE_SANKEY: Record<PayslipLineType, string> = {
+  benefit_in_kind: 'brutto_benefits',
+  pre_am: 'other_deductions',
+  am_bidrag: 'am_bidrag',
+  a_skat: 'a_skat',
+  post_tax: 'other_deductions',
+}
+
+// ── PayslipImportModal ────────────────────────────────────────────────────────
+
+interface PayslipImportModalProps {
+  jobId: string
+  jobName: string
+  onClose: () => void
+  onExtracted: (data: PayslipExtraction) => void
+}
+
+function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: PayslipImportModalProps) {
+  const [tab, setTab] = useState<'csv' | 'manual' | 'ai'>('csv')
+  const [csvError, setCsvError] = useState('')
+  const csvInputRef = useRef<HTMLInputElement>(null)
+
+  // Manual entry state
+  const [manYear, setManYear] = useState(String(new Date().getFullYear()))
+  const [manMonth, setManMonth] = useState(String(new Date().getMonth() + 1))
+  const [manEmployer, setManEmployer] = useState('')
+  const [manGross, setManGross] = useState('')
+  const [manNet, setManNet] = useState('')
+  const [manPensionEmployer, setManPensionEmployer] = useState('')
+  const [manLines, setManLines] = useState<PayslipLine[]>([])
+  const [manError, setManError] = useState('')
+
+  // AI state
+  const [aiConsent, setAiConsent] = useState(false)
+  const [aiFile, setAiFile] = useState<File | null>(null)
+  const [aiText, setAiText] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
+
+  function downloadTemplate() {
+    const blob = new Blob([PAYSLIP_CSV_TEMPLATE], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'payslip-template.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function handleCsvFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setCsvError('')
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      try {
+        const extraction = parsePayslipCsv(text)
+        onExtracted(extraction)
+      } catch (err) {
+        setCsvError(err instanceof Error ? err.message : 'Failed to parse CSV')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  function handleManualReview() {
+    setManError('')
+    const year = parseInt(manYear)
+    const month = parseInt(manMonth)
+    const gross = parseFloat(manGross)
+    const net = parseFloat(manNet)
+    if (isNaN(year) || year < 2000) { setManError('Invalid year'); return }
+    if (isNaN(month) || month < 1 || month > 12) { setManError('Invalid month'); return }
+    if (isNaN(gross) || gross <= 0) { setManError('Invalid gross amount'); return }
+    if (isNaN(net) || net <= 0) { setManError('Invalid net amount'); return }
+    const pensionEmployer = parseFloat(manPensionEmployer)
+    onExtracted({
+      period: { year, month },
+      employerName: manEmployer,
+      grossSalary: gross,
+      netPay: net,
+      currency: 'DKK',
+      lines: manLines,
+      pensionEmployerMonthly: isNaN(pensionEmployer) ? undefined : pensionEmployer,
+      confidence: 'high',
+    })
+  }
+
+  function addManualLine() {
+    setManLines((prev) => [...prev, { label: '', amount: 0, type: 'post_tax', sankeyGroup: 'other_deductions', isCalculated: false }])
+  }
+
+  function updateManualLine(i: number, changes: Partial<PayslipLine>) {
+    setManLines((prev) => prev.map((l, idx) => {
+      if (idx !== i) return l
+      const updated = { ...l, ...changes }
+      if (changes.type) updated.sankeyGroup = LINE_TYPE_SANKEY[changes.type] as PayslipLine['sankeyGroup']
+      return updated
+    }))
+  }
+
+  async function handleAiParse() {
+    setAiLoading(true); setAiError('')
+    try {
+      let body: Record<string, string>
+      if (aiFile) {
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (e) => {
+            const dataUrl = e.target?.result as string
+            resolve(dataUrl.split(',')[1])
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(aiFile)
+        })
+        body = { fileBase64: base64, mimeType: aiFile.type }
+      } else if (aiText.trim()) {
+        body = { rawText: aiText.trim() }
+      } else {
+        setAiError('Please upload a file or paste payslip text'); setAiLoading(false); return
+      }
+      const response = await import('../api/client').then((m) => m.api.post<PayslipExtraction>(`/jobs/${jobId}/payslips/parse`, body))
+      onExtracted(response.data)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Parsing failed'
+      if (msg.includes('AI_NOT_CONFIGURED') || msg.includes('not enabled')) {
+        setAiError('AI parsing is not enabled on this server. Set ANTHROPIC_API_KEY in your server environment.')
+      } else {
+        setAiError(msg)
+      }
+    } finally {
+      setAiLoading(false)
+    }
+  }
+
+  const tabCls = (t: typeof tab) =>
+    `px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? 'border-amber-400 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'}`
+
+  return (
+    <Modal title={`Import payslip — ${jobName}`} onClose={onClose} size="lg">
+      <div className="flex border-b border-gray-800 mb-5 -mt-1">
+        <button className={tabCls('csv')} onClick={() => setTab('csv')}>CSV Template</button>
+        <button className={tabCls('manual')} onClick={() => setTab('manual')}>Enter Manually</button>
+        <button className={tabCls('ai')} onClick={() => setTab('ai')}>AI Parse</button>
+      </div>
+
+      {/* ── CSV tab ── */}
+      {tab === 'csv' && (
+        <div className="space-y-4">
+          <p className="text-sm text-gray-400">
+            Download the template, fill in your payslip numbers, then upload the completed file.
+            No data leaves your system — the file is parsed entirely in your browser.
+          </p>
+          <button onClick={downloadTemplate}
+            className="text-sm text-amber-400 hover:text-amber-300 border border-amber-700 px-4 py-2 rounded-lg transition-colors">
+            Download template (CSV)
+          </button>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Upload completed CSV</label>
+            <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile}
+              className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600 cursor-pointer" />
+          </div>
+          {csvError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{csvError}</div>}
+        </div>
+      )}
+
+      {/* ── Manual tab ── */}
+      {tab === 'manual' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+              <input type="number" value={manYear} onChange={(e) => setManYear(e.target.value)} min="2000" max="2100" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Month</label>
+              <select value={manMonth} onChange={(e) => setManMonth(e.target.value)} className={inputClass}>
+                {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Employer <span className="text-gray-600">(optional)</span></label>
+            <input type="text" value={manEmployer} onChange={(e) => setManEmployer(e.target.value)} placeholder="Company A/S" className={inputClass} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
+              <input type="number" value={manGross} onChange={(e) => setManGross(e.target.value)} min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Net pay (to bank)</label>
+              <input type="number" value={manNet} onChange={(e) => setManNet(e.target.value)} min="0.01" step="0.01" placeholder="0.00" className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Employer pension <span className="text-gray-600">(optional)</span></label>
+            <input type="number" value={manPensionEmployer} onChange={(e) => setManPensionEmployer(e.target.value)} min="0" step="0.01" placeholder="0.00" className={inputClass} />
+          </div>
+
+          {/* Deduction lines */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-gray-400">Deduction lines</label>
+              <button type="button" onClick={addManualLine} className="text-xs text-amber-400 hover:text-amber-300 transition-colors">+ Add line</button>
+            </div>
+            {manLines.length === 0 && <p className="text-xs text-gray-600">No lines added. Click &quot;+ Add line&quot; to start.</p>}
+            <div className="space-y-2">
+              {manLines.map((line, i) => (
+                <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
+                  <input type="text" value={line.label} onChange={(e) => updateManualLine(i, { label: e.target.value })}
+                    placeholder="Label" className={`${inputClass} text-xs`} />
+                  <select value={line.type} onChange={(e) => updateManualLine(i, { type: e.target.value as PayslipLineType })}
+                    className={`${inputClass} text-xs`}>
+                    {(Object.keys(LINE_TYPE_LABELS) as PayslipLineType[]).map((t) => (
+                      <option key={t} value={t}>{LINE_TYPE_LABELS[t]}</option>
+                    ))}
+                  </select>
+                  <input type="number" value={line.amount} onChange={(e) => updateManualLine(i, { amount: parseFloat(e.target.value) || 0 })}
+                    min="0" step="0.01" placeholder="0.00" className={`${inputClass} text-xs w-24`} />
+                  <button type="button" onClick={() => setManLines((prev) => prev.filter((_, idx) => idx !== i))}
+                    className="text-red-500 hover:text-red-400 text-xs px-1 transition-colors">✕</button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {manError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{manError}</div>}
+          <button type="button" onClick={handleManualReview}
+            className="w-full bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+            Review →
+          </button>
+        </div>
+      )}
+
+      {/* ── AI tab ── */}
+      {tab === 'ai' && (
+        <div className="space-y-4">
+          <div className="bg-amber-950/50 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-300">
+            <p className="font-medium mb-1">Privacy warning</p>
+            <p>This will send your payslip data to Anthropic's API. Your payslip contains personal financial information including salary, tax, and pension details. Only proceed if you consent to this data leaving your system.</p>
+          </div>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input type="checkbox" checked={aiConsent} onChange={(e) => setAiConsent(e.target.checked)}
+              className="mt-0.5 rounded border-gray-600 bg-gray-800 text-amber-400 focus:ring-amber-400" />
+            <span className="text-sm text-gray-300">I understand and consent to sending my payslip data to Anthropic's API</span>
+          </label>
+
+          {aiConsent && (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Upload payslip (PDF, PNG, or JPEG)</label>
+                <input type="file" accept=".pdf,image/png,image/jpeg" onChange={(e) => setAiFile(e.target.files?.[0] ?? null)}
+                  className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600 cursor-pointer" />
+              </div>
+              <div className="flex items-center gap-3 text-xs text-gray-500">
+                <div className="flex-1 h-px bg-gray-800" />
+                <span>or paste text</span>
+                <div className="flex-1 h-px bg-gray-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-400 mb-1">Paste payslip text</label>
+                <textarea value={aiText} onChange={(e) => setAiText(e.target.value)} rows={6}
+                  placeholder="Copy and paste the text content of your payslip here..."
+                  className={`${inputClass} resize-y text-xs font-mono`} />
+              </div>
+              {aiError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{aiError}</div>}
+              <button type="button" onClick={handleAiParse} disabled={aiLoading || (!aiFile && !aiText.trim())}
+                className="w-full bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
+                {aiLoading ? 'Parsing…' : 'Parse with AI →'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+// ── PayslipReviewModal ────────────────────────────────────────────────────────
+
+export interface TaxCardDraft {
+  effectiveFrom: string
+  traekprocent: number
+  personfradragMonthly: number
+  pensionEmployeePct?: number
+  pensionEmployerPct?: number
+  atpAmount?: number
+}
+
+interface PayslipReviewModalProps {
+  extraction: PayslipExtraction
+  jobName: string
+  onClose: () => void
+  onConfirm: (data: PayslipExtraction, taxCard?: TaxCardDraft) => void
+  isPending: boolean
+}
+
+function PayslipReviewModal({ extraction, jobName, onClose, onConfirm, isPending }: PayslipReviewModalProps) {
+  const [employer, setEmployer] = useState(extraction.employerName)
+  const [year, setYear] = useState(extraction.period.year)
+  const [month, setMonth] = useState(extraction.period.month)
+  const [gross, setGross] = useState(extraction.grossSalary)
+  const [net, setNet] = useState(extraction.netPay)
+  const [pensionEmployer, setPensionEmployer] = useState(extraction.pensionEmployerMonthly ?? 0)
+  const [lines, setLines] = useState<PayslipLine[]>(extraction.lines)
+
+  // Tax card panel
+  const [updateTaxCard, setUpdateTaxCard] = useState(false)
+  const [traekprocent, setTraekprocent] = useState('')
+  const [personfradrag, setPersonfradrag] = useState('3875')
+
+  const cashDeductions = lines
+    .filter((l) => l.type !== 'benefit_in_kind')
+    .reduce((s, l) => s + l.amount, 0)
+  const computedNet = Math.round((gross - cashDeductions) * 100) / 100
+  const netDiff = Math.abs(computedNet - net)
+  const netValid = netDiff <= 1
+
+  // Derive pension percentages from payslip amounts (4 dp for accuracy)
+  const round4 = (n: number) => Math.round(n * 10000) / 10000
+  const pensionEmployeePct = gross > 0
+    ? round4(lines.filter((l) => l.sankeyGroup === 'pension_employee').reduce((s, l) => s + l.amount, 0) / gross * 100)
+    : 0
+  const pensionEmployerPct = gross > 0 && pensionEmployer > 0
+    ? round4(pensionEmployer / gross * 100)
+    : 0
+  const atpLine = lines.find((l) => l.sankeyGroup === 'atp')
+
+  // Editable tax card derived fields (pre-filled, user can override)
+  const [tcPensionEmployeePct, setTcPensionEmployeePct] = useState(() => pensionEmployeePct > 0 ? String(pensionEmployeePct) : '')
+  const [tcPensionEmployerPct, setTcPensionEmployerPct] = useState(() => pensionEmployerPct > 0 ? String(pensionEmployerPct) : '')
+  const [tcAtpAmount, setTcAtpAmount] = useState(() => atpLine ? String(atpLine.amount) : '')
+
+  // Re-sync derived fields when gross or lines change (only if user hasn't customised)
+  const effectiveFrom = `${year}-${String(month).padStart(2, '0')}-01`
+
+  function updateLine(i: number, changes: Partial<PayslipLine>) {
+    setLines((prev) => prev.map((l, idx) => {
+      if (idx !== i) return l
+      const updated = { ...l, ...changes }
+      if (changes.type) updated.sankeyGroup = LINE_TYPE_SANKEY[changes.type] as PayslipLine['sankeyGroup']
+      return updated
+    }))
+  }
+
+  function deleteLine(i: number) {
+    setLines((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, { label: '', amount: 0, type: 'post_tax', sankeyGroup: 'other_deductions', isCalculated: false }])
+  }
+
+  function handleConfirm() {
+    const extractionData: PayslipExtraction = {
+      ...extraction,
+      period: { year, month },
+      employerName: employer,
+      grossSalary: gross,
+      netPay: net,
+      lines,
+      pensionEmployerMonthly: pensionEmployer > 0 ? pensionEmployer : undefined,
+    }
+
+    let taxCard: TaxCardDraft | undefined
+    if (updateTaxCard && traekprocent) {
+      taxCard = {
+        effectiveFrom,
+        traekprocent: parseFloat(traekprocent),
+        personfradragMonthly: parseFloat(personfradrag) || 3875,
+        pensionEmployeePct: tcPensionEmployeePct ? parseFloat(tcPensionEmployeePct) : undefined,
+        pensionEmployerPct: tcPensionEmployerPct ? parseFloat(tcPensionEmployerPct) : undefined,
+        atpAmount: tcAtpAmount ? parseFloat(tcAtpAmount) : undefined,
+      }
+    }
+
+    onConfirm(extractionData, taxCard)
+  }
+
+  return (
+    <Modal title={`Review payslip — ${jobName}`} onClose={onClose} size="lg">
+      <div className="space-y-5">
+        {/* Period & employer */}
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
+            <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || year)}
+              min="2000" max="2100" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Month</label>
+            <select value={month} onChange={(e) => setMonth(parseInt(e.target.value))} className={inputClass}>
+              {MONTHS.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Employer
+              {extraction.confidence !== 'high' && (
+                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${extraction.confidence === 'medium' ? 'bg-yellow-900/50 text-yellow-300' : 'bg-red-900/50 text-red-300'}`}>
+                  {extraction.confidence} confidence
+                </span>
+              )}
+            </label>
+            <input type="text" value={employer} onChange={(e) => setEmployer(e.target.value)} className={inputClass} />
+          </div>
+        </div>
+
+        {/* Gross / net */}
+        <div className="grid grid-cols-3 gap-3 items-end">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
+            <input type="number" value={gross} onChange={(e) => setGross(parseFloat(e.target.value) || 0)}
+              min="0.01" step="0.01" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Net pay (to bank)
+              <span className={`ml-2 text-xs ${netValid ? 'text-green-400' : 'text-amber-400'}`}>
+                {netValid ? '✓ balanced' : `⚠ off by ${netDiff.toFixed(2)}`}
+              </span>
+            </label>
+            <input type="number" value={net} onChange={(e) => setNet(parseFloat(e.target.value) || 0)}
+              min="0.01" step="0.01" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Employer pension / month</label>
+            <input type="number" value={pensionEmployer} onChange={(e) => setPensionEmployer(parseFloat(e.target.value) || 0)}
+              min="0" step="0.01" className={inputClass} />
+          </div>
+        </div>
+
+        {/* Deduction lines */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-xs font-medium text-gray-400">Deduction lines</label>
+            <button type="button" onClick={addLine} className="text-xs text-amber-400 hover:text-amber-300 transition-colors">+ Add line</button>
+          </div>
+          {lines.length === 0 && <p className="text-xs text-gray-600">No deduction lines.</p>}
+          <div className="space-y-2">
+            {lines.map((line, i) => (
+              <div key={i} className="grid grid-cols-[1fr_1fr_auto_auto] gap-2 items-center">
+                <input type="text" value={line.label} onChange={(e) => updateLine(i, { label: e.target.value })}
+                  placeholder="Label" className={`${inputClass} text-xs`} />
+                <select value={line.type} onChange={(e) => updateLine(i, { type: e.target.value as PayslipLineType })}
+                  className={`${inputClass} text-xs`}>
+                  {(Object.keys(LINE_TYPE_LABELS) as PayslipLineType[]).map((t) => (
+                    <option key={t} value={t}>{LINE_TYPE_LABELS[t]}</option>
+                  ))}
+                </select>
+                <input type="number" value={line.amount} onChange={(e) => updateLine(i, { amount: parseFloat(e.target.value) || 0 })}
+                  min="0" step="0.01" className={`${inputClass} text-xs w-24`} />
+                <button type="button" onClick={() => deleteLine(i)}
+                  className="text-red-500 hover:text-red-400 text-xs px-1 transition-colors">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Reimbursements (info only) */}
+        {(extraction.reimbursements?.length ?? 0) > 0 && (
+          <details className="text-xs text-gray-500">
+            <summary className="cursor-pointer hover:text-gray-400 transition-colors">
+              Reimbursements (informational only — not included in income/deductions)
+            </summary>
+            <ul className="mt-2 space-y-1 pl-3">
+              {extraction.reimbursements!.map((r: { label: string; amount: number }, i: number) => (
+                <li key={i}>{r.label}: {r.amount.toLocaleString('en', { minimumFractionDigits: 2 })}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {/* AI notes */}
+        {(extraction.notes?.length ?? 0) > 0 && (
+          <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-4 py-3 text-xs text-gray-400 space-y-1">
+            <p className="font-medium text-gray-300">AI notes</p>
+            {extraction.notes!.map((note: string, i: number) => <p key={i}>{note}</p>)}
+          </div>
+        )}
+
+        {/* Tax card settings (optional) */}
+        <div className="border border-gray-700 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setUpdateTaxCard((v) => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 text-sm text-gray-300 hover:bg-gray-800/40 transition-colors"
+          >
+            <span className="font-medium">Also update tax card settings for future calculations</span>
+            <span className="text-xs text-gray-500">{updateTaxCard ? '▲' : '▼'}</span>
+          </button>
+
+          {updateTaxCard && (
+            <div className="px-4 pb-4 pt-1 space-y-3 border-t border-gray-700 bg-gray-900/30">
+              <p className="text-xs text-gray-500 mt-1">
+                Pension %s are derived from this payslip. Trækprocent must be entered manually (it is on your skattekort, not on the payslip).
+              </p>
+
+              {/* Pension % — derived, editable */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Pension employee % <span className="text-gray-600 font-normal">(derived from payslip)</span>
+                  </label>
+                  <input type="number" value={tcPensionEmployeePct}
+                    onChange={(e) => setTcPensionEmployeePct(e.target.value)}
+                    min="0" max="100" step="0.01" placeholder="e.g. 3.00" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Pension employer % <span className="text-gray-600 font-normal">(derived from employer pension)</span>
+                  </label>
+                  <input type="number" value={tcPensionEmployerPct}
+                    onChange={(e) => setTcPensionEmployerPct(e.target.value)}
+                    min="0" max="100" step="0.01" placeholder="e.g. 10.00" className={inputClass} />
+                </div>
+              </div>
+
+              {/* ATP */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    ATP / month <span className="text-gray-600 font-normal">(derived from payslip)</span>
+                  </label>
+                  <input type="number" value={tcAtpAmount}
+                    onChange={(e) => setTcAtpAmount(e.target.value)}
+                    min="0" step="0.01" placeholder="e.g. 99.00" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
+                  <input type="date" value={effectiveFrom} readOnly
+                    className={`${inputClass} text-gray-400 cursor-default`} />
+                </div>
+              </div>
+
+              {/* Trækprocent & personfradrag — must be entered manually */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">
+                    Trækprocent % <span className="text-red-400">*</span>
+                  </label>
+                  <input type="number" value={traekprocent} onChange={(e) => setTraekprocent(e.target.value)}
+                    min="0" max="100" step="0.01" placeholder="e.g. 38.00" className={inputClass} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Månedsfradrag (DKK)</label>
+                  <input type="number" value={personfradrag} onChange={(e) => setPersonfradrag(e.target.value)}
+                    min="0" step="0.01" className={inputClass} />
+                </div>
+              </div>
+
+              {updateTaxCard && !traekprocent && (
+                <p className="text-xs text-amber-400">Enter trækprocent to enable tax card save.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={handleConfirm} disabled={isPending || (updateTaxCard && !traekprocent)}
+            className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+            {isPending ? 'Saving…' : updateTaxCard && traekprocent ? 'Confirm, Save & Update Tax Card' : 'Confirm & Save'}
+          </button>
+          <button type="button" onClick={onClose}
+            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ── TaxCardFromPayslipModal ───────────────────────────────────────────────────
+
+interface TaxCardFromPayslipModalProps {
+  extraction: PayslipExtraction
+  jobName: string
+  onClose: () => void
+  onConfirm: (taxCard: TaxCardDraft) => void
+  isPending: boolean
+}
+
+function TaxCardFromPayslipModal({ extraction, jobName, onClose, onConfirm, isPending }: TaxCardFromPayslipModalProps) {
+  const round4 = (n: number) => Math.round(n * 10000) / 10000
+  const gross = extraction.grossSalary
+  const pensionEmployer = extraction.pensionEmployerMonthly ?? 0
+
+  const derivedEmployeePct = gross > 0
+    ? round4(extraction.lines.filter((l) => l.sankeyGroup === 'pension_employee').reduce((s, l) => s + l.amount, 0) / gross * 100)
+    : 0
+  const derivedEmployerPct = gross > 0 && pensionEmployer > 0
+    ? round4(pensionEmployer / gross * 100)
+    : 0
+  const derivedAtp = extraction.lines.find((l) => l.sankeyGroup === 'atp')?.amount
+
+  const [traekprocent, setTraekprocent] = useState('')
+  const [personfradrag, setPersonfradrag] = useState('3875')
+  const [pensionEmployeePct, setPensionEmployeePct] = useState(() => derivedEmployeePct > 0 ? String(derivedEmployeePct) : '')
+  const [pensionEmployerPct, setPensionEmployerPct] = useState(() => derivedEmployerPct > 0 ? String(derivedEmployerPct) : '')
+  const [atpAmount, setAtpAmount] = useState(() => derivedAtp != null ? String(derivedAtp) : '')
+  const effectiveFrom = `${extraction.period.year}-${String(extraction.period.month).padStart(2, '0')}-01`
+
+  function handleConfirm() {
+    if (!traekprocent) return
+    onConfirm({
+      effectiveFrom,
+      traekprocent: parseFloat(traekprocent),
+      personfradragMonthly: parseFloat(personfradrag) || 3875,
+      pensionEmployeePct: pensionEmployeePct ? parseFloat(pensionEmployeePct) : undefined,
+      pensionEmployerPct: pensionEmployerPct ? parseFloat(pensionEmployerPct) : undefined,
+      atpAmount: atpAmount ? parseFloat(atpAmount) : undefined,
+    })
+  }
+
+  return (
+    <Modal title={`Tax card from payslip — ${jobName}`} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-xs text-gray-400">
+          Pension %s are derived from the payslip amounts. Review and adjust if needed.
+          Trækprocent and personfradrag are on your <strong className="text-gray-300">skattekort</strong> — enter them manually.
+        </p>
+
+        {/* Source info */}
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-400">
+          Source: <span className="text-gray-300">{extraction.employerName || 'Unknown employer'}</span>
+          {' · '}{new Date(0, extraction.period.month - 1).toLocaleString('en', { month: 'long' })} {extraction.period.year}
+          {' · '}Gross {extraction.grossSalary.toLocaleString('en', { minimumFractionDigits: 2 })} {extraction.currency}
+        </div>
+
+        {/* Pension % — derived, editable */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Pension employee % <span className="text-gray-600 font-normal">(derived)</span>
+            </label>
+            <input type="number" value={pensionEmployeePct} onChange={(e) => setPensionEmployeePct(e.target.value)}
+              min="0" max="100" step="0.01" placeholder="e.g. 3.00" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Pension employer % <span className="text-gray-600 font-normal">(derived)</span>
+            </label>
+            <input type="number" value={pensionEmployerPct} onChange={(e) => setPensionEmployerPct(e.target.value)}
+              min="0" max="100" step="0.01" placeholder="e.g. 10.00" className={inputClass} />
+          </div>
+        </div>
+
+        {/* ATP */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              ATP / month <span className="text-gray-600 font-normal">(derived)</span>
+            </label>
+            <input type="number" value={atpAmount} onChange={(e) => setAtpAmount(e.target.value)}
+              min="0" step="0.01" placeholder="e.g. 99.00" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>
+            <input type="date" value={effectiveFrom} readOnly className={`${inputClass} text-gray-400 cursor-default`} />
+          </div>
+        </div>
+
+        {/* Trækprocent & personfradrag — manual */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Trækprocent % <span className="text-red-400">*</span>
+            </label>
+            <input type="number" value={traekprocent} onChange={(e) => setTraekprocent(e.target.value)}
+              min="0" max="100" step="0.01" placeholder="e.g. 38.00" className={inputClass} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Månedsfradrag (DKK)</label>
+            <input type="number" value={personfradrag} onChange={(e) => setPersonfradrag(e.target.value)}
+              min="0" step="0.01" className={inputClass} />
+          </div>
+        </div>
+
+        {!traekprocent && (
+          <p className="text-xs text-amber-400">Trækprocent is required.</p>
+        )}
+
+        <div className="flex gap-3 pt-1">
+          <button type="button" onClick={handleConfirm} disabled={isPending || !traekprocent}
+            className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+            {isPending ? 'Saving…' : 'Save Tax Card'}
+          </button>
+          <button type="button" onClick={onClose}
+            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function IncomePage() {
@@ -531,6 +1283,15 @@ export function IncomePage() {
   const [confirmCloseJob, setConfirmCloseJob] = useState<Job | null>(null)
   const [confirmDeleteBonus, setConfirmDeleteBonus] = useState<{ jobId: string; bonusId: string } | null>(null)
   const [confirmDeleteOverride, setConfirmDeleteOverride] = useState<{ jobId: string; overrideId: string } | null>(null)
+
+  // Payslip import
+  const [payslipImportJobId, setPayslipImportJobId] = useState<string | null>(null)
+  const [payslipReviewData, setPayslipReviewData] = useState<PayslipExtraction | null>(null)
+  const [payslipReviewJobId, setPayslipReviewJobId] = useState<string | null>(null)
+
+  // Tax card from payslip (separate flow — no override, taxcard only)
+  const [taxCardPayslipJobId, setTaxCardPayslipJobId] = useState<string | null>(null)
+  const [taxCardPayslipData, setTaxCardPayslipData] = useState<PayslipExtraction | null>(null)
 
   // History chart
   const [histFrom, setHistFrom] = useState(() => {
@@ -752,12 +1513,20 @@ export function IncomePage() {
     }
   }
 
+  function invalidateAfterTaxCardChange() {
+    queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+    queryClient.invalidateQueries({ queryKey: ['salary', taxCardJobId] })
+    queryClient.invalidateQueries({ queryKey: ['overrides', taxCardJobId] })
+    queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+    queryClient.invalidateQueries({ queryKey: ['jobs'] })
+  }
+
   const createTaxCardMutation = useMutation({
     mutationFn: (data: TaxCardForm) => api.post(`/jobs/${taxCardJobId}/taxcard`, buildTaxCardPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      invalidateAfterTaxCardChange()
       setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
-      toast.success('Tax card settings saved')
+      toast.success('Tax card saved — salary records recalculated')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
@@ -765,11 +1534,29 @@ export function IncomePage() {
   const updateTaxCardMutation = useMutation({
     mutationFn: (data: TaxCardForm) => api.put(`/jobs/${taxCardJobId}/taxcard/${editingTaxCardId}`, buildTaxCardPayload(data)),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      invalidateAfterTaxCardChange()
       setEditingTaxCardId(null); setShowTaxCardForm(false); setTaxCardForm(emptyTaxCard()); setTaxCardError('')
-      toast.success('Tax card updated')
+      toast.success('Tax card updated — salary records recalculated')
     },
     onError: (err) => { if (axios.isAxiosError(err)) setTaxCardError((err.response?.data as { error?: string })?.error ?? 'Failed to update') },
+  })
+
+  const taxCardFromPayslipMutation = useMutation({
+    mutationFn: ({ jobId, taxCard }: { jobId: string; taxCard: TaxCardDraft }) =>
+      api.post(`/jobs/${jobId}/taxcard`, taxCard),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+      queryClient.invalidateQueries({ queryKey: ['salary', taxCardPayslipJobId] })
+      queryClient.invalidateQueries({ queryKey: ['overrides', taxCardPayslipJobId] })
+      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      setTaxCardPayslipData(null)
+      setTaxCardPayslipJobId(null)
+      toast.success('Tax card updated from payslip')
+    },
+    onError: (err) => {
+      if (axios.isAxiosError(err)) toast.error((err.response?.data as { error?: string })?.error ?? 'Failed to save tax card')
+    },
   })
 
   const deleteOverrideMutation = useMutation({
@@ -780,6 +1567,51 @@ export function IncomePage() {
       toast.success('Override deleted')
     },
   })
+
+  const payslipConfirmMutation = useMutation({
+    mutationFn: ({ jobId, extraction }: { jobId: string; extraction: PayslipExtraction }) =>
+      api.post(`/jobs/${jobId}/overrides`, {
+        year: extraction.period.year,
+        month: extraction.period.month,
+        grossAmount: extraction.grossSalary,
+        netAmount: extraction.netPay,
+        note: `Imported from payslip${extraction.employerName ? ` — ${extraction.employerName}` : ''}`,
+        payslipLines: extraction.lines,
+        ...(extraction.pensionEmployerMonthly ? { pensionEmployerMonthly: extraction.pensionEmployerMonthly } : {}),
+        deductionsSource: 'PAYSLIP_IMPORT',
+      }),
+    onError: (err) => {
+      if (axios.isAxiosError(err)) toast.error((err.response?.data as { error?: string })?.error ?? 'Failed to import payslip')
+    },
+  })
+
+  async function handlePayslipConfirm(extraction: PayslipExtraction, taxCard?: TaxCardDraft) {
+    const jobId = payslipReviewJobId!
+    try {
+      await payslipConfirmMutation.mutateAsync({ jobId, extraction })
+      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+
+      if (taxCard) {
+        try {
+          await api.post(`/jobs/${jobId}/taxcard`, taxCard)
+          queryClient.invalidateQueries({ queryKey: ['taxcards'] })
+          queryClient.invalidateQueries({ queryKey: ['salary', jobId] })
+          queryClient.invalidateQueries({ queryKey: ['overrides', jobId] })
+          queryClient.invalidateQueries({ queryKey: ['jobs'] })
+          toast.success('Payslip imported and tax card updated')
+        } catch (taxErr) {
+          toast.warning('Payslip saved, but tax card update failed')
+        }
+      } else {
+        toast.success('Payslip imported')
+      }
+
+      setPayslipReviewData(null)
+      setPayslipReviewJobId(null)
+    } catch {
+      // error toast handled by mutation's onError
+    }
+  }
 
   const createBonusMutation = useMutation({
     mutationFn: (data: BonusForm) =>
@@ -1096,6 +1928,10 @@ export function IncomePage() {
                             })
                           }}
                           onHideForm={() => { setShowTaxCardForm(false); setEditingTaxCardId(null) }}
+                          onImportFromPayslip={() => {
+                            setTaxCardPayslipJobId(job.id)
+                            setTaxCardJobId(job.id)
+                          }}
                           form={taxCardForm}
                           onFormChange={setTaxCardForm}
                           onSubmit={(e) => {
@@ -1187,10 +2023,16 @@ export function IncomePage() {
                             <h3 className="text-white font-medium">{job.name}</h3>
                             {job.employer && <p className="text-gray-500 text-xs">{job.employer}</p>}
                           </div>
-                          <button onClick={() => { setOverrideJobId(job.id); setOverrideForm(emptyOverride); setOverrideError('') }}
-                            className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
-                            + Add override
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => { setPayslipImportJobId(job.id) }}
+                              className="text-xs text-gray-400 hover:text-white border border-gray-700 px-3 py-1.5 rounded-lg transition-colors">
+                              Import payslip
+                            </button>
+                            <button onClick={() => { setOverrideJobId(job.id); setOverrideForm(emptyOverride); setOverrideError('') }}
+                              className="text-xs text-amber-400 hover:text-amber-300 border border-amber-700 px-3 py-1.5 rounded-lg transition-colors">
+                              + Add override
+                            </button>
+                          </div>
                         </div>
 
                         {overrides.length === 0 ? (
@@ -1214,7 +2056,13 @@ export function IncomePage() {
                                     <div className="flex items-center gap-2">
                                       <span>{MONTHS[o.month - 1]} {o.year}</span>
                                       {o.deductionsSource && (
-                                        <span className="text-xs bg-blue-900/50 text-blue-300 border border-blue-700 px-1.5 py-0.5 rounded">Payslip entered</span>
+                                        <span className={`text-xs px-1.5 py-0.5 rounded border ${
+                                          o.deductionsSource === 'PAYSLIP_IMPORT'
+                                            ? 'bg-green-900/50 text-green-300 border-green-700'
+                                            : 'bg-blue-900/50 text-blue-300 border-blue-700'
+                                        }`}>
+                                          {o.deductionsSource === 'PAYSLIP_IMPORT' ? 'Payslip imported' : 'Payslip entered'}
+                                        </span>
                                       )}
                                     </div>
                                   </td>
@@ -1668,6 +2516,52 @@ export function IncomePage() {
       )}
 
       {/* ── Confirm delete override ─────────────────────────────────────────── */}
+      {/* ── Payslip Import modal ───────────────────────────────────────────── */}
+      {payslipImportJobId && (
+        <PayslipImportModal
+          jobId={payslipImportJobId}
+          jobName={jobs.find((j) => j.id === payslipImportJobId)?.name ?? ''}
+          onClose={() => setPayslipImportJobId(null)}
+          onExtracted={(data) => {
+            setPayslipReviewData(data)
+            setPayslipReviewJobId(payslipImportJobId)
+            setPayslipImportJobId(null)
+          }}
+        />
+      )}
+
+      {/* ── Payslip Review modal ───────────────────────────────────────────── */}
+      {payslipReviewData && payslipReviewJobId && (
+        <PayslipReviewModal
+          extraction={payslipReviewData}
+          jobName={jobs.find((j) => j.id === payslipReviewJobId)?.name ?? ''}
+          onClose={() => { setPayslipReviewData(null); setPayslipReviewJobId(null) }}
+          onConfirm={handlePayslipConfirm}
+          isPending={payslipConfirmMutation.isPending}
+        />
+      )}
+
+      {/* ── Tax card import: payslip picker ───────────────────────────────── */}
+      {taxCardPayslipJobId && !taxCardPayslipData && (
+        <PayslipImportModal
+          jobId={taxCardPayslipJobId}
+          jobName={jobs.find((j) => j.id === taxCardPayslipJobId)?.name ?? ''}
+          onClose={() => setTaxCardPayslipJobId(null)}
+          onExtracted={(data) => setTaxCardPayslipData(data)}
+        />
+      )}
+
+      {/* ── Tax card import: review & save ────────────────────────────────── */}
+      {taxCardPayslipData && taxCardPayslipJobId && (
+        <TaxCardFromPayslipModal
+          extraction={taxCardPayslipData}
+          jobName={jobs.find((j) => j.id === taxCardPayslipJobId)?.name ?? ''}
+          onClose={() => { setTaxCardPayslipData(null); setTaxCardPayslipJobId(null) }}
+          onConfirm={(taxCard) => taxCardFromPayslipMutation.mutate({ jobId: taxCardPayslipJobId, taxCard })}
+          isPending={taxCardFromPayslipMutation.isPending}
+        />
+      )}
+
       {confirmDeleteOverride && (
         <Modal title="Delete override" onClose={() => setConfirmDeleteOverride(null)} size="sm">
           <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>

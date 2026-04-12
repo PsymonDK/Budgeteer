@@ -11,6 +11,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { Modal } from '../components/Modal'
 import { inputClass } from '../lib/styles'
+import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
 
 const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
 
@@ -50,20 +51,12 @@ interface IncomeSummary {
   overAllocated: boolean
 }
 
-type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
-
 interface Account {
   id: string
   name: string
   type: AccountType
   isActive: boolean
   _count: { expenses: number; savingsEntries: number }
-}
-
-const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  BANK: 'Bank',
-  CREDIT_CARD: 'Credit card',
-  MOBILE_PAY: 'Mobile pay',
 }
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────

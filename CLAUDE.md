@@ -5,8 +5,7 @@ React + TypeScript frontend, Fastify + TypeScript + Prisma + PostgreSQL backend,
 
 ## Stack
 - Frontend: `apps/web` — React 18, Vite, Tailwind CSS, Lucide React (icons), Sonner (toasts), TanStack Query, React Router v6, Recharts
-- Backend: `apps/api` — Fastify, Prisma ORM, JWT auth, node-cron (currency sync)
-- Shared: `packages/shared` — calculation helpers, Zod schemas, shared types
+- Backend: `apps/api` — Fastify, Prisma ORM, JWT auth, node-cron (currency sync), @anthropic-ai/sdk (payslip parsing)
 - Database: PostgreSQL via Docker or bare metal
 - Schema: `prisma/schema.prisma`
 
@@ -28,7 +27,7 @@ npm run db:seed          # seed development data
 - ALL business logic calculations are done server-side, never in React components
 - `monthlyEquivalent` is always calculated on save and stored in the database — never recalculated at render time
 - Currency conversion is calculated server-side using stored rates
-- The `packages/shared` calculation helpers may be used on the frontend ONLY for live previews in forms before submission
+- The helpers in `apps/web/src/lib/constants.ts` (`calcMonthly`) and `apps/web/src/pages/IncomePage.tsx` (`calcDanishDeductions`) may be used on the frontend ONLY for live previews in forms before submission
 - Dashboard totals come from pre-aggregated API responses, not client-side math
 - Income history chart data is aggregated server-side — the endpoint returns ready-to-display time series data
 
@@ -45,6 +44,8 @@ npm run db:seed          # seed development data
 - Monthly override takes precedence over default salary for that specific month
 - Bonuses are user-classified: excluded from budget, one-off, or spread annually (÷12)
 - Income allocation to households is a % per job per budget year
+- TaxCardSettings (Danish): traekprocent, personfradrag, pension %, ATP, brutto items — server-side deduction calculation (`apps/api/src/lib/taxCalcDK.ts`); frontend mirrors the calculation for live preview in IncomePage
+- Payslip import: CSV template or AI-assisted parsing via `POST /jobs/:id/payslips/parse` (requires `ANTHROPIC_API_KEY`); parsed data pre-fills the salary/override form
 
 ## Data conventions
 - All IDs use `cuid()`
@@ -65,7 +66,7 @@ npm run db:seed          # seed development data
 ## Frontend conventions
 - Never put business logic or calculations in React components
 - Server state managed with TanStack Query — no manual fetch calls
-- Forms use controlled components with live preview via shared calculation helpers
+- Forms use controlled components with live preview via helpers in `apps/web/src/lib/constants.ts`
 - All amounts displayed in base currency unless viewing a foreign currency expense detail
 - Warnings (over-allocation, expenses > income, no savings) are soft — never block user actions
 
@@ -74,6 +75,8 @@ npm run db:seed          # seed development data
 - Reference issues in commits: `feat: user login (#12)`
 - Branch naming: `feature/AUTH-001-user-login`, `fix/EXP-003-delete-expense`
 - Sprints tracked as GitHub Milestones
+- Always update `CHANGELOG.md` when committing — add an entry under the current version describing what changed and why
+- Always update `docs/architecture.md` when making architectural changes — new entities, new/removed API endpoints, schema changes, or stack changes
 
 ## Docs
 - Architecture & data model: docs/architecture.md

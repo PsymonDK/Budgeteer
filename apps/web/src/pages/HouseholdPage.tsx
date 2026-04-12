@@ -9,6 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { inputClass } from '../lib/styles'
+import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
 
 interface Member {
   id: string
@@ -38,8 +39,6 @@ interface UserOption {
   isProxy?: boolean
 }
 
-type AccountType = 'BANK' | 'CREDIT_CARD' | 'MOBILE_PAY'
-
 interface HouseholdAccount {
   id: string
   name: string
@@ -53,11 +52,7 @@ interface AccountForm {
   type: AccountType
 }
 
-const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  BANK: 'Bank',
-  CREDIT_CARD: 'Credit card',
-  MOBILE_PAY: 'Mobile pay',
-}
+
 
 export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
