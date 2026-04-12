@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.55.1] - 2026-04-12 — README overhaul
+
+### Changed
+- **Rewrote `README.md`** — added payslip import and Danish tax calculation to the features list; added a full configuration reference table for all env vars; added an "AI payslip parsing" section explaining the `ANTHROPIC_API_KEY` optional feature and its privacy model; fixed incorrect `APP_URL` reference in the reverse proxy section (correct var is `PUBLIC_URL`); expanded the stack table to include all frontend and backend libraries; updated development section to mention `ANTHROPIC_API_KEY`
+
+---
+
 ## [0.55.0] - 2026-04-12 — Codebase cleanup & docs overhaul
 
 ### Changed
