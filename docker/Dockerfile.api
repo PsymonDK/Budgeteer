@@ -7,7 +7,6 @@ RUN apk add --no-cache openssl
 # Install dependencies (includes devDeps — ts-node needed for seed)
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
-COPY packages/shared/package*.json ./packages/shared/
 RUN npm install
 
 # Copy source
@@ -15,7 +14,6 @@ COPY tsconfig.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma
 COPY apps/api ./apps/api
-COPY packages/shared ./packages/shared
 
 # Generate Prisma client and build API
 RUN npm run db:generate
