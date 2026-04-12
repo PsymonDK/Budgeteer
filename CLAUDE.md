@@ -77,6 +77,7 @@ npm run db:seed          # seed development data
 - Sprints tracked as GitHub Milestones
 - Always update `CHANGELOG.md` when committing — add an entry under the current version describing what changed and why
 - Always update `docs/architecture.md` when making architectural changes — new entities, new/removed API endpoints, schema changes, or stack changes
+- When adding or removing directories from the project structure, always update `docker/Dockerfile.api` and `docker/Dockerfile.web` — both Dockerfiles copy source explicitly and must stay in sync with the repo layout
 
 ## Docs
 - Architecture & data model: docs/architecture.md
