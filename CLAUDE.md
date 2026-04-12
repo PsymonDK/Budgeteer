@@ -1,13 +1,8 @@
 # Personal Budgeteer
 
 Self-hosted open-source household budget tracker. Pirate-themed (☠️).
-React + TypeScript frontend, Fastify + TypeScript + Prisma + PostgreSQL backend, monorepo.
 
-## Stack
-- Frontend: `apps/web` — React 18, Vite, Tailwind CSS, Lucide React (icons), Sonner (toasts), TanStack Query, React Router v6, Recharts
-- Backend: `apps/api` — Fastify, Prisma ORM, JWT auth, node-cron (currency sync), @anthropic-ai/sdk (payslip parsing)
-- Database: PostgreSQL via Docker or bare metal
-- Schema: `prisma/schema.prisma`
+> Full architecture, data model, and API reference: `@docs/architecture.md`
 
 ## Commands
 ```
@@ -19,10 +14,6 @@ npm run db:studio        # open prisma studio
 npm run db:seed          # seed development data
 ```
 
-## Architecture docs
-- Full architecture and data model: `@docs/architecture.md`
-- API endpoints, auth flow, budget lifecycle: `@docs/architecture.md`
-
 ## Calculation rules
 - ALL business logic calculations are done server-side, never in React components
 - `monthlyEquivalent` is always calculated on save and stored in the database — never recalculated at render time
@@ -33,7 +24,6 @@ npm run db:seed          # seed development data
 
 ## Currency
 - Base currency is set via env var `BASE_CURRENCY` (default: DKK)
-- Rates fetched daily from Danmarks Nationalbank XML API
 - Past expenses lock their rate at payment date — never retroactively updated
 - Future expenses use the latest available rate and recalculate when rates update
 - All `monthlyEquivalent` values are always stored in base currency
@@ -44,8 +34,6 @@ npm run db:seed          # seed development data
 - Monthly override takes precedence over default salary for that specific month
 - Bonuses are user-classified: excluded from budget, one-off, or spread annually (÷12)
 - Income allocation to households is a % per job per budget year
-- TaxCardSettings (Danish): traekprocent, personfradrag, pension %, ATP, brutto items — server-side deduction calculation (`apps/api/src/lib/taxCalcDK.ts`); frontend mirrors the calculation for live preview in IncomePage
-- Payslip import: CSV template or AI-assisted parsing via `POST /jobs/:id/payslips/parse` (requires `ANTHROPIC_API_KEY`); parsed data pre-fills the salary/override form
 
 ## Data conventions
 - All IDs use `cuid()`
@@ -77,6 +65,3 @@ npm run db:seed          # seed development data
 - Sprints tracked as GitHub Milestones
 - Always update `CHANGELOG.md` when committing — add an entry under the current version describing what changed and why
 - Always update `docs/architecture.md` when making architectural changes — new entities, new/removed API endpoints, schema changes, or stack changes
-
-## Docs
-- Architecture & data model: docs/architecture.md
