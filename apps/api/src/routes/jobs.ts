@@ -34,7 +34,7 @@ const PayslipLineSchema = z.object({
 
 const DeductionFieldsSchema = z.object({
   payslipLines: z.array(PayslipLineSchema).optional(),
-  deductionsSource: z.enum(['MANUAL', 'CALCULATED']).optional(),
+  deductionsSource: z.enum(['MANUAL', 'CALCULATED', 'PAYSLIP_IMPORT']).optional(),
 })
 
 function validateDeductionNet(

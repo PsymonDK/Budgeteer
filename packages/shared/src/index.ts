@@ -16,6 +16,19 @@ export interface PayslipLine {
   isCalculated: boolean
 }
 
+export interface PayslipExtraction {
+  period: { year: number; month: number }
+  employerName: string
+  grossSalary: number
+  netPay: number
+  currency: string
+  lines: PayslipLine[]
+  pensionEmployerMonthly?: number
+  reimbursements?: { label: string; amount: number }[]
+  confidence: 'high' | 'medium' | 'low'
+  notes?: string[]
+}
+
 export interface TaxCardSettingsData {
   traekprocent: number
   personfradragMonthly: number
