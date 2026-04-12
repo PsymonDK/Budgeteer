@@ -16,6 +16,8 @@
 - **Year-over-year comparison** — side-by-side view of any two budget years or simulations
 - **Multi-currency** — exchange rates synced daily from Danmarks Nationalbank; historical expenses lock their rate
 - **Personal income management** — track jobs, salary history, monthly overrides, and bonuses
+- **Payslip import** — import payslips via CSV template (browser-only, no data sent externally), manual entry wizard, or AI-assisted parsing (optional, requires `ANTHROPIC_API_KEY`)
+- **Danish tax calculations** — server-side AM-bidrag, A-skat, and pension deduction calculations from tax card settings, with live preview in the income form
 - **Admin panel** — manage users, households, currencies, and categories
 
 ---
@@ -72,11 +74,40 @@ docker compose pull && docker compose up -d
 
 Schema changes are applied automatically on startup.
 
+### Configuration
+
+All configuration is via environment variables in `.env`. Required variables will prevent startup if missing.
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `JWT_SECRET` | Yes | — | Auth signing key. Generate with `openssl rand -hex 32` |
+| `POSTGRES_PASSWORD` | Yes | — | Internal database password |
+| `ADMIN_PASSWORD` | Yes | — | Password for the initial admin account |
+| `ADMIN_EMAIL` | No | `admin@budgeteer.local` | Email for the initial admin account |
+| `ADMIN_NAME` | No | `Admin` | Display name for the initial admin account |
+| `APP_PORT` | No | `7272` | Host port the web UI is served on |
+| `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`) |
+| `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
+| `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
+| `ANTHROPIC_API_KEY` | No | — | Enables AI-assisted payslip parsing. See [AI payslip parsing](#ai-payslip-parsing) below |
+
 ### Reverse proxy
 
-If you're running behind Nginx Proxy Manager, Traefik, or similar, set `APP_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and proxy your reverse proxy to port `7272`.
+If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and point your reverse proxy to port `7272`.
 
-See [deploy/README.md](deploy/README.md) for backup/restore instructions and more configuration options.
+See [deploy/README.md](deploy/README.md) for backup/restore instructions.
+
+### AI payslip parsing
+
+Budgeteer can use Claude to extract salary and deduction data from a payslip image, PDF, or pasted text. This is entirely opt-in — users must explicitly consent before any payslip data leaves the system.
+
+To enable it, add your Anthropic API key to `.env`:
+
+```dotenv
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+If the key is not set, the AI import tab is hidden and the endpoint returns `503 AI_NOT_CONFIGURED`. The CSV template and manual entry import paths always work without it.
 
 ---
 
@@ -107,6 +138,8 @@ docker compose -f docker-compose.dev.yml up postgres -d
 
 The API runs on `http://localhost:3001` and the web app on `http://localhost:5173`.
 
+To enable AI payslip parsing locally, add `ANTHROPIC_API_KEY` to your `.env`. It is optional — all other features work without it.
+
 ### Commands
 
 | Command | Description |
@@ -126,8 +159,8 @@ See [docs/architecture.md](docs/architecture.md) for the full data model and API
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts |
-| Backend | Node.js, TypeScript, Fastify, Prisma ORM |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router v6, Recharts, D3/Sankey, Lucide React, Sonner |
+| Backend | Node.js, TypeScript, Fastify, Prisma ORM, Zod, node-cron, @anthropic-ai/sdk |
 | Database | PostgreSQL 16 |
 | Auth | JWT + refresh tokens |
 | Infrastructure | Docker, nginx |
