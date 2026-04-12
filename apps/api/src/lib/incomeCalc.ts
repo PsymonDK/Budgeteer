@@ -1,6 +1,7 @@
 import { prisma } from './prisma'
 import { BudgetStatus } from '@prisma/client'
 import { toNum } from './decimal'
+import { calcDanishDeductions } from './taxCalcDK'
 
 export interface MemberIncome {
   userId: string
@@ -9,8 +10,46 @@ export interface MemberIncome {
 }
 
 /**
+ * When deductionsSource is null (reset by the payslip-lines migration because the old
+ * algorithm was buggy) and the job is DK with an active TaxCardSettings at atDate,
+ * recalculate net from the tax card so the correct value is returned.
+ * Returns null when the stored netAmount should be used as-is.
+ */
+async function resolveCalculatedNet(
+  jobId: string,
+  grossOriginal: number,
+  deductionsSource: string | null,
+  atDate: Date,
+): Promise<number | null> {
+  if (deductionsSource !== null) return null // correctly stored after migration — trust it
+
+  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { country: true } })
+  if (job?.country !== 'DK') return null
+
+  const taxCard = await prisma.taxCardSettings.findFirst({
+    where: { jobId, effectiveFrom: { lte: atDate } },
+    orderBy: { effectiveFrom: 'desc' },
+  })
+  if (!taxCard) return null
+
+  const calc = calcDanishDeductions(grossOriginal, {
+    traekprocent: toNum(taxCard.traekprocent),
+    personfradragMonthly: toNum(taxCard.personfradragMonthly),
+    pensionEmployeePct: taxCard.pensionEmployeePct != null ? toNum(taxCard.pensionEmployeePct) : null,
+    pensionEmployerPct: taxCard.pensionEmployerPct != null ? toNum(taxCard.pensionEmployerPct) : null,
+    atpAmount: taxCard.atpAmount != null ? toNum(taxCard.atpAmount) : null,
+    bruttoItems: taxCard.bruttoItems as { label: string; monthlyAmount: number }[] | null,
+  })
+  return calc.net
+}
+
+/**
  * Returns the gross and net monthly income for a job at a given reference date.
  * Checks MonthlyIncomeOverride first; falls back to the latest SalaryRecord.
+ *
+ * When a record has deductionsSource = null (stale after the payslip-lines migration)
+ * and the job is a DK job with a TaxCardSettings effective at atDate, the net is
+ * recalculated on-the-fly using the correct Danish tax algorithm.
  */
 export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<{ gross: number; net: number }> {
   const year = atDate.getFullYear()
@@ -19,9 +58,10 @@ export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<
   const override = await prisma.monthlyIncomeOverride.findUnique({
     where: { jobId_year_month: { jobId, year, month } },
   })
-  if (override) return {
-    gross: toNum(override.grossAmount),
-    net: toNum(override.netAmount),
+  if (override) {
+    const gross = toNum(override.grossAmount)
+    const recalcNet = await resolveCalculatedNet(jobId, gross, override.deductionsSource, atDate)
+    return { gross, net: recalcNet ?? toNum(override.netAmount) }
   }
 
   const salary = await prisma.salaryRecord.findFirst({
@@ -30,9 +70,12 @@ export async function getJobMonthlyIncome(jobId: string, atDate: Date): Promise<
   })
   if (!salary) return { gross: 0, net: 0 }
   const rate = salary.rateUsed ? toNum(salary.rateUsed) : 1
+  const grossOriginal = toNum(salary.grossAmount)
+  const gross = grossOriginal * rate
+  const recalcNet = await resolveCalculatedNet(jobId, grossOriginal, salary.deductionsSource, atDate)
   return {
-    gross: toNum(salary.grossAmount) * rate,
-    net: toNum(salary.netAmount) * rate,
+    gross,
+    net: recalcNet !== null ? recalcNet * rate : toNum(salary.netAmount) * rate,
   }
 }
 

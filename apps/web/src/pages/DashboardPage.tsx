@@ -292,15 +292,24 @@ export function DashboardPage() {
           <div className="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-4">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Income / mo</p>
-              <p className="text-2xl font-bold text-amber-400">{fmt(income)}</p>
+              <p className="text-2xl font-bold text-amber-400 tabular-nums">
+                {income.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm font-normal text-gray-500 ml-1">{baseCurrency}</span>
+              </p>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Expenses / mo</p>
-              <p className="text-2xl font-bold text-white">{fmt(expenses)}</p>
+              <p className="text-2xl font-bold text-white tabular-nums">
+                {expenses.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm font-normal text-gray-500 ml-1">{baseCurrency}</span>
+              </p>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Savings / mo</p>
-              <p className="text-2xl font-bold text-white">{fmt(savings)}</p>
+              <p className="text-2xl font-bold text-white tabular-nums">
+                {savings.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm font-normal text-gray-500 ml-1">{baseCurrency}</span>
+              </p>
               {savingsRate !== null && (
                 <p className="text-xs text-gray-500 mt-1">{savingsRate.toFixed(1)}% of income</p>
               )}
@@ -309,8 +318,9 @@ export function DashboardPage() {
               surplus < 0 ? 'border-red-800' : 'border-gray-800'
             }`}>
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Surplus / mo</p>
-              <p className={`text-2xl font-bold ${surplus < 0 ? 'text-red-400' : 'text-green-400'}`}>
-                {fmt(surplus)}
+              <p className={`text-2xl font-bold tabular-nums ${surplus < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                {surplus.toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <span className="text-sm font-normal text-gray-500 ml-1">{baseCurrency}</span>
               </p>
             </div>
           </div>
