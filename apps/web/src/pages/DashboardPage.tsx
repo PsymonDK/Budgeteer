@@ -219,13 +219,13 @@ export function DashboardPage() {
     ]
     const links: SankeyLinkDef[] = []
     for (const m of activeMembers) {
-      const share = parseFloat(m.sharePct) / 100
+      const netShare = income > 0 ? parseFloat(m.monthlyAllocatedNet) / income : 0
       for (const c of summary.expenses.byCategory) {
-        const val = parseFloat(c.totalMonthly) * share
+        const val = parseFloat(c.totalMonthly) * netShare
         if (val > 0) links.push({ source: `member_${m.userId}`, target: `cat_${c.categoryId}`, value: val })
       }
-      if (savings > 0) links.push({ source: `member_${m.userId}`, target: 'savings', value: savings * share })
-      if (surplus > 0) links.push({ source: `member_${m.userId}`, target: 'surplus', value: surplus * share })
+      if (savings > 0) links.push({ source: `member_${m.userId}`, target: 'savings', value: savings * netShare })
+      if (surplus > 0) links.push({ source: `member_${m.userId}`, target: 'surplus', value: surplus * netShare })
     }
     return { nodes, links }
   }, [summary, income, savings, surplus])

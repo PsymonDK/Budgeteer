@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.55.2] - 2026-04-13 — Fix household Sankey net pay
+
+### Fixed
+- **Household dashboard Sankey node values now show correct net pay** — outgoing link values were previously split using gross-based `sharePct`, so members with different effective tax rates showed inflated or deflated node widths/labels; replaced with a net-based share (`monthlyAllocatedNet / totalMonthlyNet`) so each member node's D3 value exactly equals their actual allocated net income
+
+---
+
 ## [0.55.1] - 2026-04-12 — README overhaul
 
 ### Changed
