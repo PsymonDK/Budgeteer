@@ -20,7 +20,7 @@
     "@prisma/client": "^7.5.0",
     "bcryptjs": "^3.0.3",
     "fast-xml-parser": "^5.5.10",
-    "fastify": "^5.8.4",
+    "fastify": "^5.8.5",
     "node-cron": "^4.2.1",
     "pg": "^8.13.0",
     "@anthropic-ai/sdk": "^0.39.0",
