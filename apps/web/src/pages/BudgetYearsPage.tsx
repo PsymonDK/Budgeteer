@@ -60,6 +60,12 @@ export function BudgetYearsPage() {
   const [copySimName, setCopySimName] = useState('')
   const [copyError, setCopyError] = useState('')
 
+  // New simulation modal
+  const [showNewSim, setShowNewSim] = useState(false)
+  const [newSimSourceId, setNewSimSourceId] = useState('')
+  const [newSimName, setNewSimName] = useState('')
+  const [newSimError, setNewSimError] = useState('')
+
   // Rename simulation modal
   const [renameTarget, setRenameTarget] = useState<BudgetYear | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -114,10 +120,16 @@ export function BudgetYearsPage() {
       invalidate()
       setCopySource(null)
       setCopyError('')
+      setShowNewSim(false)
+      setNewSimError('')
       toast.success('Budget year copied')
     },
     onError: (err) => {
-      if (axios.isAxiosError(err)) setCopyError((err.response?.data as { error?: string })?.error ?? 'Failed to copy')
+      if (axios.isAxiosError(err)) {
+        const msg = (err.response?.data as { error?: string })?.error ?? 'Failed to copy'
+        setCopyError(msg)
+        setNewSimError(msg)
+      }
     },
   })
 
@@ -165,6 +177,11 @@ export function BudgetYearsPage() {
     },
   })
 
+  // ── Grouping ──────────────────────────────────────────────────────────────────
+
+  const regularYears = years.filter((y) => y.status !== 'SIMULATION')
+  const simulations = years.filter((y) => y.status === 'SIMULATION')
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   function handleCreate(e: FormEvent) {
@@ -197,6 +214,21 @@ export function BudgetYearsPage() {
     renameMutation.mutate({ id: renameTarget.id, name: renameValue.trim() })
   }
 
+  function handleNewSim(e: FormEvent) {
+    e.preventDefault()
+    setNewSimError('')
+    if (!newSimSourceId) { setNewSimError('Select a source year'); return }
+    if (!newSimName.trim()) { setNewSimError('Simulation name is required'); return }
+    copyMutation.mutate({ sourceId: newSimSourceId, body: { simulationName: newSimName.trim() } })
+  }
+
+  function openNewSim() {
+    setNewSimSourceId(regularYears[0]?.id ?? '')
+    setNewSimName('')
+    setNewSimError('')
+    setShowNewSim(true)
+  }
+
   function openCopy(by: BudgetYear) {
     setCopySource(by)
     setCopyMode('year')
@@ -210,11 +242,6 @@ export function BudgetYearsPage() {
     setRenameValue(by.simulationName ?? '')
     setRenameError('')
   }
-
-  // ── Grouping ──────────────────────────────────────────────────────────────────
-
-  const regularYears = years.filter((y) => y.status !== 'SIMULATION')
-  const simulations = years.filter((y) => y.status === 'SIMULATION')
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -288,6 +315,12 @@ export function BudgetYearsPage() {
                                 >
                                   Expenses
                                 </Link>
+                                <Link
+                                  to={`/households/${householdId}/savings?budgetYearId=${by.id}`}
+                                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                                >
+                                  Savings
+                                </Link>
                                 <button
                                   onClick={() => openCopy(by)}
                                   className="text-xs text-gray-400 hover:text-white transition-colors"
@@ -318,6 +351,14 @@ export function BudgetYearsPage() {
             <section>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Simulations</h2>
+                {regularYears.length > 0 && (
+                  <button
+                    onClick={openNewSim}
+                    className="bg-purple-900/50 hover:bg-purple-800/60 text-purple-300 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    + New simulation
+                  </button>
+                )}
               </div>
               {simulations.length === 0 ? (
                 <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
@@ -333,7 +374,7 @@ export function BudgetYearsPage() {
                         <th className="px-4 py-3 font-medium">Year</th>
                         <th className="px-4 py-3 font-medium text-right">Expenses</th>
                         <th className="px-4 py-3 font-medium text-right">Savings</th>
-                        {isAdmin && <th className="px-4 py-3 sr-only">Actions</th>}
+                        <th className="px-4 py-3 sr-only">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -345,14 +386,19 @@ export function BudgetYearsPage() {
                           <td className="px-4 py-3 text-gray-300">{by.year}</td>
                           <td className="px-4 py-3 text-right text-gray-300">{by._count.expenses}</td>
                           <td className="px-4 py-3 text-right text-gray-300">{by._count.savingsEntries}</td>
-                          {isAdmin && (
-                            <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-3">
                                 <Link
                                   to={`/households/${householdId}/expenses?budgetYearId=${by.id}`}
                                   className="text-xs text-gray-400 hover:text-white transition-colors"
                                 >
                                   Expenses
+                                </Link>
+                                <Link
+                                  to={`/households/${householdId}/savings?budgetYearId=${by.id}`}
+                                  className="text-xs text-gray-400 hover:text-white transition-colors"
+                                >
+                                  Savings
                                 </Link>
                                 <button
                                   onClick={() => openRename(by)}
@@ -374,7 +420,6 @@ export function BudgetYearsPage() {
                                 </button>
                               </div>
                             </td>
-                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -418,6 +463,61 @@ export function BudgetYearsPage() {
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
+                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ── New simulation modal ─────────────────────────────────────────────── */}
+      {showNewSim && (
+        <Modal title="New simulation" onClose={() => setShowNewSim(false)}>
+          <p className="text-gray-400 text-sm mb-4">Copies expenses and savings from an existing year into a new simulation.</p>
+          <form onSubmit={handleNewSim} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Copy from</label>
+              <select
+                value={newSimSourceId}
+                onChange={(e) => setNewSimSourceId(e.target.value)}
+                required
+                className={inputClass}
+              >
+                {regularYears.map((by) => (
+                  <option key={by.id} value={by.id}>
+                    {by.year} ({by.status.charAt(0) + by.status.slice(1).toLowerCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Simulation name</label>
+              <input
+                type="text"
+                value={newSimName}
+                onChange={(e) => setNewSimName(e.target.value)}
+                required
+                autoFocus
+                placeholder="e.g. No car scenario"
+                className={inputClass}
+              />
+            </div>
+            {newSimError && (
+              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{newSimError}</div>
+            )}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={copyMutation.isPending}
+                className="flex-1 bg-purple-700 hover:bg-purple-600 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+              >
+                {copyMutation.isPending ? 'Creating…' : 'Create simulation'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowNewSim(false)}
                 className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
               >
                 Cancel
