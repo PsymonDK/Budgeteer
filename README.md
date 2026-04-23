@@ -15,7 +15,7 @@
 - **Expense calendar** — yearly grid view showing exactly which months each charge hits
 - **Year-over-year comparison** — side-by-side view of any two budget years or simulations
 - **Multi-currency** — exchange rates synced daily from Danmarks Nationalbank; historical expenses lock their rate
-- **Personal income management** — track jobs, salary history, monthly overrides, and bonuses
+- **Personal income management** — track jobs, salary history, monthly overrides, bonuses, and payslip import (CSV template or AI-assisted)
 - **Admin panel** — manage users, households, currencies, and categories
 
 ---
@@ -74,7 +74,7 @@ Schema changes are applied automatically on startup.
 
 ### Reverse proxy
 
-If you're running behind Nginx Proxy Manager, Traefik, or similar, set `APP_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and proxy your reverse proxy to port `7272`.
+If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and proxy your reverse proxy to port `7272`.
 
 See [deploy/README.md](deploy/README.md) for backup/restore instructions and more configuration options.
 
@@ -106,6 +106,45 @@ docker compose -f docker-compose.dev.yml up postgres -d
 ```
 
 The API runs on `http://localhost:3001` and the web app on `http://localhost:5173`.
+
+### Docker dev environment (full stack in containers)
+
+`docker-compose.dev.yml` builds and runs the entire stack — Postgres, API, and web — from source, without needing Node.js installed locally.
+
+**1. Build and start**
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+The app is available at **http://localhost:7272**. Default credentials: `admin@budgeteer.local` / `changeme123`.
+
+**2. Override settings (optional)**
+
+The dev compose file reads from a `.env` file in the project root. The defaults work out of the box, but you can override any of these:
+
+```dotenv
+JWT_SECRET=dev-secret-change-in-production
+ADMIN_EMAIL=admin@budgeteer.local
+ADMIN_PASSWORD=changeme123
+ADMIN_NAME=Admin
+SEED_DEMO_DATA=false
+BASE_CURRENCY=DKK
+APP_PORT=7272
+```
+
+**3. Rebuild after code changes**
+
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+**4. Stop and clean up**
+
+```bash
+docker compose -f docker-compose.dev.yml down        # stop, keep data
+docker compose -f docker-compose.dev.yml down -v     # stop and delete database volume
+```
 
 ### Commands
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.56.0] - 2026-04-23 — Budget years UX improvements
+
+### Added
+- **"New simulation" button** restored in the Simulations section of Budget Years — opens a dedicated modal to pick a source year and name the simulation, without having to go through the Copy flow
+- **Savings links in Budget Years** — "Savings" link added alongside "Expenses" for every budget year and simulation row, deep-linking directly to the savings page filtered to that year
+
+### Changed
+- **Simulation actions visible to all household members** — create, rename, promote, delete, and navigate to expenses/savings for simulations no longer require admin role; regular budget year admin actions (copy, retire) remain admin-only
+- **Docker dev docs** — README now documents how to spin up and build the full stack locally using `docker-compose.dev.yml`, including env overrides and teardown
+- **README corrections** — fixed `APP_URL` → `PUBLIC_URL` in reverse proxy docs; added payslip import to the Personal income management feature description
+
+---
+
 ## [0.55.0] - 2026-04-12 — Codebase cleanup & docs overhaul
 
 ### Changed
