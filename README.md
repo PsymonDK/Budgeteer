@@ -91,7 +91,6 @@ All configuration is via environment variables in `.env`. Required variables wil
 
 ### Reverse proxy
 
-If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and proxy your reverse proxy to port `7272`.
 If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and point your reverse proxy to port `7272`.
 
 See [deploy/README.md](deploy/README.md) for backup/restore instructions.
