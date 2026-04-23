@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Simulation actions visible to all household members** — create, rename, promote, delete, and navigate to expenses/savings for simulations no longer require admin role; regular budget year admin actions (copy, retire) remain admin-only
 - **Docker dev docs** — README now documents how to spin up and build the full stack locally using `docker-compose.dev.yml`, including env overrides and teardown
 - **README corrections** — fixed `APP_URL` → `PUBLIC_URL` in reverse proxy docs; added payslip import to the Personal income management feature description
+## [0.55.2] - 2026-04-13 — Fix household Sankey net pay
+
+### Fixed
+- **Household dashboard Sankey node values now show correct net pay** — outgoing link values were previously split using gross-based `sharePct`, so members with different effective tax rates showed inflated or deflated node widths/labels; replaced with a net-based share (`monthlyAllocatedNet / totalMonthlyNet`) so each member node's D3 value exactly equals their actual allocated net income
+
+---
+
+## [0.55.1] - 2026-04-12 — README overhaul
+
+### Changed
+- **Rewrote `README.md`** — added payslip import and Danish tax calculation to the features list; added a full configuration reference table for all env vars; added an "AI payslip parsing" section explaining the `ANTHROPIC_API_KEY` optional feature and its privacy model; fixed incorrect `APP_URL` reference in the reverse proxy section (correct var is `PUBLIC_URL`); expanded the stack table to include all frontend and backend libraries; updated development section to mention `ANTHROPIC_API_KEY`
 
 ---
 
