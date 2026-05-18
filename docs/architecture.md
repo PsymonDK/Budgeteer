@@ -29,7 +29,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **node-cron** — daily currency rate sync (06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
-- **Local AI HTTP provider** — optional receipt cleanup/classification enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; receipt data must not be sent to hosted AI services)
+- **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
 
 ### Infrastructure
 - **Docker + Docker Compose** — single-command self-hosted setup
@@ -221,7 +221,9 @@ Receipt upload and parsing run server-side. The browser sends the original image
 
 Receipt OCR is local-first and server-side. Images are read through Tesseract. PDFs are rendered to temporary page images with Poppler `pdftoppm`, then OCR runs locally on those images. OCR tuning is controlled by `RECEIPT_OCR_LANG`, `RECEIPT_OCR_PSM`, `RECEIPT_OCR_PDF_DPI`, and `RECEIPT_OCR_MAX_PDF_PAGES`.
 
-Optional AI enhancement may call only a local/self-hosted HTTP model endpoint configured through `LOCAL_AI_BASE_URL` and `LOCAL_AI_MODEL`; receipt data must never be sent to hosted AI services. Without local AI, uploaded receipts still use server-side OCR and deterministic parsing/category matching.
+Receipt line classification runs after extraction in a hybrid order: exact household-learned mappings for the same merchant, exact mappings from other merchants, fuzzy historical matches, deterministic keyword rules, and then optional local AI suggestions for any remaining unclassified lines. Learned mappings are written only when a user confirms a receipt.
+
+Optional AI enhancement may call only a local/self-hosted HTTP model endpoint configured through `LOCAL_AI_BASE_URL` and `LOCAL_AI_MODEL`; receipt data must never be sent to hosted AI services. AI extraction can improve receipt JSON cleanup when those variables are set. AI categorization requires the additional `RECEIPT_AI_CATEGORIZE=true` opt-in and may only choose from active household-visible expense category/subcategory IDs; invalid or low-confidence suggestions remain unclassified for review. Without local AI, uploaded receipts still use server-side OCR and deterministic parsing/category matching.
 
 ### Danish Tax Calculation
 `tax_card_settings` stores the active tax card per job. The API calculates deductions in this order:

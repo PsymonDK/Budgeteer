@@ -94,6 +94,7 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `RECEIPT_OCR_PSM` | No | `6` | Tesseract page segmentation mode for receipt image OCR |
 | `LOCAL_AI_BASE_URL` | No | — | Optional local/self-hosted model endpoint for receipt cleanup/classification. Hosted AI endpoints are rejected for receipts |
 | `LOCAL_AI_MODEL` | No | — | Optional local model name used with `LOCAL_AI_BASE_URL` for receipt enhancement |
+| `RECEIPT_AI_CATEGORIZE` | No | `false` | Set to `true` to let the configured local model suggest categories for otherwise unclassified receipt lines |
 | `ANTHROPIC_API_KEY` | No | — | Enables AI-assisted payslip parsing. See [AI payslip parsing](#ai-payslip-parsing) below |
 
 ### Reverse proxy

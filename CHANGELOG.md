@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.57.1] - 2026-05-18 — Smarter receipt line classification
+
+### Added
+- **Hybrid receipt classifier** — receipt line categories now use exact household mappings, cross-merchant exact matches, fuzzy historical matching, deterministic rules, and optional local-only AI categorization for remaining unclassified lines.
+- **Receipt review filter** — added a focused review toggle that shows only receipt lines missing a category or marked low confidence.
+
+### Changed
+- **Receipt AI categorization is explicitly opt-in** — `RECEIPT_AI_CATEGORIZE=true` is required before a configured local model may suggest line categories; suggestions are validated against active household-visible expense categories and subcategories.
+
+---
+
 ## [0.57.0] - 2026-05-18 — Receipt consumption imports
 
 ### Added

@@ -121,6 +121,7 @@ export function ReceiptsPage() {
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null)
   const [parseError, setParseError] = useState('')
   const [newSubcategoryName, setNewSubcategoryName] = useState<Record<string, string>>({})
+  const [showReviewOnly, setShowReviewOnly] = useState(false)
   const [headerDraft, setHeaderDraft] = useState({
     merchantName: '',
     purchaseDate: '',
@@ -216,6 +217,17 @@ export function ReceiptsPage() {
       .filter((item) => !lineDrafts[item.id]?.isIgnored)
       .reduce((sum, item) => sum + (parseFloat(lineDrafts[item.id]?.amount ?? item.amount) || 0), 0)
   }, [selectedReceipt, lineDrafts])
+
+  const reviewLineCount = useMemo(() => {
+    if (!selectedReceipt) return 0
+    return selectedReceipt.lineItems.filter((item) => draftNeedsReview(lineDrafts[item.id] ?? lineToDraft(item))).length
+  }, [selectedReceipt, lineDrafts])
+
+  const visibleLineItems = useMemo(() => {
+    if (!selectedReceipt) return []
+    if (!showReviewOnly) return selectedReceipt.lineItems
+    return selectedReceipt.lineItems.filter((item) => draftNeedsReview(lineDrafts[item.id] ?? lineToDraft(item)))
+  }, [selectedReceipt, lineDrafts, showReviewOnly])
 
   const parseMutation = useMutation({
     mutationFn: async () => {
@@ -558,27 +570,47 @@ export function ReceiptsPage() {
               <div className="grid grid-cols-1 2xl:grid-cols-[420px_1fr] gap-4 items-start">
                 <ReceiptPreview receipt={selectedReceipt} previewUrl={receiptPreviewUrl} />
 
-                <div className="overflow-x-auto border border-gray-800 rounded-xl">
-                  <table className="w-full min-w-[1080px] text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-800 text-gray-400 text-left">
-                        <th className="px-4 py-3 font-medium">Item</th>
-                        <th className="px-4 py-3 font-medium w-28">Qty</th>
-                        <th className="px-4 py-3 font-medium w-32">Amount</th>
-                        <th className="px-4 py-3 font-medium w-48">Category</th>
-                        <th className="px-4 py-3 font-medium w-64">Subcategory</th>
-                        <th className="px-4 py-3 font-medium w-28">Confidence</th>
-                        <th className="px-4 py-3 font-medium w-32">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-800">
-                      {selectedReceipt.lineItems.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="px-4 py-10 text-center text-gray-500">No line items detected. Paste OCR text and parse again, or configure local image OCR.</td>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-gray-400">
+                      {reviewLineCount === 0 ? 'All detected lines have a category suggestion.' : `${reviewLineCount} ${reviewLineCount === 1 ? 'line needs' : 'lines need'} review.`}
+                    </p>
+                    <label className="flex items-center gap-2 text-sm text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={showReviewOnly}
+                        onChange={(e) => setShowReviewOnly(e.target.checked)}
+                        className="h-4 w-4 rounded border-gray-700 bg-gray-800 text-amber-400 focus:ring-amber-400"
+                      />
+                      Show only lines needing review
+                    </label>
+                  </div>
+
+                  <div className="overflow-x-auto border border-gray-800 rounded-xl">
+                    <table className="w-full min-w-[1080px] text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-800 text-gray-400 text-left">
+                          <th className="px-4 py-3 font-medium">Item</th>
+                          <th className="px-4 py-3 font-medium w-28">Qty</th>
+                          <th className="px-4 py-3 font-medium w-32">Amount</th>
+                          <th className="px-4 py-3 font-medium w-48">Category</th>
+                          <th className="px-4 py-3 font-medium w-64">Subcategory</th>
+                          <th className="px-4 py-3 font-medium w-28">Confidence</th>
+                          <th className="px-4 py-3 font-medium w-32">Actions</th>
                         </tr>
-                      ) : selectedReceipt.lineItems.map((item) => {
+                      </thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {selectedReceipt.lineItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-10 text-center text-gray-500">No line items detected. Paste OCR text and parse again, or configure local image OCR.</td>
+                          </tr>
+                        ) : visibleLineItems.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-10 text-center text-gray-500">No lines need review.</td>
+                          </tr>
+                        ) : visibleLineItems.map((item) => {
                         const draft = lineDrafts[item.id] ?? lineToDraft(item)
-                        const needsReview = draft.confidence === 'LOW' || !draft.categoryId
+                        const needsReview = draftNeedsReview(draft)
                         return (
                           <tr key={item.id} className={draft.isIgnored ? 'opacity-50' : ''}>
                             <td className="px-4 py-3">
@@ -656,9 +688,10 @@ export function ReceiptsPage() {
                             </td>
                           </tr>
                         )
-                      })}
-                    </tbody>
-                  </table>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>
@@ -717,6 +750,10 @@ function lineToDraft(item: ReceiptLineItem): LineDraft {
     confidence: item.confidence,
     isIgnored: item.isIgnored,
   }
+}
+
+function draftNeedsReview(draft: LineDraft): boolean {
+  return draft.confidence === 'LOW' || !draft.categoryId
 }
 
 function readError(err: unknown, fallback: string) {
