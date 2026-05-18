@@ -36,6 +36,8 @@ services:
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
+    volumes:
+      - uploads_data:/app/uploads
 
   web:
     build:
@@ -49,3 +51,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

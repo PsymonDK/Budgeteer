@@ -87,6 +87,13 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`) |
 | `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
 | `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
+| `UPLOAD_DIR` | No | `./uploads` | Local API storage for avatars and receipt originals. Docker deployments mount `/app/uploads` as a persistent volume |
+| `RECEIPT_OCR_LANG` | No | `eng` | Tesseract language code for server-side receipt OCR. Install the matching language data in custom images |
+| `RECEIPT_OCR_MAX_PDF_PAGES` | No | `3` | Maximum scanned PDF pages rendered and OCR'd per receipt upload |
+| `RECEIPT_OCR_PDF_DPI` | No | `200` | DPI used when rendering scanned PDF receipts before OCR |
+| `RECEIPT_OCR_PSM` | No | `6` | Tesseract page segmentation mode for receipt image OCR |
+| `LOCAL_AI_BASE_URL` | No | — | Optional local/self-hosted model endpoint for receipt cleanup/classification. Hosted AI endpoints are rejected for receipts |
+| `LOCAL_AI_MODEL` | No | — | Optional local model name used with `LOCAL_AI_BASE_URL` for receipt enhancement |
 | `ANTHROPIC_API_KEY` | No | — | Enables AI-assisted payslip parsing. See [AI payslip parsing](#ai-payslip-parsing) below |
 
 ### Reverse proxy

@@ -28,6 +28,8 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **JWT + Refresh Tokens** — stateless auth
 - **node-cron** — daily currency rate sync (06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
+- **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
+- **Local AI HTTP provider** — optional receipt cleanup/classification enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; receipt data must not be sent to hosted AI services)
 
 ### Infrastructure
 - **Docker + Docker Compose** — single-command self-hosted setup
@@ -123,6 +125,27 @@ budgeteer/
 - expenseId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED`)
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
+**receipts** — actual consumption imports from scanned receipts/photos
+- householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount, taxAmount, feeAmount, currencyCode
+- sourceMimeType, sourceFileName, sourceStoragePath, sourceFileSize, rawText, status (`DRAFT` | `CONFIRMED` | `FAILED`), confidence (`LOW` | `MEDIUM` | `HIGH`), notes, confirmedAt, deletedAt
+- Receipts are actual consumption data and must not create or update planned `expenses`
+- Uploaded receipt files are stored locally on the API server under `UPLOAD_DIR/receipts/<householdId>/` and served only through authenticated household-scoped endpoints
+- Deleted receipts are soft-deleted with `deletedAt` so consumption history can be preserved
+
+**receipt_line_items** — individual purchases extracted from a receipt
+- receiptId, categoryId (nullable), subcategoryId (nullable), originalText, label, normalizedLabel, quantity, amount, currencyCode, confidence, sortOrder, isIgnored
+- Category mappings point to active `EXPENSE` categories visible to the household, with optional receipt subcategories for lower-level consumption classification
+- Ignored line items are retained but excluded from consumption summaries
+
+**receipt_subcategories** — lower-level receipt classifications under expense categories
+- categoryId, householdId (nullable), name, isSystemWide, isActive
+- System defaults are seeded under top-level expense categories, for example Food & Groceries → Food, Alcohol, Beer, Wine, Vegetables, Meat, Candy, Toys
+- Household members can add household-specific subcategories under any expense category visible to the household
+
+**receipt_category_mappings** — learned household-specific categorization hints
+- householdId, normalizedLabel, merchantKey, categoryId, subcategoryId (nullable), confidence, hitCount, lastUsedAt
+- Reused during future receipt parsing before falling back to rule-based category suggestions
+
 **savings_entries** — planned savings on a budget year
 - budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, forwardMonthlyEquivalent, notes
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable), categoryId (nullable)
@@ -188,6 +211,17 @@ Shared expense €1,000/month → A owes €600, B owes €400
 Individual and custom-split expenses bypass the proportional calculation.
 
 Informational only — system calculates and displays, never enforces.
+
+### Receipt Consumption
+Receipt imports represent actual purchases, not planned budget allocations. Confirmed receipt line items are summarized separately by category/month for consumption insight. They do not affect `monthlyEquivalent`, planned expense totals, occurrence schedules, or budget transfer recalculation.
+
+Receipt category is two-level: top-level category uses the existing Budgeteer `EXPENSE` category; receipt subcategory captures more granular consumption detail within that category.
+
+Receipt upload and parsing run server-side. The browser sends the original image/PDF file to the API, the API stores it locally, runs local OCR, and the receipt review UI loads the protected file beside extracted line items for validation. Pasted OCR text remains supported for manual imports.
+
+Receipt OCR is local-first and server-side. Images are read through Tesseract. PDFs are rendered to temporary page images with Poppler `pdftoppm`, then OCR runs locally on those images. OCR tuning is controlled by `RECEIPT_OCR_LANG`, `RECEIPT_OCR_PSM`, `RECEIPT_OCR_PDF_DPI`, and `RECEIPT_OCR_MAX_PDF_PAGES`.
+
+Optional AI enhancement may call only a local/self-hosted HTTP model endpoint configured through `LOCAL_AI_BASE_URL` and `LOCAL_AI_MODEL`; receipt data must never be sent to hosted AI services. Without local AI, uploaded receipts still use server-side OCR and deterministic parsing/category matching.
 
 ### Danish Tax Calculation
 `tax_card_settings` stores the active tax card per job. The API calculates deductions in this order:
@@ -313,6 +347,19 @@ GET    /households/:id/accounts
 POST   /households/:id/accounts
 PUT    /households/:id/accounts/:accountId
 DELETE /households/:id/accounts/:accountId
+GET    /households/:id/receipt-subcategories
+POST   /households/:id/receipts/parse
+POST   /households/:id/receipts/upload
+GET    /households/:id/receipts
+GET    /households/:id/receipts/summary
+GET    /households/:id/receipts/:receiptId
+GET    /households/:id/receipts/:receiptId/file
+PUT    /households/:id/receipts/:receiptId
+POST   /households/:id/receipts/:receiptId/confirm
+PUT    /households/:id/receipts/:receiptId/line-items/:lineItemId
+DELETE /households/:id/receipts/:receiptId
+GET    /categories/:id/subcategories
+POST   /categories/:id/subcategories
 
 PATCH  /households/:id/budget-years/:yearId
 POST   /households/:id/budget-years/:yearId/copy

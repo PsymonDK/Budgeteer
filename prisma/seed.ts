@@ -15,6 +15,15 @@ const DEFAULT_CATEGORIES: { name: string; icon: string }[] = [
   { name: 'Other',           icon: 'Tag' },
 ]
 
+const DEFAULT_RECEIPT_SUBCATEGORIES: Record<string, string[]> = {
+  'Food & Groceries': ['Food', 'Alcohol', 'Beer', 'Wine', 'Vegetables', 'Meat', 'Candy', 'Toys', 'Household goods'],
+  Transport: ['Fuel', 'Public transport', 'Parking', 'Taxi'],
+  Subscriptions: ['Streaming', 'Software', 'Memberships'],
+  Healthcare: ['Medicine', 'Doctor', 'Dental'],
+  Utilities: ['Electricity', 'Water', 'Heating', 'Internet'],
+  Other: ['Unsorted'],
+}
+
 const DEFAULT_SAVINGS_CATEGORIES: { name: string; icon: string }[] = [
   { name: 'Vacation',       icon: 'Plane' },
   { name: 'Renovation',     icon: 'Hammer' },
@@ -80,6 +89,28 @@ async function main() {
   }
   if (seeded > 0) console.log(`✓ Seeded ${seeded} default expense categories.`)
   else console.log(`Default expense categories already exist, skipping.`)
+
+  // ── Default system-wide receipt subcategories (idempotent) ────────────────
+  let subcategoriesSeeded = 0
+  for (const [categoryName, subcategories] of Object.entries(DEFAULT_RECEIPT_SUBCATEGORIES)) {
+    const category = await prisma.category.findFirst({
+      where: { name: categoryName, isSystemWide: true, categoryType: 'EXPENSE' },
+    })
+    if (!category) continue
+
+    for (const subcategoryName of subcategories) {
+      const existing = await prisma.receiptSubcategory.findFirst({
+        where: { categoryId: category.id, householdId: null, name: { equals: subcategoryName, mode: 'insensitive' } },
+      })
+      if (existing) continue
+      await prisma.receiptSubcategory.create({
+        data: { categoryId: category.id, name: subcategoryName, isSystemWide: true },
+      })
+      subcategoriesSeeded++
+    }
+  }
+  if (subcategoriesSeeded > 0) console.log(`✓ Seeded ${subcategoriesSeeded} default receipt subcategories.`)
+  else console.log(`Default receipt subcategories already exist, skipping.`)
 
   // ── Default system-wide savings categories (idempotent) ────────────────────
   let savingsSeeded = 0

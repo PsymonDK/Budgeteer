@@ -24,6 +24,7 @@ import { accountRoutes } from './routes/accounts'
 import { budgetTransferRoutes } from './routes/budgetTransfers'
 import { automationRoutes } from './routes/automations'
 import { payslipRoutes } from './routes/payslips'
+import { receiptRoutes } from './routes/receipts'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
@@ -51,11 +52,12 @@ app.register(rateLimit, { max: 200, timeWindow: '15 minutes' })
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 fs.mkdirSync(path.resolve(UPLOAD_DIR, 'avatars'), { recursive: true })
+fs.mkdirSync(path.resolve(UPLOAD_DIR, 'receipts'), { recursive: true })
 
-app.register(fastifyMultipart, { limits: { fileSize: 2 * 1024 * 1024 } })
+app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 app.register(fastifyStatic, {
-  root: path.resolve(UPLOAD_DIR),
-  prefix: '/uploads/',
+  root: path.resolve(UPLOAD_DIR, 'avatars'),
+  prefix: '/uploads/avatars/',
   decorateReply: false,
 })
 
@@ -76,6 +78,7 @@ app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
+app.register(receiptRoutes)
 
 // Health check
 app.get('/health', async () => {

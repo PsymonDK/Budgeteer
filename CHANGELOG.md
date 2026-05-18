@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.57.0] - 2026-05-18 — Receipt consumption imports
+
+### Added
+- **Receipt OCR and line-item consumption categorization** — added household receipt imports with image/PDF or pasted OCR text parsing, review/edit workflow, category suggestions, learned household mappings, confirmed consumption summaries, and a dedicated Receipts household page.
+- **Receipt data model and API** — added separate receipt, receipt line item, and receipt category mapping tables plus authenticated household receipt endpoints; confirmed receipts remain actual consumption records and do not create planned `Expense` entries or recalculate budget transfers.
+- **Receipt subcategories** — added lower-level receipt classifications under existing expense categories, with seeded defaults such as Food & Groceries → Food, Alcohol, Beer, Wine, Vegetables, Meat, Candy, and Toys; households can add their own subcategories while reviewing receipts.
+- **Local receipt file storage and review** — receipt uploads are stored on the API server under `UPLOAD_DIR/receipts/` and served through authenticated household endpoints so the original receipt can be viewed beside extracted line items.
+- **Server-side receipt OCR** — added local API-side OCR using Tesseract for images and Poppler for scanned PDFs, with persisted upload volumes in Docker deployments.
+- **Local-only receipt AI support** — optional AI enhancement is limited to locally configured model endpoints (`LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`); deterministic parsing and rule-based categorization remain available without AI.
+- **Repository agent guidance** — added `AGENTS.md` so forked repos include Codex/agent project conventions alongside `CLAUDE.md`.
+
+---
+
 ## [0.56.0] - 2026-04-23 — Budget years UX improvements
 
 ### Added

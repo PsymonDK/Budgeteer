@@ -1,7 +1,7 @@
 import { Link, Outlet, useParams, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, TrendingUp, PiggyBank, Receipt, Tag,
+  LayoutDashboard, TrendingUp, PiggyBank, Receipt, ScanLine, Tag,
   Calendar, Clock, BarChart2, Settings, Menu, X,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { label: 'Household Income', path: 'income',   icon: TrendingUp },
   { label: 'Savings',      path: 'savings',      icon: PiggyBank },
   { label: 'Expenses',     path: 'expenses',     icon: Receipt },
+  { label: 'Receipts',     path: 'receipts',     icon: ScanLine },
   { label: 'Categories',   path: 'categories',   icon: Tag },
   { label: 'Budget Years', path: 'budget-years', icon: Calendar },
   { label: 'History',      path: 'history',      icon: Clock },

@@ -90,6 +90,18 @@ enum OccurrenceStatus {
   SKIPPED
 }
 
+enum ReceiptStatus {
+  DRAFT
+  CONFIRMED
+  FAILED
+}
+
+enum ReceiptConfidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -115,6 +127,7 @@ model User {
   ownedSavings              SavingsEntry[]         @relation("OwnedSavings")
   savingsCustomSplits       SavingsCustomSplit[]   @relation("SavingsCustomSplits")
   ownedAccounts             Account[]              @relation("OwnedAccounts")
+  uploadedReceipts          Receipt[]              @relation("UploadedReceipts")
 }
 
 model UserPreferences {
@@ -145,6 +158,9 @@ model Household {
   budgetYears BudgetYear[]
   accounts    Account[]
   automations Automation[]
+  receipts    Receipt[]
+  receiptSubcategories ReceiptSubcategory[]
+  receiptCategoryMappings ReceiptCategoryMapping[]
 }
 
 model HouseholdMember {
@@ -292,6 +308,9 @@ model Category {
 
   expenses        Expense[]
   savingsEntries  SavingsEntry[]
+  receiptLineItems ReceiptLineItem[]
+  receiptSubcategories ReceiptSubcategory[]
+  receiptCategoryMappings ReceiptCategoryMapping[]
 
   @@map("ExpenseCategory")
 }
@@ -307,8 +326,109 @@ model Account {
   household      Household?    @relation(fields: [householdId], references: [id], onDelete: Cascade)
   expenses       Expense[]
   savingsEntries SavingsEntry[]
+  receipts       Receipt[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
+}
+
+model Receipt {
+  id               String            @id @default(cuid())
+  householdId      String
+  household        Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  uploadedByUserId String?
+  uploadedBy       User?             @relation("UploadedReceipts", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  accountId        String?
+  account          Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  merchantName     String?
+  purchaseDate     DateTime?
+  totalAmount      Decimal?          @db.Decimal(10, 2)
+  taxAmount        Decimal?          @db.Decimal(10, 2)
+  feeAmount        Decimal?          @db.Decimal(10, 2)
+  currencyCode     String            @default("DKK")
+  sourceMimeType   String?
+  sourceFileName   String?
+  sourceStoragePath String?
+  sourceFileSize   Int?
+  rawText          String?
+  status           ReceiptStatus     @default(DRAFT)
+  confidence       ReceiptConfidence @default(LOW)
+  notes            Json?
+  confirmedAt      DateTime?
+  deletedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  lineItems        ReceiptLineItem[]
+
+  @@index([householdId, purchaseDate])
+  @@index([householdId, status])
+}
+
+model ReceiptLineItem {
+  id              String            @id @default(cuid())
+  receiptId       String
+  receipt         Receipt           @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  categoryId      String?
+  category        Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategoryId   String?
+  subcategory     ReceiptSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  originalText    String
+  label           String
+  normalizedLabel String
+  quantity        Decimal?          @db.Decimal(10, 3)
+  amount          Decimal           @db.Decimal(10, 2)
+  currencyCode    String?
+  confidence      ReceiptConfidence @default(LOW)
+  sortOrder       Int               @default(0)
+  isIgnored       Boolean           @default(false)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([receiptId])
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([normalizedLabel])
+}
+
+model ReceiptSubcategory {
+  id             String   @id @default(cuid())
+  categoryId     String
+  category       Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  householdId    String?
+  household      Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name           String
+  isSystemWide   Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lineItems       ReceiptLineItem[]
+  mappings        ReceiptCategoryMapping[]
+
+  @@unique([categoryId, householdId, name])
+  @@index([categoryId])
+  @@index([householdId])
+}
+
+model ReceiptCategoryMapping {
+  id              String    @id @default(cuid())
+  householdId     String
+  household       Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  categoryId      String
+  category        Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  subcategoryId   String?
+  subcategory     ReceiptSubcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  normalizedLabel String
+  merchantKey     String    @default("")
+  confidence      Decimal   @db.Decimal(5, 2) @default(1.00)
+  hitCount        Int       @default(1)
+  lastUsedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([householdId, normalizedLabel, merchantKey])
+  @@index([householdId, categoryId])
+  @@index([subcategoryId])
 }
 
 model Expense {

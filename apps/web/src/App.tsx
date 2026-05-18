@@ -21,6 +21,7 @@ import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
 import { BudgetYearsPage } from './pages/BudgetYearsPage'
 import { ComparePage } from './pages/ComparePage'
 import { SavingsPage } from './pages/SavingsPage'
+import { ReceiptsPage } from './pages/ReceiptsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -52,6 +53,7 @@ function App() {
               <Route path="income" element={<HouseholdIncomePage />} />
               <Route path="savings" element={<SavingsPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
+              <Route path="receipts" element={<ReceiptsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="budget-years" element={<BudgetYearsPage />} />
               <Route path="history" element={<HistoryPage />} />
