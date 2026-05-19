@@ -1,6 +1,27 @@
-FROM node:20-alpine
+FROM node:20-alpine AS base
 
 WORKDIR /app
+
+FROM base AS builder
+
+COPY package*.json ./
+COPY apps/api/package*.json ./apps/api/
+RUN npm ci --workspace=apps/api --include-workspace-root \
+  && npm cache clean --force
+
+COPY tsconfig.json ./
+COPY tsconfig.seed.json ./
+COPY prisma.config.ts ./
+COPY prisma ./prisma
+COPY apps/api ./apps/api
+
+RUN ./node_modules/.bin/prisma generate
+RUN npm run build --workspace=apps/api
+RUN npm run build:seed
+
+FROM base AS runtime
+
+ENV NODE_ENV=production
 
 RUN apk add --no-cache \
   openssl \
@@ -11,24 +32,19 @@ RUN apk add --no-cache \
   tesseract-ocr-data-dan \
   tesseract-ocr-data-eng
 
-# Install dependencies (includes devDeps — ts-node needed for seed)
 COPY package*.json ./
 COPY apps/api/package*.json ./apps/api/
-RUN npm install
+RUN npm ci --omit=dev --omit=optional --workspace=apps/api --include-workspace-root \
+  && npm cache clean --force
 
-# Copy source
-COPY tsconfig.json ./
 COPY prisma.config.ts ./
-COPY prisma ./prisma
-COPY apps/api ./apps/api
+COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/receipt-training-seed.csv ./prisma/receipt-training-seed.csv
+COPY apps/api/scripts ./apps/api/scripts
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --from=builder /app/dist-seed ./dist-seed
 
-# Generate Prisma client and build API
-RUN npm run db:generate
-WORKDIR /app/apps/api
-RUN npm run build
-
-# Back to root so entrypoint paths resolve correctly
-WORKDIR /app
 COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x entrypoint.sh
 

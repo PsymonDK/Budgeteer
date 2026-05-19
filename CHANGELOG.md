@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Admin receipt training maintenance** — added a system-admin-only Receipt training screen for maintaining classifier terms, learned receipt mappings, and receipt subcategories without editing the database directly.
 
 ### Changed
+- **API Docker image** — converted the API Dockerfile to a multi-stage build with a production-only runtime layer, precompiled seed script, copied Prisma client artifacts, and only the OCR/PDF packages needed at runtime.
 - **Receipt summaries** — receipt consumption totals now support period filtering, including all time, month, quarter, year, last 12 months, and custom ranges, and convert non-base receipt line amounts into the configured base currency using latest enabled exchange rates.
 - **Receipt page layout** — the main Receipts page now focuses on receipt history and review; new receipt intake lives behind the Add receipt action.
 - **Receipt review workstation** — receipt review now uses a full-width workstation layout with a collapsible history rail, sticky receipt preview, compact metadata form, and responsive line editing without page-level horizontal scrolling.

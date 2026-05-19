@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
     "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/web",
+    "build:seed": "tsc -p tsconfig.seed.json",
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
     "db:studio": "npx prisma studio",

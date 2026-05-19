@@ -26,7 +26,7 @@ case "$SCHEMA_SYNC_MODE" in
 esac
 
 echo "→ Seeding database..."
-./node_modules/.bin/ts-node prisma/seed.ts
+node dist-seed/prisma/seed.js
 
 echo "→ Starting API..."
 exec node apps/api/dist/index.js

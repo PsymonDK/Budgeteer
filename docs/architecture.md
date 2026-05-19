@@ -32,12 +32,12 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
 
 ### Infrastructure
-- **Docker + Docker Compose** — single-command self-hosted setup
+- **Docker + Docker Compose** — single-command self-hosted setup; the API image uses a multi-stage build so TypeScript compilation, Prisma generation, and build-only dependencies stay out of the runtime image.
 - **Bare metal** — setup script for direct server installs
 
 ### Runtime Configuration
 - **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
-- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations, `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`.
+- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations, `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
 
 ---
 
