@@ -419,8 +419,9 @@ model ReceiptSubcategory {
 
 model ReceiptCategoryMapping {
   id              String    @id @default(cuid())
-  householdId     String
-  household       Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  scopeKey        String    @default("system")
+  householdId     String?
+  household       Household? @relation(fields: [householdId], references: [id], onDelete: Cascade)
   categoryId      String
   category        Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   subcategoryId   String?
@@ -433,8 +434,9 @@ model ReceiptCategoryMapping {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  @@unique([householdId, normalizedLabel, merchantKey])
+  @@unique([scopeKey, normalizedLabel, merchantKey])
   @@index([householdId, categoryId])
+  @@index([scopeKey, categoryId])
   @@index([subcategoryId])
 }
 

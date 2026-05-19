@@ -99,7 +99,8 @@ describe('receiptMappingImport', () => {
     expect(prismaMock.receiptCategoryMapping.upsert).toHaveBeenCalledTimes(2)
     expect(prismaMock.receiptClassifierTerm.upsert).toHaveBeenCalledTimes(2)
     expect(prismaMock.receiptCategoryMapping.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { householdId_normalizedLabel_merchantKey: { householdId: 'household-1', normalizedLabel: 'organic milk', merchantKey: 'netto' } },
+      where: { scopeKey_normalizedLabel_merchantKey: { scopeKey: 'household-1', normalizedLabel: 'organic milk', merchantKey: 'netto' } },
+      create: expect.objectContaining({ scopeKey: 'household-1', householdId: 'household-1' }),
       update: expect.objectContaining({ categoryId: 'cat-transport', subcategoryId: 'sub-fuel' }),
     }))
   })
@@ -122,6 +123,8 @@ describe('receiptMappingImport', () => {
 })
 
 function existingMapping(overrides: Partial<{
+  scopeKey: string
+  householdId: string | null
   categoryId: string
   subcategoryId: string | null
   normalizedLabel: string
@@ -130,6 +133,8 @@ function existingMapping(overrides: Partial<{
   hitCount: number
 }>) {
   return {
+    scopeKey: 'household-1',
+    householdId: 'household-1',
     categoryId: 'cat-food',
     subcategoryId: 'sub-food',
     normalizedLabel: 'organic milk',

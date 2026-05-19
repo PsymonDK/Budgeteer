@@ -31,6 +31,8 @@ interface CategoryChoice {
 }
 
 interface ExistingMapping {
+  scopeKey: string
+  householdId: string | null
   normalizedLabel: string
   merchantKey: string
   categoryId: string
@@ -78,7 +80,7 @@ export interface ReceiptMappingImportPreview {
 export async function buildReceiptMappingExportKit(householdId: string) {
   const [categories, mappings, classifierTerms] = await Promise.all([
     loadCategoryChoices(householdId),
-    loadExistingMappings(householdId),
+    loadExistingMappings(householdId, { includeGlobal: true }),
     loadExistingClassifierTerms(householdId),
   ])
 
@@ -105,7 +107,7 @@ export async function buildReceiptMappingExportKit(householdId: string) {
       '',
       '',
       '',
-      `Existing mapping, ${mapping.hitCount} hits`,
+      `${mapping.scopeKey === 'system' ? 'Global' : 'Household'} mapping, ${mapping.hitCount} hits`,
     ]),
   ])
 
@@ -292,13 +294,14 @@ export async function confirmReceiptMappingImport(householdId: string, csvText: 
   for (const row of writableRows) {
     await prisma.receiptCategoryMapping.upsert({
       where: {
-        householdId_normalizedLabel_merchantKey: {
-          householdId,
+        scopeKey_normalizedLabel_merchantKey: {
+          scopeKey: householdId,
           normalizedLabel: row.normalizedLabel,
           merchantKey: row.merchantKey,
         },
       },
       create: {
+        scopeKey: householdId,
         householdId,
         normalizedLabel: row.normalizedLabel,
         merchantKey: row.merchantKey,
@@ -366,10 +369,14 @@ async function loadCategoryChoices(householdId: string): Promise<CategoryChoice[
   })
 }
 
-async function loadExistingMappings(householdId: string): Promise<ExistingMapping[]> {
+async function loadExistingMappings(householdId: string, options: { includeGlobal?: boolean } = {}): Promise<ExistingMapping[]> {
   return prisma.receiptCategoryMapping.findMany({
-    where: { householdId },
+    where: options.includeGlobal
+      ? { OR: [{ scopeKey: 'system' }, { scopeKey: householdId }] }
+      : { scopeKey: householdId },
     select: {
+      scopeKey: true,
+      householdId: true,
       normalizedLabel: true,
       merchantKey: true,
       categoryId: true,

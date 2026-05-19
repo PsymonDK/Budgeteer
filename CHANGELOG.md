@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Global Add receipt action** — added a shared header action on the personal dashboard and household pages that opens receipt intake for the default household from the front page and the current household from household pages.
+- **Global receipt mappings** — receipt training seed mappings now ship as system defaults that every household can use before adding household-specific overrides through confirmation, import, or admin training.
 - **Dedicated receipt intake route** — added `/households/:id/receipts/new` for upload/OCR intake, returning to the receipt review list with the new draft selected after parsing.
 - **Receipt consumption Sankey** — added a household dashboard diagram for confirmed receipt spending flowing from total spent to high-level categories and receipt subcategories, with current month, previous month, current year, and custom date range filters.
 - **Receipt page consumption visualization** — added a confirmed-receipt category/subcategory breakdown to the Receipts review page with stacked bars, amounts, total percentages, parent-category percentages, warnings, and rich period presets.
@@ -22,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **API Docker image** — converted the API Dockerfile to a multi-stage build with a production-only runtime layer, precompiled seed script, copied Prisma client artifacts, and only the OCR/PDF packages needed at runtime.
+- **Receipt mapping ownership** — receipt category mappings now use the same system/household scope model as classifier terms and subcategories; household mappings override global defaults, and seed startup deduplicates old household copies that exactly match global defaults.
 - **Receipt summaries** — receipt consumption totals now support period filtering, including all time, month, quarter, year, last 12 months, and custom ranges, and convert non-base receipt line amounts into the configured base currency using latest enabled exchange rates.
 - **Receipt page layout** — the main Receipts page now focuses on receipt history and review; new receipt intake lives behind the Add receipt action.
 - **Receipt review workstation** — receipt review now uses a full-width workstation layout with a collapsible history rail, sticky receipt preview, compact metadata form, and responsive line editing without page-level horizontal scrolling.

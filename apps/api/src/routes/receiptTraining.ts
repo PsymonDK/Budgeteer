@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { requireAdmin } from '../plugins/authenticate'
-import { loadReceiptClassifierConfig, normalizeReceiptLabel } from '../lib/receiptParser'
+import { fallbackReceiptClassifierConfig, loadReceiptClassifierConfig, normalizeReceiptLabel } from '../lib/receiptParser'
 
 const ScopeSchema = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('system') }),
@@ -37,14 +37,13 @@ const UpdateSubcategorySchema = z.object({
   isActive: z.boolean().optional(),
 })
 
-const CreateMappingSchema = z.object({
-  householdId: z.string().min(1),
+const CreateMappingSchema = ScopeSchema.and(z.object({
   merchantKey: z.string().max(200).optional(),
   normalizedLabel: z.string().min(1).max(200),
   categoryId: z.string().min(1),
   subcategoryId: z.string().nullable().optional(),
   confidence: z.number().min(0).max(1).optional(),
-})
+}))
 
 const UpdateMappingSchema = z.object({
   merchantKey: z.string().max(200).optional(),
@@ -237,23 +236,25 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
     const body = CreateMappingSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
 
-    const validation = await validateMappingTargets(body.data.householdId, body.data.categoryId, body.data.subcategoryId ?? null)
+    const scoped = resolveScope(body.data)
+    const validation = await validateMappingTargets(scoped, body.data.categoryId, body.data.subcategoryId ?? null)
     if (validation) return reply.status(400).send({ error: validation })
 
-    const classifierConfig = await loadReceiptClassifierConfig(body.data.householdId)
+    const classifierConfig = scoped.scopeKey === 'system' ? fallbackReceiptClassifierConfig() : await loadReceiptClassifierConfig(scoped.scopeKey)
     const normalizedLabel = normalizeReceiptLabel(body.data.normalizedLabel, classifierConfig)
     if (!normalizedLabel) return reply.status(400).send({ error: 'normalizedLabel is required' })
 
     const created = await prisma.receiptCategoryMapping.upsert({
       where: {
-        householdId_normalizedLabel_merchantKey: {
-          householdId: body.data.householdId,
+        scopeKey_normalizedLabel_merchantKey: {
+          scopeKey: scoped.scopeKey,
           normalizedLabel,
           merchantKey: body.data.merchantKey?.trim() ?? '',
         },
       },
       create: {
-        householdId: body.data.householdId,
+        scopeKey: scoped.scopeKey,
+        householdId: scoped.householdId,
         normalizedLabel,
         merchantKey: body.data.merchantKey?.trim() ?? '',
         categoryId: body.data.categoryId,
@@ -281,10 +282,11 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
 
     const categoryId = body.data.categoryId ?? existing.categoryId
     const subcategoryId = body.data.subcategoryId !== undefined ? body.data.subcategoryId : existing.subcategoryId
-    const validation = await validateMappingTargets(existing.householdId, categoryId, subcategoryId ?? null)
+    const scoped = { scopeKey: existing.scopeKey, householdId: existing.householdId }
+    const validation = await validateMappingTargets(scoped, categoryId, subcategoryId ?? null)
     if (validation) return reply.status(400).send({ error: validation })
 
-    const classifierConfig = await loadReceiptClassifierConfig(existing.householdId)
+    const classifierConfig = existing.scopeKey === 'system' ? fallbackReceiptClassifierConfig() : await loadReceiptClassifierConfig(existing.scopeKey)
     const normalizedLabel = body.data.normalizedLabel !== undefined
       ? normalizeReceiptLabel(body.data.normalizedLabel, classifierConfig)
       : undefined
@@ -347,14 +349,14 @@ function normalizeTermSide(value: string): string {
     .trim()
 }
 
-async function validateMappingTargets(householdId: string, categoryId: string, subcategoryId: string | null): Promise<string | null> {
+async function validateMappingTargets(scoped: { scopeKey: string; householdId: string | null }, categoryId: string, subcategoryId: string | null): Promise<string | null> {
   const [household, category] = await Promise.all([
-    prisma.household.findUnique({ where: { id: householdId }, select: { id: true } }),
+    scoped.householdId ? prisma.household.findUnique({ where: { id: scoped.householdId }, select: { id: true } }) : Promise.resolve({ id: 'system' }),
     prisma.category.findFirst({
       where: {
         id: categoryId,
         categoryType: 'EXPENSE',
-        OR: [{ isSystemWide: true }, { householdId }],
+        ...(scoped.scopeKey === 'system' ? { isSystemWide: true } : { OR: [{ isSystemWide: true }, { householdId: scoped.householdId }] }),
       },
       select: { id: true },
     }),
@@ -367,7 +369,7 @@ async function validateMappingTargets(householdId: string, categoryId: string, s
     where: {
       id: subcategoryId,
       categoryId,
-      OR: [{ isSystemWide: true }, { householdId }],
+      ...(scoped.scopeKey === 'system' ? { isSystemWide: true } : { OR: [{ isSystemWide: true }, { householdId: scoped.householdId }] }),
     },
     select: { id: true },
   })
@@ -410,8 +412,10 @@ function serializeSubcategory(subcategory: any) {
 function serializeMapping(mapping: any) {
   return {
     id: mapping.id,
+    scopeKey: mapping.scopeKey,
+    scope: mapping.scopeKey === 'system' ? 'system' : 'household',
     householdId: mapping.householdId,
-    householdName: mapping.household?.name ?? '',
+    householdName: mapping.household?.name ?? null,
     normalizedLabel: mapping.normalizedLabel,
     merchantKey: mapping.merchantKey,
     categoryId: mapping.categoryId,

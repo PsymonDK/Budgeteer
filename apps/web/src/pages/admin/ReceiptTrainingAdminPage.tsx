@@ -51,8 +51,10 @@ interface TrainingSubcategory {
 
 interface TrainingMapping {
   id: string
-  householdId: string
-  householdName: string
+  scope: Scope
+  scopeKey: string
+  householdId: string | null
+  householdName: string | null
   normalizedLabel: string
   merchantKey: string
   categoryId: string
@@ -73,7 +75,7 @@ interface ReceiptTrainingSnapshot {
 
 const emptyTerm = { scope: 'system' as Scope, householdId: '', termType: 'OCR_ALIAS' as TermType, term: '', isActive: true }
 const emptySubcategory = { scope: 'system' as Scope, householdId: '', categoryId: '', name: '', isActive: true }
-const emptyMapping = { householdId: '', merchantKey: '', normalizedLabel: '', categoryId: '', subcategoryId: '', confidence: '1' }
+const emptyMapping = { scope: 'system' as Scope, householdId: '', merchantKey: '', normalizedLabel: '', categoryId: '', subcategoryId: '', confidence: '1' }
 
 export function ReceiptTrainingAdminPage() {
   const queryClient = useQueryClient()
@@ -105,7 +107,7 @@ export function ReceiptTrainingAdminPage() {
   ), [snapshot.subcategories, query])
 
   const filteredMappings = useMemo(() => snapshot.mappings.filter((mapping) =>
-    !query || [mapping.normalizedLabel, mapping.merchantKey, mapping.householdName, mapping.categoryName, mapping.subcategoryName ?? ''].some((value) => value.toLowerCase().includes(query)),
+    !query || [mapping.normalizedLabel, mapping.merchantKey, mapping.householdName ?? 'system', mapping.categoryName, mapping.subcategoryName ?? ''].some((value) => value.toLowerCase().includes(query)),
   ), [snapshot.mappings, query])
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'receipt-training'] })
@@ -262,30 +264,24 @@ function MappingCreateForm({ draft, setDraft, households, categories, subcategor
   onSubmit: () => void
   isPending: boolean
 }) {
-  const visibleCategories = categories.filter((category) => category.isSystemWide || category.householdId === draft.householdId)
+  const visibleCategories = categories.filter((category) => draft.scope === 'system' ? category.isSystemWide : category.isSystemWide || category.householdId === draft.householdId)
   const visibleSubcategories = subcategories.filter((subcategory) =>
-    subcategory.isActive && subcategory.categoryId === draft.categoryId && (subcategory.isSystemWide || subcategory.householdId === draft.householdId),
+    subcategory.isActive && subcategory.categoryId === draft.categoryId && (draft.scope === 'system' ? subcategory.isSystemWide : subcategory.isSystemWide || subcategory.householdId === draft.householdId),
   )
   return (
     <form onSubmit={(e) => { e.preventDefault(); onSubmit() }} className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-5 grid grid-cols-1 md:grid-cols-6 gap-3 items-end">
-      <label>
-        <span className="block text-xs text-gray-400 mb-1">Household</span>
-        <select className={inputClass} value={draft.householdId} onChange={(e) => setDraft({ ...draft, householdId: e.target.value, categoryId: '', subcategoryId: '' })} required>
-          <option value="">Select household</option>
-          {households.map((household) => <option key={household.id} value={household.id}>{household.name}</option>)}
-        </select>
-      </label>
+      <ScopeFields scope={draft.scope} householdId={draft.householdId} households={households} onChange={(scope, householdId) => setDraft({ ...draft, scope, householdId, categoryId: '', subcategoryId: '' })} />
       <label>
         <span className="block text-xs text-gray-400 mb-1">Merchant key</span>
         <input className={inputClass} value={draft.merchantKey} onChange={(e) => setDraft({ ...draft, merchantKey: e.target.value })} placeholder="any merchant" />
       </label>
-      <label className="md:col-span-2">
+      <label>
         <span className="block text-xs text-gray-400 mb-1">Normalized label</span>
         <input className={inputClass} value={draft.normalizedLabel} onChange={(e) => setDraft({ ...draft, normalizedLabel: e.target.value })} placeholder="organic milk" required />
       </label>
       <label>
         <span className="block text-xs text-gray-400 mb-1">Category</span>
-        <select className={inputClass} value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value, subcategoryId: '' })} required disabled={!draft.householdId}>
+        <select className={inputClass} value={draft.categoryId} onChange={(e) => setDraft({ ...draft, categoryId: e.target.value, subcategoryId: '' })} required disabled={draft.scope === 'household' && !draft.householdId}>
           <option value="">Select category</option>
           {visibleCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
         </select>
@@ -301,7 +297,7 @@ function MappingCreateForm({ draft, setDraft, households, categories, subcategor
         <span className="block text-xs text-gray-400 mb-1">Confidence</span>
         <input type="number" min="0" max="1" step="0.01" className={inputClass} value={draft.confidence} onChange={(e) => setDraft({ ...draft, confidence: e.target.value })} />
       </label>
-      <button className={`${primaryBtn} flex items-center justify-center gap-2 md:col-span-5`} disabled={isPending || !draft.householdId}>
+      <button className={`${primaryBtn} flex items-center justify-center gap-2 md:col-span-5`} disabled={isPending || (draft.scope === 'household' && !draft.householdId)}>
         <Plus size={16} /> Add mapping
       </button>
     </form>
@@ -398,10 +394,10 @@ function MappingsTable({ mappings, onEdit, onDelete }: {
 }) {
   return (
     <AdminTable>
-      <TableHeader columns="xl:grid-cols-[150px_minmax(180px,1.2fr)_130px_minmax(160px,1fr)_88px_80px_104px]" labels={['Household', 'Label', 'Merchant', 'Category', 'Confidence', 'Hits', 'Actions']} />
+      <TableHeader columns="xl:grid-cols-[150px_minmax(180px,1.2fr)_130px_minmax(160px,1fr)_88px_80px_104px]" labels={['Scope', 'Label', 'Merchant', 'Category', 'Confidence', 'Hits', 'Actions']} />
       {mappings.map((mapping) => (
         <div key={mapping.id} className="grid grid-cols-1 xl:grid-cols-[150px_minmax(180px,1.2fr)_130px_minmax(160px,1fr)_88px_80px_104px] gap-2 px-4 py-3 border-b border-gray-800 last:border-0 text-sm">
-          <span className="text-gray-300">{mapping.householdName}</span>
+          <span className="text-gray-300">{mapping.householdName ?? 'System'}</span>
           <span className="font-mono text-gray-100 truncate" title={mapping.normalizedLabel}>{mapping.normalizedLabel}</span>
           <span className="text-gray-400 truncate">{mapping.merchantKey || 'Any'}</span>
           <span className="text-gray-300 truncate">{mapping.categoryName}{mapping.subcategoryName ? ` / ${mapping.subcategoryName}` : ''}</span>
@@ -492,13 +488,17 @@ function EditMappingModal({ mapping, categories, subcategories, onClose, onSave,
   const [categoryId, setCategoryId] = useState(mapping.categoryId)
   const [subcategoryId, setSubcategoryId] = useState(mapping.subcategoryId ?? '')
   const [confidence, setConfidence] = useState(String(mapping.confidence))
-  const visibleSubcategories = subcategories.filter((subcategory) => subcategory.isActive && subcategory.categoryId === categoryId)
+  const visibleCategories = categories.filter((category) => mapping.scope === 'system' ? category.isSystemWide : category.isSystemWide || category.householdId === mapping.householdId)
+  const visibleSubcategories = subcategories.filter((subcategory) =>
+    subcategory.isActive && subcategory.categoryId === categoryId && (mapping.scope === 'system' ? subcategory.isSystemWide : subcategory.isSystemWide || subcategory.householdId === mapping.householdId),
+  )
   return (
     <Modal title="Edit receipt mapping" size="md" onClose={onClose}>
       <form onSubmit={(e) => { e.preventDefault(); onSave({ merchantKey, normalizedLabel, categoryId, subcategoryId: subcategoryId || null, confidence: Number(confidence) }) }} className="space-y-4">
+        <p className="text-sm text-gray-400">Scope: {mapping.householdName ?? 'System'}</p>
         <label><span className="block text-sm text-gray-400 mb-1">Normalized label</span><input className={inputClass} value={normalizedLabel} onChange={(e) => setNormalizedLabel(e.target.value)} required /></label>
         <label><span className="block text-sm text-gray-400 mb-1">Merchant key</span><input className={inputClass} value={merchantKey} onChange={(e) => setMerchantKey(e.target.value)} /></label>
-        <label><span className="block text-sm text-gray-400 mb-1">Category</span><select className={inputClass} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId('') }} required>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+        <label><span className="block text-sm text-gray-400 mb-1">Category</span><select className={inputClass} value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSubcategoryId('') }} required>{visibleCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label><span className="block text-sm text-gray-400 mb-1">Subcategory</span><select className={inputClass} value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)}><option value="">No subcategory</option>{visibleSubcategories.map((subcategory) => <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>)}</select></label>
         <label><span className="block text-sm text-gray-400 mb-1">Confidence</span><input type="number" min="0" max="1" step="0.01" className={inputClass} value={confidence} onChange={(e) => setConfidence(e.target.value)} /></label>
         <ModalActions onClose={onClose} isPending={isPending} />
@@ -552,7 +552,8 @@ function scopedBody(draft: { scope: Scope; householdId: string; [key: string]: u
 
 function mappingBody(draft: typeof emptyMapping) {
   return {
-    householdId: draft.householdId,
+    scope: draft.scope,
+    ...(draft.scope === 'household' && { householdId: draft.householdId }),
     merchantKey: draft.merchantKey.trim(),
     normalizedLabel: draft.normalizedLabel.trim(),
     categoryId: draft.categoryId,

@@ -24,17 +24,21 @@ const categories = [
   {
     id: 'cat-food',
     name: 'Food & Groceries',
+    isSystemWide: true,
+    householdId: null,
     receiptSubcategories: [
-      { id: 'sub-food', name: 'Food' },
-      { id: 'sub-meat', name: 'Meat' },
+      { id: 'sub-food', name: 'Food', isSystemWide: true, householdId: null },
+      { id: 'sub-meat', name: 'Meat', isSystemWide: true, householdId: null },
     ],
   },
   {
     id: 'cat-transport',
     name: 'Transport',
+    isSystemWide: true,
+    householdId: null,
     receiptSubcategories: [
-      { id: 'sub-fuel', name: 'Fuel' },
-      { id: 'sub-parking', name: 'Parking' },
+      { id: 'sub-fuel', name: 'Fuel', isSystemWide: true, householdId: null },
+      { id: 'sub-parking', name: 'Parking', isSystemWide: true, householdId: null },
     ],
   },
 ]
@@ -82,6 +86,31 @@ describe('receiptClassifier', () => {
     expect(receipt.lineItems[0]).toMatchObject({ categoryId: 'cat-food', subcategoryId: 'sub-food' })
   })
 
+  it('uses global mappings when no household mapping exists', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ scopeKey: 'system', householdId: null, normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food' }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('Netto', [
+      item('Organic Milk', 'organic milk'),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0]).toMatchObject({ categoryId: 'cat-food', subcategoryId: 'sub-food' })
+  })
+
+  it('prefers household mappings over matching global mappings', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ scopeKey: 'system', householdId: null, normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food' }),
+      mapping({ normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-transport', subcategoryId: 'sub-fuel' }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('Netto', [
+      item('Organic Milk', 'organic milk'),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0]).toMatchObject({ categoryId: 'cat-transport', subcategoryId: 'sub-fuel' })
+  })
+
   it('uses fuzzy historical matches for similar confirmed labels', async () => {
     prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
       mapping({ normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food', hitCount: 8 }),
@@ -96,6 +125,19 @@ describe('receiptClassifier', () => {
       subcategoryId: 'sub-food',
       confidence: 'HIGH',
     })
+  })
+
+  it('tries household fuzzy mappings before global fuzzy mappings', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ scopeKey: 'system', householdId: null, normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food', hitCount: 20 }),
+      mapping({ normalizedLabel: 'organic whole malk', merchantKey: 'netto', categoryId: 'cat-transport', subcategoryId: 'sub-fuel', hitCount: 1 }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('Netto', [
+      item('Organic whole milk', 'organic whole milk'),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0]).toMatchObject({ categoryId: 'cat-transport', subcategoryId: 'sub-fuel' })
   })
 
   it('normalizes common OCR, package, receipt code, and trailing price noise', () => {
@@ -238,6 +280,10 @@ describe('receiptClassifier', () => {
     expect(prismaMock.receiptClassifierTerm.upsert).not.toHaveBeenCalledWith(expect.objectContaining({
       where: { scopeKey_termType_term: { scopeKey: 'household-1', termType: 'NOISE_TOKEN', term: 'totlet' } },
     }))
+    expect(prismaMock.receiptCategoryMapping.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { scopeKey_normalizedLabel_merchantKey: { scopeKey: 'household-1', normalizedLabel: 'lotus toilet', merchantKey: 'netto' } },
+      create: expect.objectContaining({ scopeKey: 'household-1', householdId: 'household-1' }),
+    }))
   })
 })
 
@@ -266,6 +312,8 @@ function item(label: string, normalizedLabel: string): ParsedReceipt['lineItems'
 }
 
 function mapping(overrides: Partial<{
+  scopeKey: string
+  householdId: string | null
   categoryId: string
   subcategoryId: string | null
   normalizedLabel: string
@@ -274,6 +322,8 @@ function mapping(overrides: Partial<{
   lastUsedAt: Date
 }>) {
   return {
+    scopeKey: 'household-1',
+    householdId: 'household-1',
     categoryId: 'cat-food',
     subcategoryId: 'sub-food',
     normalizedLabel: 'organic milk',

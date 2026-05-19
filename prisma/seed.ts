@@ -471,7 +471,7 @@ async function seedReceiptTrainingSeed() {
 
   const rows = parseSeedCsv(fs.readFileSync(seedPath, 'utf8'))
   const categories = await prisma.category.findMany({
-    where: { categoryType: 'EXPENSE', isActive: true },
+    where: { categoryType: 'EXPENSE', isActive: true, isSystemWide: true },
     include: { receiptSubcategories: { where: { isActive: true } } },
   })
   const categoryByName = new Map(categories.map((category) => [nameKey(category.name), category]))
@@ -507,34 +507,45 @@ async function seedReceiptTrainingSeed() {
       ? category.receiptSubcategories.find((candidate) => nameKey(candidate.name) === nameKey(subcategoryName))
       : null
     const merchantKey = normalizeMerchantKey(row.merchantKey || row.merchantName || '')
-    const households = await prisma.household.findMany({ where: { isActive: true }, select: { id: true } })
-    for (const household of households) {
-      const existing = await prisma.receiptCategoryMapping.findUnique({
-        where: {
-          householdId_normalizedLabel_merchantKey: {
-            householdId: household.id,
-            normalizedLabel,
-            merchantKey,
-          },
-        },
-      })
-      if (existing) continue
-      await prisma.receiptCategoryMapping.create({
-        data: {
-          householdId: household.id,
+    const confidence = Number(row.confidence) || 0.85
+    await prisma.receiptCategoryMapping.upsert({
+      where: {
+        scopeKey_normalizedLabel_merchantKey: {
+          scopeKey: 'system',
           normalizedLabel,
           merchantKey,
-          categoryId: category.id,
-          subcategoryId: subcategory?.id ?? null,
-          confidence: Number(row.confidence) || 0.85,
-          hitCount: 1,
         },
-      })
-      mappingSeeded++
-    }
+      },
+      create: {
+        scopeKey: 'system',
+        householdId: null,
+        normalizedLabel,
+        merchantKey,
+        categoryId: category.id,
+        subcategoryId: subcategory?.id ?? null,
+        confidence,
+        hitCount: 1,
+      },
+      update: {
+        categoryId: category.id,
+        subcategoryId: subcategory?.id ?? null,
+        confidence,
+      },
+    })
+    const deduped = await prisma.receiptCategoryMapping.deleteMany({
+      where: {
+        NOT: { scopeKey: 'system' },
+        normalizedLabel,
+        merchantKey,
+        categoryId: category.id,
+        subcategoryId: subcategory?.id ?? null,
+        hitCount: 1,
+      },
+    })
+    mappingSeeded += 1 + deduped.count
   }
 
-  console.log(`✓ Ensured receipt training seed (${termsSeeded} terms, ${mappingSeeded} household mappings).`)
+  console.log(`✓ Ensured receipt training seed (${termsSeeded} terms, ${mappingSeeded} mappings/dedupes).`)
 }
 
 function parseSeedCsv(text: string): Array<Record<string, string>> {

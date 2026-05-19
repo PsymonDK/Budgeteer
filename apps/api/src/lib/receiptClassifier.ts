@@ -5,10 +5,14 @@ import type { ParsedReceipt, ParsedReceiptLineItem, ReceiptConfidence } from './
 interface CategoryCandidate {
   id: string
   name: string
-  receiptSubcategories: Array<{ id: string; name: string }>
+  isSystemWide: boolean
+  householdId: string | null
+  receiptSubcategories: Array<{ id: string; name: string; isSystemWide: boolean; householdId: string | null }>
 }
 
 interface MappingCandidate {
+  scopeKey: string
+  householdId: string | null
   categoryId: string
   subcategoryId: string | null
   normalizedLabel: string
@@ -179,18 +183,20 @@ export async function applyCategorySuggestions(receipt: ParsedReceipt, household
       select: {
         id: true,
         name: true,
+        isSystemWide: true,
+        householdId: true,
         receiptSubcategories: {
           where: { isActive: true, OR: [{ isSystemWide: true }, { householdId }] },
-          select: { id: true, name: true },
+          select: { id: true, name: true, isSystemWide: true, householdId: true },
           orderBy: [{ isSystemWide: 'desc' }, { name: 'asc' }],
         },
       },
     }),
     prisma.receiptCategoryMapping.findMany({
-      where: { householdId },
-      select: { categoryId: true, subcategoryId: true, normalizedLabel: true, merchantKey: true, hitCount: true, lastUsedAt: true },
+      where: { OR: [{ scopeKey: 'system' }, { scopeKey: householdId }] },
+      select: { scopeKey: true, householdId: true, categoryId: true, subcategoryId: true, normalizedLabel: true, merchantKey: true, hitCount: true, lastUsedAt: true },
       orderBy: [{ hitCount: 'desc' }, { lastUsedAt: 'desc' }],
-      take: 1000,
+      take: 2000,
     }),
     loadReceiptClassifierConfig(householdId),
   ])
@@ -241,13 +247,14 @@ export async function learnReceiptMappings(args: {
   for (const item of usable) {
     await prisma.receiptCategoryMapping.upsert({
       where: {
-        householdId_normalizedLabel_merchantKey: {
-          householdId: args.householdId,
+        scopeKey_normalizedLabel_merchantKey: {
+          scopeKey: args.householdId,
           normalizedLabel: item.normalizedLabel,
           merchantKey,
         },
       },
       create: {
+        scopeKey: args.householdId,
         householdId: args.householdId,
         normalizedLabel: item.normalizedLabel,
         merchantKey,
@@ -276,25 +283,35 @@ function classifyWithoutAi(
   mappings: MappingCandidate[],
   classifierConfig: ReceiptClassifierConfig,
 ): ParsedReceiptLineItem {
-  const exactSameMerchant = mappings.find((mapping) =>
-    mapping.normalizedLabel === item.normalizedLabel && mapping.merchantKey === merchantKey,
-  )
+  const exactSameMerchant = findBestExactMapping(item.normalizedLabel, mappings, (mapping) => mapping.merchantKey === merchantKey)
   if (exactSameMerchant) {
     return { ...item, ...mappingToSuggestion(exactSameMerchant), confidence: bumpConfidence(item.confidence) }
   }
 
-  const exactAnyMerchant = mappings.find((mapping) => mapping.normalizedLabel === item.normalizedLabel)
+  const exactAnyMerchant = findBestExactMapping(item.normalizedLabel, mappings)
   if (exactAnyMerchant) {
     return { ...item, ...mappingToSuggestion(exactAnyMerchant), confidence: bumpConfidence(item.confidence) }
   }
 
-  const fuzzy = findFuzzyMapping(item.normalizedLabel, merchantKey, mappings)
+  const householdMappings = mappings.filter((mapping) => mapping.scopeKey !== 'system')
+  const globalMappings = mappings.filter((mapping) => mapping.scopeKey === 'system')
+  const fuzzy = findFuzzyMapping(item.normalizedLabel, merchantKey, householdMappings)
+    ?? findFuzzyMapping(item.normalizedLabel, merchantKey, globalMappings)
   if (fuzzy) {
     return { ...item, ...mappingToSuggestion(fuzzy.mapping), confidence: fuzzy.confidence }
   }
 
   const ruleSuggestion = suggestCategory(item.normalizedLabel, merchantName, categories, classifierConfig)
   return ruleSuggestion ? { ...item, ...ruleSuggestion, confidence: ruleSuggestion.confidence ?? item.confidence } : item
+}
+
+function findBestExactMapping(
+  label: string,
+  mappings: MappingCandidate[],
+  predicate: (mapping: MappingCandidate) => boolean = () => true,
+): MappingCandidate | undefined {
+  const candidates = mappings.filter((mapping) => mapping.normalizedLabel === label && predicate(mapping))
+  return candidates.find((mapping) => mapping.scopeKey !== 'system') ?? candidates.find((mapping) => mapping.scopeKey === 'system')
 }
 
 function findFuzzyMapping(label: string, merchantKey: string, mappings: MappingCandidate[]) {
@@ -429,13 +446,17 @@ function normalizeAiSuggestions(rawJson: string, aiIndexes: number[], categories
 }
 
 function isValidSuggestion(
-  suggestion: { categoryId: string; subcategoryId?: string | null },
+  suggestion: { scopeKey?: string; categoryId: string; subcategoryId?: string | null },
   categories: CategoryCandidate[],
 ): boolean {
   const category = categories.find((candidate) => candidate.id === suggestion.categoryId)
   if (!category) return false
+  const isGlobal = suggestion.scopeKey === 'system'
+  if (isGlobal && !category.isSystemWide) return false
   if (!suggestion.subcategoryId) return true
-  return category.receiptSubcategories.some((subcategory) => subcategory.id === suggestion.subcategoryId)
+  const subcategory = category.receiptSubcategories.find((candidate) => candidate.id === suggestion.subcategoryId)
+  if (!subcategory) return false
+  return !isGlobal || subcategory.isSystemWide
 }
 
 function mappingToSuggestion(mapping: MappingCandidate): CategorySuggestion {
@@ -583,7 +604,7 @@ export function suggestCategory(
     if (!category) return null
     const subcategory = subcategoryNames
       .map((name) => category.receiptSubcategories.find((s) => s.name.toLowerCase().includes(name)))
-      .find((candidate): candidate is { id: string; name: string } => Boolean(candidate))
+      .find((candidate): candidate is CategoryCandidate['receiptSubcategories'][number] => Boolean(candidate))
     return { categoryId: category.id, subcategoryId: subcategory?.id ?? null, confidence: 'MEDIUM' as const }
   }
 
