@@ -25,6 +25,8 @@ const ParseReceiptSchema = z.object({
 
 const ALLOWED_RECEIPT_MIME_TYPES = new Set(['application/pdf', 'image/png', 'image/jpeg'])
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
+const SAFE_STORAGE_SEGMENT = /^[a-z0-9_-]+$/i
+type ReceiptFileExtension = 'pdf' | 'png' | 'jpg'
 
 const UpdateReceiptSchema = z.object({
   merchantName: z.string().max(200).nullable().optional(),
@@ -167,7 +169,10 @@ export async function receiptRoutes(fastify: FastifyInstance) {
   })
 
   // POST /households/:id/receipts/upload
-  fastify.post('/households/:id/receipts/upload', { preHandler: authenticate }, async (request, reply) => {
+  fastify.post('/households/:id/receipts/upload', {
+    preHandler: authenticate,
+    config: { rateLimit: { max: 20, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const { id: householdId } = request.params as { id: string }
     const { sub: userId, role } = request.user
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
@@ -201,10 +206,8 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       include: receiptInclude,
     })
 
-    const receiptDir = path.resolve(UPLOAD_DIR, 'receipts', householdId)
+    const { receiptDir, relativePath, storagePath } = buildReceiptStoragePath(receipt.id, ext)
     fs.mkdirSync(receiptDir, { recursive: true })
-    const relativePath = path.join('receipts', householdId, `${receipt.id}.${ext}`)
-    const storagePath = path.resolve(UPLOAD_DIR, relativePath)
 
     let fileSize = 0
     try {
@@ -402,16 +405,21 @@ export async function receiptRoutes(fastify: FastifyInstance) {
   })
 
   // GET /households/:id/receipts/:receiptId/file
-  fastify.get('/households/:id/receipts/:receiptId/file', { preHandler: authenticate }, async (request, reply) => {
+  fastify.get('/households/:id/receipts/:receiptId/file', {
+    preHandler: authenticate,
+    config: { rateLimit: { max: 120, timeWindow: '15 minutes' } },
+  }, async (request, reply) => {
     const receipt = await loadReceiptForHousehold(request, reply)
     if (!receipt) return
     if (!receipt.sourceStoragePath || !receipt.sourceMimeType) {
       return reply.status(404).send({ error: 'Receipt file not found' })
     }
 
-    const uploadRoot = path.resolve(UPLOAD_DIR)
-    const filePath = path.resolve(uploadRoot, receipt.sourceStoragePath)
-    if (!filePath.startsWith(`${uploadRoot}${path.sep}`) || !fs.existsSync(filePath)) {
+    const ext = getReceiptFileExtension(receipt.sourceMimeType)
+    const filePath = ext
+      ? buildReceiptFileCandidates(receipt.id, receipt.householdId, ext).find((candidate) => fs.existsSync(candidate))
+      : null
+    if (!filePath) {
       return reply.status(404).send({ error: 'Receipt file not found' })
     }
 
@@ -607,6 +615,40 @@ async function validateAccountAccess(accountId: string, householdId: string, use
   if (!account || !account.isActive) return 'Account not found'
   if (account.householdId === householdId || account.ownedByUserId === userId) return null
   return 'Account not accessible'
+}
+
+function getReceiptFileExtension(mimeType: string): ReceiptFileExtension | null {
+  if (mimeType === 'application/pdf') return 'pdf'
+  if (mimeType === 'image/png') return 'png'
+  if (mimeType === 'image/jpeg') return 'jpg'
+  return null
+}
+
+function buildReceiptStoragePath(receiptId: string, ext: ReceiptFileExtension) {
+  const safeReceiptId = assertSafeStorageSegment(receiptId, 'receiptId')
+  const uploadRoot = path.resolve(UPLOAD_DIR)
+  const relativePath = path.join('receipts', `${safeReceiptId}.${ext}`)
+  const storagePath = path.join(uploadRoot, relativePath)
+  return {
+    receiptDir: path.dirname(storagePath),
+    relativePath,
+    storagePath,
+  }
+}
+
+function buildReceiptFileCandidates(receiptId: string, householdId: string, ext: ReceiptFileExtension): string[] {
+  const currentPath = buildReceiptStoragePath(receiptId, ext).storagePath
+  const safeHouseholdId = assertSafeStorageSegment(householdId, 'householdId')
+  const safeReceiptId = assertSafeStorageSegment(receiptId, 'receiptId')
+  const legacyPath = path.join(path.resolve(UPLOAD_DIR), 'receipts', safeHouseholdId, `${safeReceiptId}.${ext}`)
+  return currentPath === legacyPath ? [currentPath] : [currentPath, legacyPath]
+}
+
+function assertSafeStorageSegment(value: string, label: string): string {
+  if (!SAFE_STORAGE_SEGMENT.test(value)) {
+    throw new Error(`Invalid ${label}`)
+  }
+  return value
 }
 
 async function getHouseholdReceiptCurrency(_householdId: string): Promise<string> {

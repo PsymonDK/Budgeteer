@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Local API rate limiting** — made the global API rate limit configurable and disabled it by default in the Docker dev stack so normal local web usage no longer exhausts the shared request bucket.
 - **Container startup safety** — removed the unconditional Prisma `--accept-data-loss` startup path; destructive schema push now requires explicitly setting `SCHEMA_SYNC_MODE=force-push`.
 - **Docker web caching** — changed nginx caching so the SPA shell is not cached while hashed assets remain cacheable, preventing old frontend bundles from lingering after local image rebuilds.
+- **Receipt file route hardening** — added route-level throttles for receipt upload/download and rebuilt local receipt file paths from validated storage identifiers instead of request-derived path fragments.
 
 ---
 
