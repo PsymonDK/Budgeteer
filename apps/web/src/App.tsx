@@ -14,6 +14,7 @@ import { CategoriesPage } from './pages/CategoriesPage'
 import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
 import { CurrenciesAdminPage } from './pages/admin/CurrenciesAdminPage'
 import { AutomationsAdminPage } from './pages/admin/AutomationsAdminPage'
+import { ReceiptTrainingAdminPage } from './pages/admin/ReceiptTrainingAdminPage'
 import { ForbiddenPage } from './pages/ForbiddenPage'
 import { ExpensesPage } from './pages/ExpensesPage'
 import { IncomePage } from './pages/IncomePage'
@@ -21,7 +22,7 @@ import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
 import { BudgetYearsPage } from './pages/BudgetYearsPage'
 import { ComparePage } from './pages/ComparePage'
 import { SavingsPage } from './pages/SavingsPage'
-import { ReceiptsPage } from './pages/ReceiptsPage'
+import { NewReceiptPage, ReceiptsPage } from './pages/ReceiptsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { ChangePasswordPage } from './pages/ChangePasswordPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -53,6 +54,7 @@ function App() {
               <Route path="income" element={<HouseholdIncomePage />} />
               <Route path="savings" element={<SavingsPage />} />
               <Route path="expenses" element={<ExpensesPage />} />
+              <Route path="receipts/new" element={<NewReceiptPage />} />
               <Route path="receipts" element={<ReceiptsPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="budget-years" element={<BudgetYearsPage />} />
@@ -73,6 +75,7 @@ function App() {
               <Route path="households" element={<HouseholdsAdminPage />} />
               <Route path="currencies" element={<CurrenciesAdminPage />} />
               <Route path="categories" element={<CategoriesAdminPage />} />
+              <Route path="receipt-training" element={<ReceiptTrainingAdminPage />} />
               <Route path="automations" element={<AutomationsAdminPage />} />
             </Route>
 

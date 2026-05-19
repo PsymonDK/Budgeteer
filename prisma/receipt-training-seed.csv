@@ -1,0 +1,319 @@
+merchantName,merchantKey,originalLabel,normalizedLabel,categoryId,categoryName,subcategoryId,subcategoryName,confidence,termType,term,isActive,notes
+,,BROOKLYN PARKTIME,brooklyn parktime,,Shared Household Spending,,Beer,0.92,,,,Anonymized receipt training seed
+,,STAROPRAMEN 6-PAK,staropramen pak,,Shared Household Spending,,Beer,0.96,,,,
+,,KRONENBOURG 1664 BLANC,kronenbourg blanc,,Shared Household Spending,,Beer,0.96,,,,
+,,FLYING COUCH CONAN THE,flying couch conan the,,Shared Household Spending,,Beer,0.88,,,,
+,,CC ZERO,cc zero,,Shared Household Spending,,Food,0.88,,,,
+,,PLUSICE ISTERNINGER,plusice isterninger,,Shared Household Spending,,Food,0.9,,,,
+,,POTATO HOTDOG,potato hotdog,,Shared Household Spending,,Food,0.9,,,,
+,,SALT PEPPER,salt pepper,,Shared Household Spending,,Food,0.86,,,,
+,,MORGENMAD INKLUDERET,morgenmad inkluderet,,Shared Household Spending,,Food,0.75,,,,
+,,RANCHERS CUT,ranchers cut,,Shared Household Spending,,Meat,0.95,,,,
+,,COOP SNACK MIX,coop snack mix,,Shared Household Spending,,Candy,0.9,,,,
+,,SKY MIX,sky mix,,Shared Household Spending,,Candy,0.9,,,,
+,,COOP SOFT LOOP BAG,coop soft loop bag,,Shared Household Spending,,Household goods,0.86,,,,
+,,KLARE AFFALDSSAKKE,klare affaldssakke,,Shared Household Spending,,Household goods,0.95,,,,
+Silvan,silvan,PPG,ppg,,Other,,Unsorted,0.74,,,,
+Silvan,silvan,KNIGHT ARMOR NW,knight armor nw,,Other,,Unsorted,0.8,,,,
+EasyPark,easypark,Parkeringssum,parkeringssum,,Transport,,Parking,0.98,,,,
+EasyPark,easypark,EasyPark service,easypark service,,Transport,,Parking,0.98,,,,
+TAXA 4x35,taxa 4x35,Taxameter,taxameter,,Transport,,Taxi,0.98,,,,
+,,Storebaeltsbroen,storebaeltsbroen,,Transport,,,0.93,,,,
+,,Lavpris Bil,lavpris bil,,Transport,,,0.78,,,,
+,,Garage,garage,,Transport,,Parking,0.82,,,,
+,,Logi,logi,,Other,,Unsorted,0.72,,,,
+,,HANDSÆBE,handsæbe,,Shared Household Spending,,Hygiene,0.96,,,,Danish supermarket vocabulary seed
+,,HÅNDSÆBE,håndsæbe,,Shared Household Spending,,Hygiene,0.96,,,,
+,,SHAMPOO,shampoo,,Shared Household Spending,,Hair care,0.96,,,,
+,,BALSAM,balsam,,Shared Household Spending,,Hair care,0.94,,,,
+,,TANDPASTA,tandpasta,,Shared Household Spending,,Dental,0.96,,,,
+,,TANDBØRSTE,tandbørste,,Shared Household Spending,,Dental,0.96,,,,
+,,DEODORANT,deodorant,,Shared Household Spending,,Deodorant,0.96,,,,
+,,BARBERBLADE,barberblade,,Shared Household Spending,,Shaving,0.95,,,,
+,,BARBERSKUM,barberskum,,Shared Household Spending,,Shaving,0.95,,,,
+,,BIND,bind,,Shared Household Spending,,Hygiene,0.9,,,,
+,,TAMPONER,tamponer,,Shared Household Spending,,Hygiene,0.9,,,,
+,,VATPINDE,vatpinde,,Shared Household Spending,,Hygiene,0.9,,,,
+,,VATRONDELLER,vatrondeller,,Shared Household Spending,,Hygiene,0.9,,,,
+,,BODYLOTION,bodylotion,,Shared Household Spending,,Skin care,0.9,,,,
+,,LÆBEPOMADE,læbepomade,,Shared Household Spending,,Skin care,0.9,,,,
+,,CREME,creme,,Shared Household Spending,,Skin care,0.82,,,,
+,,MINIMÆLK,minimælk,,Shared Household Spending,,Dairy,0.97,,,,
+,,MINIMALK,minimalk,,Shared Household Spending,,Dairy,0.9,,,,
+,,LETMÆLK,letmælk,,Shared Household Spending,,Dairy,0.97,,,,
+,,SØDMÆLK,sødmælk,,Shared Household Spending,,Dairy,0.97,,,,
+,,SKUMMETMÆLK,skummetmælk,,Shared Household Spending,,Dairy,0.97,,,,
+,,KÆRNEMÆLK,kærnemælk,,Shared Household Spending,,Dairy,0.96,,,,
+,,LAKTOSEFRI MÆLK,laktosefri mælk,,Shared Household Spending,,Dairy,0.94,,,,
+,,HAVREDRIK,havredrik,,Shared Household Spending,,Dairy,0.9,,,,
+,,YOGHURT,yoghurt,,Shared Household Spending,,Dairy,0.96,,,,
+,,SKYR,skyr,,Shared Household Spending,,Dairy,0.96,,,,
+,,CREME FRAICHE,creme fraiche,,Shared Household Spending,,Dairy,0.94,,,,
+,,PISKEFLØDE,piskefløde,,Shared Household Spending,,Dairy,0.94,,,,
+,,FLØDE,fløde,,Shared Household Spending,,Dairy,0.93,,,,
+,,OST,ost,,Shared Household Spending,,Dairy,0.92,,,,
+,,SKÆREOST,skæreost,,Shared Household Spending,,Dairy,0.95,,,,
+,,REVET OST,revet ost,,Shared Household Spending,,Dairy,0.95,,,,
+,,SKINKEOST,skinkeost,,Shared Household Spending,,Dairy,0.96,,,,
+,,SMØREOST,smøreost,,Shared Household Spending,,Dairy,0.95,,,,
+,,FETA,feta,,Shared Household Spending,,Dairy,0.92,,,,
+,,MOZZARELLA,mozzarella,,Shared Household Spending,,Dairy,0.94,,,,
+,,SMØR,smør,,Shared Household Spending,,Dairy,0.94,,,,
+,,SMORBAR,smorbar,,Shared Household Spending,,Dairy,0.92,,,,
+,,SMØRBAR,smørbar,,Shared Household Spending,,Dairy,0.94,,,,
+,,RUGBRØD,rugbrød,,Shared Household Spending,,Bread & Bakery,0.96,,,,
+,,FRANSKBRØD,franskbrød,,Shared Household Spending,,Bread & Bakery,0.95,,,,
+,,TOASTBRØD,toastbrød,,Shared Household Spending,,Bread & Bakery,0.95,,,,
+,,BOLLER,boller,,Shared Household Spending,,Bread & Bakery,0.92,,,,
+,,RUNDSTYKKER,rundstykker,,Shared Household Spending,,Bread & Bakery,0.92,,,,
+,,KNÆKBRØD,knækbrød,,Shared Household Spending,,Bread & Bakery,0.93,,,,
+,,PITABRØD,pitabrød,,Shared Household Spending,,Bread & Bakery,0.92,,,,
+,,WRAPS,wraps,,Shared Household Spending,,Bread & Bakery,0.88,,,,
+,,HVEDEBRØD,hvedebrød,,Shared Household Spending,,Bread & Bakery,0.92,,,,
+,,MADPAKKEPOSTEJ,madpakkepostej,,Shared Household Spending,,Meat,0.94,,,,
+,,LEVERPOSTEJ,leverpostej,,Shared Household Spending,,Meat,0.95,,,,
+,,FRIKADELLER,frikadeller,,Shared Household Spending,,Meat,0.96,,,,
+,,MINIFRIKADELLER,minifrikadeller,,Shared Household Spending,,Meat,0.96,,,,
+,,KYLLING,kylling,,Shared Household Spending,,Meat,0.95,,,,
+,,KYLLINGEBRYST,kyllingebryst,,Shared Household Spending,,Meat,0.96,,,,
+,,HAKKET OKSEKØD,hakket oksekød,,Shared Household Spending,,Meat,0.96,,,,
+,,HAKKET SVINEKØD,hakket svinekød,,Shared Household Spending,,Meat,0.96,,,,
+,,OKSEKØD,oksekød,,Shared Household Spending,,Meat,0.95,,,,
+,,SVINEKØD,svinekød,,Shared Household Spending,,Meat,0.95,,,,
+,,BACON,bacon,,Shared Household Spending,,Meat,0.95,,,,
+,,PØLSER,pølser,,Shared Household Spending,,Meat,0.94,,,,
+,,GRILLPØLSER,grillpølser,,Shared Household Spending,,Meat,0.94,,,,
+,,SPEGEPØLSE,spegepølse,,Shared Household Spending,,Meat,0.95,,,,
+,,OKSESPEGEPØL,oksespegepøl,,Shared Household Spending,,Meat,0.93,,,,
+,,OKSESPEGEPOL,oksespegepol,,Shared Household Spending,,Meat,0.88,,,,
+,,SØNDERJYSK SPEGEPØLSE,sønderjysk spegepølse,,Shared Household Spending,,Meat,0.94,,,,
+,,SØNDERYJSK SPEGEP,sønderyjsk spegep,,Shared Household Spending,,Meat,0.9,,,,
+,,HAMBURGERRYG,hamburgerryg,,Shared Household Spending,,Meat,0.95,,,,
+,,ROASTBEEF,roastbeef,,Shared Household Spending,,Meat,0.95,,,,
+,,RØGET FILET,røget filet,,Shared Household Spending,,Meat,0.95,,,,
+,,SKINKE,skinke,,Shared Household Spending,,Meat,0.92,,,,
+,,KØDPÅLÆG,kødpålæg,,Shared Household Spending,,Meat,0.9,,,,
+,,TUN,tun,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,K-SALAT TUN,salat tun,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,MAKREL,makrel,,Shared Household Spending,,Fish & Seafood,0.95,,,,
+,,TORSKEROGN,torskerogn,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,REJER,rejer,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,LAKS,laks,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,FISKEFILET,fiskefilet,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,SILD,sild,,Shared Household Spending,,Fish & Seafood,0.94,,,,
+,,AGURK,agurk,,Shared Household Spending,,Vegetables,0.92,,,,
+,,AGURKER,agurker,,Shared Household Spending,,Vegetables,0.92,,,,
+,,SYLTEDE AGURKER,syltede agurker,,Shared Household Spending,,Condiments,0.94,,,,
+,,TOMAT,tomat,,Shared Household Spending,,Vegetables,0.92,,,,
+,,TOMATER,tomater,,Shared Household Spending,,Vegetables,0.92,,,,
+,,KARTOFLER,kartofler,,Shared Household Spending,,Vegetables,0.94,,,,
+,,LØG,løg,,Shared Household Spending,,Vegetables,0.9,,,,
+,,GULERØDDER,gulerødder,,Shared Household Spending,,Vegetables,0.94,,,,
+,,SALAT,salat,,Shared Household Spending,,Vegetables,0.88,,,,
+,,PEBERFRUGT,peberfrugt,,Shared Household Spending,,Vegetables,0.94,,,,
+,,BROCCOLI,broccoli,,Shared Household Spending,,Vegetables,0.94,,,,
+,,BLOMKÅL,blomkål,,Shared Household Spending,,Vegetables,0.94,,,,
+,,CHAMPIGNONER,champignoner,,Shared Household Spending,,Vegetables,0.94,,,,
+,,SPINAT,spinat,,Shared Household Spending,,Vegetables,0.94,,,,
+,,AVOCADO,avocado,,Shared Household Spending,,Vegetables,0.9,,,,
+,,ÆBLER,æbler,,Shared Household Spending,,Fruit,0.94,,,,
+,,BANANER,bananer,,Shared Household Spending,,Fruit,0.94,,,,
+,,APPELSINER,appelsiner,,Shared Household Spending,,Fruit,0.94,,,,
+,,PÆRER,pærer,,Shared Household Spending,,Fruit,0.94,,,,
+,,VINDRUER,vindruer,,Shared Household Spending,,Fruit,0.94,,,,
+,,CITRON,citron,,Shared Household Spending,,Fruit,0.9,,,,
+,,LIME,lime,,Shared Household Spending,,Fruit,0.88,,,,
+,,JORDBÆR,jordbær,,Shared Household Spending,,Fruit,0.94,,,,
+,,BLÅBÆR,blåbær,,Shared Household Spending,,Fruit,0.94,,,,
+,,RIS,ris,,Shared Household Spending,,Pantry,0.9,,,,
+,,PASTA,pasta,,Shared Household Spending,,Pantry,0.92,,,,
+,,HAVREGRYN,havregryn,,Shared Household Spending,,Breakfast,0.94,,,,
+,,MEL,mel,,Shared Household Spending,,Pantry,0.88,,,,
+,,SUKKER,sukker,,Shared Household Spending,,Pantry,0.9,,,,
+,,SALT,salt,,Shared Household Spending,,Pantry,0.82,,,,
+,,PEBER,peber,,Shared Household Spending,,Pantry,0.82,,,,
+,,OLIE,olie,,Shared Household Spending,,Pantry,0.88,,,,
+,,OLIVENOLIE,olivenolie,,Shared Household Spending,,Pantry,0.92,,,,
+,,EDDIKE,eddike,,Shared Household Spending,,Pantry,0.9,,,,
+,,HAKKEDE TOMATER,hakkede tomater,,Shared Household Spending,,Pantry,0.92,,,,
+,,TOMATPURE,tomatpure,,Shared Household Spending,,Pantry,0.92,,,,
+,,BØNNER,bønner,,Shared Household Spending,,Pantry,0.9,,,,
+,,KIDNEYBØNNER,kidneybønner,,Shared Household Spending,,Pantry,0.9,,,,
+,,REMOULADE,remoulade,,Shared Household Spending,,Condiments,0.95,,,,
+,,MAYONNAISE,mayonnaise,,Shared Household Spending,,Condiments,0.95,,,,
+,,KETCHUP,ketchup,,Shared Household Spending,,Condiments,0.95,,,,
+,,SENNEP,sennep,,Shared Household Spending,,Condiments,0.94,,,,
+,,CHILI SAUCE,chili sauce,,Shared Household Spending,,Condiments,0.95,,,,
+,,CHILT SAUCE,chilt sauce,,Shared Household Spending,,Condiments,0.88,,,,
+,,DRESSING,dressing,,Shared Household Spending,,Condiments,0.9,,,,
+,,PESTO,pesto,,Shared Household Spending,,Condiments,0.9,,,,
+,,SALSA,salsa,,Shared Household Spending,,Condiments,0.88,,,,
+,,FROSNE GRØNTSAGER,frosne grøntsager,,Shared Household Spending,,Frozen,0.92,,,,
+,,POMMES FRITES,pommes frites,,Shared Household Spending,,Frozen,0.92,,,,
+,,FROSTPIZZA,frostpizza,,Shared Household Spending,,Frozen,0.9,,,,
+,,PIZZA,pizza,,Shared Household Spending,,Frozen,0.82,,,,
+,,ISTERNINGER,isterninger,,Shared Household Spending,,Frozen,0.9,,,,
+,,PLUSICE ISTERNINGER,plusice isterninger,,Shared Household Spending,,Frozen,0.92,,,,
+,,CHIPS,chips,,Shared Household Spending,,Snacks,0.94,,,,
+,,POPCORN,popcorn,,Shared Household Spending,,Snacks,0.92,,,,
+,,NØDDER,nødder,,Shared Household Spending,,Snacks,0.9,,,,
+,,KIKS,kiks,,Shared Household Spending,,Snacks,0.9,,,,
+,,SNACK MIX,snack mix,,Shared Household Spending,,Snacks,0.9,,,,
+,,CHOKOLADE,chokolade,,Shared Household Spending,,Candy,0.94,,,,
+,,SLIK,slik,,Shared Household Spending,,Candy,0.94,,,,
+,,VINGUMMI,vingummi,,Shared Household Spending,,Candy,0.94,,,,
+,,LAKRIDS,lakrids,,Shared Household Spending,,Candy,0.94,,,,
+,,IS,is,,Shared Household Spending,,Candy,0.78,,,,
+,,KAGE,kage,,Shared Household Spending,,Candy,0.86,,,,
+,,COLA,cola,,Shared Household Spending,,Soda,0.92,,,,
+,,COCA COLA,coca cola,,Shared Household Spending,,Soda,0.94,,,,
+,,PEPSI,pepsi,,Shared Household Spending,,Soda,0.94,,,,
+,,FAXE KONDI,faxe kondi,,Shared Household Spending,,Soda,0.94,,,,
+,,DANSKVAND,danskvand,,Shared Household Spending,,Drinks,0.92,,,,
+,,VAND,vand,,Shared Household Spending,,Drinks,0.82,,,,
+,,JUICE,juice,,Shared Household Spending,,Drinks,0.92,,,,
+,,SAFT,saft,,Shared Household Spending,,Drinks,0.9,,,,
+,,KAKAO,kakao,,Shared Household Spending,,Drinks,0.9,,,,
+,,ENERGIDRIK,energidrik,,Shared Household Spending,,Drinks,0.92,,,,
+,,RED BULL,red bull,,Shared Household Spending,,Drinks,0.92,,,,
+,,KAFFE,kaffe,,Shared Household Spending,,Coffee & Tea,0.94,,,,
+,,TE,te,,Shared Household Spending,,Coffee & Tea,0.82,,,,
+,,ØL,øl,,Shared Household Spending,,Beer,0.94,,,,
+,,PILSNER,pilsner,,Shared Household Spending,,Beer,0.94,,,,
+,,CLASSIC,classic,,Shared Household Spending,,Beer,0.88,,,,
+,,IPA,ipa,,Shared Household Spending,,Beer,0.88,,,,
+,,HVIDVIN,hvidvin,,Shared Household Spending,,Wine,0.94,,,,
+,,RØDVIN,rødvin,,Shared Household Spending,,Wine,0.94,,,,
+,,ROSÉVIN,rosévin,,Shared Household Spending,,Wine,0.94,,,,
+,,VODKA,vodka,,Shared Household Spending,,Alcohol,0.94,,,,
+,,GIN,gin,,Shared Household Spending,,Alcohol,0.9,,,,
+,,ROM,rom,,Shared Household Spending,,Alcohol,0.9,,,,
+,,KØKKENRULLER,køkkenruller,,Shared Household Spending,,Paper goods,0.96,,,,
+,,KØKKENRULLE,køkkenrulle,,Shared Household Spending,,Paper goods,0.96,,,,
+,,TOILETPAPIR,toiletpapir,,Shared Household Spending,,Paper goods,0.96,,,,
+,,TOILET PAPIR,toilet papir,,Shared Household Spending,,Paper goods,0.96,,,,
+,,LOTUS TOILET,lotus toilet,,Shared Household Spending,,Paper goods,0.94,,,,
+,,LOTUS TOTLET,lotus totlet,,Shared Household Spending,,Paper goods,0.86,,,,
+,,TOILET,toilet,,Shared Household Spending,,Paper goods,0.8,,,,
+,,TOTLET,totlet,,Shared Household Spending,,Paper goods,0.78,,,,
+,,SERVIETTER,servietter,,Shared Household Spending,,Paper goods,0.94,,,,
+,,LOMMETØRKLÆDER,lommetørklæder,,Shared Household Spending,,Paper goods,0.94,,,,
+,,OPVASKEMIDDEL,opvaskemiddel,,Shared Household Spending,,Cleaning,0.95,,,,
+,,RENGØRINGSMIDDEL,rengøringsmiddel,,Shared Household Spending,,Cleaning,0.95,,,,
+,,UNIVERSALRENGØRING,universalrengøring,,Shared Household Spending,,Cleaning,0.94,,,,
+,,TOILETRENS,toiletrens,,Shared Household Spending,,Cleaning,0.94,,,,
+,,AFKALKER,afkalker,,Shared Household Spending,,Cleaning,0.94,,,,
+,,KLORIN,klorin,,Shared Household Spending,,Cleaning,0.94,,,,
+,,SKURESVAMPE,skuresvampe,,Shared Household Spending,,Cleaning,0.9,,,,
+,,SVAMPE,svampe,,Shared Household Spending,,Cleaning,0.82,,,,
+,,KARKLUDE,karklude,,Shared Household Spending,,Cleaning,0.9,,,,
+,,VASKEMIDDEL,vaskemiddel,,Shared Household Spending,,Laundry,0.95,,,,
+,,VASKEPULVER,vaskepulver,,Shared Household Spending,,Laundry,0.95,,,,
+,,SKYLLEMIDDEL,skyllemiddel,,Shared Household Spending,,Laundry,0.94,,,,
+,,BAGEPAPIR,bagepapir,,Shared Household Spending,,Kitchen supplies,0.94,,,,
+,,MADPAPIR,madpapir,,Shared Household Spending,,Kitchen supplies,0.92,,,,
+,,FRYSEPOSER,fryseposer,,Shared Household Spending,,Bags & Foil,0.94,,,,
+,,AFFALDSPOSER,affaldsposer,,Shared Household Spending,,Bags & Foil,0.94,,,,
+,,AFFALDSSÆKKE,affaldssække,,Shared Household Spending,,Bags & Foil,0.94,,,,
+,,KLARE AFFALDSSAKKE,klare affaldssakke,,Shared Household Spending,,Bags & Foil,0.96,,,,
+,,STANNIOL,stanniol,,Shared Household Spending,,Bags & Foil,0.92,,,,
+,,FOLIE,folie,,Shared Household Spending,,Bags & Foil,0.86,,,,
+,,HUSHOLDNINGSFILM,husholdningsfilm,,Shared Household Spending,,Bags & Foil,0.92,,,,
+,,POSER,poser,,Shared Household Spending,,Bags & Foil,0.78,,,,
+,,OPVASKEBØRSTE,opvaskebørste,,Shared Household Spending,,Kitchen supplies,0.92,,,,
+,,BATTERIER,batterier,,Shared Household Spending,,Batteries,0.94,,,,
+,,PÆRE,pære,,Shared Household Spending,,Light bulbs,0.78,,,,
+,,ELPÆRE,elpære,,Shared Household Spending,,Light bulbs,0.94,,,,
+,,BLEER,bleer,,Shared Household Spending,,Diapers,0.96,,,,
+,,VÅDSERVIETTER,vådservietter,,Shared Household Spending,,Baby care,0.94,,,,
+,,BABYMAD,babymad,,Shared Household Spending,,Baby food,0.94,,,,
+,,MODERMÆLKSERSTATNING,modermælkserstatning,,Shared Household Spending,,Baby food,0.94,,,,
+,,SUTTER,sutter,,Shared Household Spending,,Baby care,0.9,,,,
+,,BAMSE,bamse,,Shared Household Spending,,Toys,0.82,,,,
+,,LEGO,lego,,Shared Household Spending,,Toys,0.92,,,,
+,,HUNDEMAD,hundemad,,Shared Household Spending,,Pet food,0.96,,,,
+,,KATTEMAD,kattemad,,Shared Household Spending,,Pet food,0.96,,,,
+,,KATTEGRUS,kattegrus,,Shared Household Spending,,Pet supplies,0.96,,,,
+,,GODBIDDER,godbidder,,Shared Household Spending,,Pet supplies,0.82,,,,
+,,STRØMPER,strømper,,Shared Household Spending,,Clothing,0.9,,,,
+,,T-SHIRT,t shirt,,Shared Household Spending,,Clothing,0.9,,,,
+,,BUKSER,bukser,,Shared Household Spending,,Clothing,0.9,,,,
+,,SKO,sko,,Shared Household Spending,,Shoes,0.9,,,,
+,,BØGER,bøger,,Shared Household Spending,,Books,0.9,,,,
+,,BOG,bog,,Shared Household Spending,,Books,0.82,,,,
+,,BLOMSTER,blomster,,Shared Household Spending,,Flowers,0.9,,,,
+,,GAVE,gave,,Shared Household Spending,,Gifts,0.82,,,,
+,,PANODIL,panodil,,Shared Household Spending,,Pharmacy,0.95,,,,
+,,IPREN,ipren,,Shared Household Spending,,Pharmacy,0.95,,,,
+,,NÆSESPRAY,næsespray,,Shared Household Spending,,Pharmacy,0.94,,,,
+,,HOSTESAFT,hostesaft,,Shared Household Spending,,Pharmacy,0.94,,,,
+,,VITAMINER,vitaminer,,Shared Household Spending,,Pharmacy,0.9,,,,
+,,PLASTER,plaster,,Shared Household Spending,,Pharmacy,0.9,,,,
+,,,,,,,,,OCR_ALIAS,totlet=>toilet,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,tollet=>toilet,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,toiletpapii=>toiletpapir,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,chilt=>chili,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,k kkenruller=>køkkenruller,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,kokkenruller=>køkkenruller,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,k@kkenruller=>køkkenruller,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,minimalk=>minimælk,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,handsebe=>handsæbe,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,handsaebe=>handsæbe,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,sonderyjsk=>sønderjysk,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,spegopol=>spegepøl,true,Common OCR spelling correction
+,,,,,,,,,OCR_ALIAS,oksespegepol=>oksespegepøl,true,Common OCR spelling correction
+,,,,,,,,,NOISE_TOKEN,beløb,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,belob,true,OCR variant of beløb
+,,,,,,,,,NOISE_TOKEN,ekskl,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,faktureret,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,heraf,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,kvittering,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,bon,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,butik,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,kasse,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,kunde,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,momsen,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,momspligtigt,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,operatoren,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,org,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,se,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,varelinje,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,transaktion,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,transaktions,true,Receipt metadata noise
+,,,,,,,,,NOISE_TOKEN,økologisk,true,Product descriptor noise
+,,,,,,,,,NOISE_TOKEN,okologisk,true,OCR variant of økologisk
+,,,,,,,,,NOISE_TOKEN,øko,true,Product descriptor noise
+,,,,,,,,,NOISE_TOKEN,oko,true,OCR variant of øko
+,,,,,,,,,NOISE_TOKEN,discount,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,budget,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,xtra,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,coop,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,salling,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,gestus,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,levevis,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,änglamark,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,anglamark,true,OCR variant of Änglamark
+,,,,,,,,,NOISE_TOKEN,first,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,price,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,lotus,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,arla,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,lurpak,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,kærgården,true,Store brand noise
+,,,,,,,,,NOISE_TOKEN,kaergarden,true,OCR variant of Kærgården
+,,,,,,,,,LOW_VALUE_WORD,approval,true,Payment authorization line
+,,,,,,,,,LOW_VALUE_WORD,amount,true,Payment authorization line
+,,,,,,,,,LOW_VALUE_WORD,betalt,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,betaling,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,byttepenge,true,Change line
+,,,,,,,,,LOW_VALUE_WORD,rabat,true,Discount line
+,,,,,,,,,LOW_VALUE_WORD,rabatten,true,Discount line
+,,,,,,,,,LOW_VALUE_WORD,total,true,Receipt total line
+,,,,,,,,,LOW_VALUE_WORD,subtotal,true,Receipt subtotal line
+,,,,,,,,,LOW_VALUE_WORD,ialt,true,Receipt total line
+,,,,,,,,,LOW_VALUE_WORD,i alt,true,Receipt total line
+,,,,,,,,,LOW_VALUE_WORD,kort,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,kreditkort,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,kontant,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,mobilepay,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,retur,true,Return line
+,,,,,,,,,LOW_VALUE_WORD,transaction,true,Payment authorization line

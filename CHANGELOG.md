@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.58.0] - 2026-05-19 — Receipt entry and consumption dashboard
+
+### Added
+- **Global Add receipt action** — added a shared header action on the personal dashboard and household pages that opens receipt intake for the default household from the front page and the current household from household pages.
+- **Dedicated receipt intake route** — added `/households/:id/receipts/new` for upload/OCR intake, returning to the receipt review list with the new draft selected after parsing.
+- **Receipt consumption Sankey** — added a household dashboard diagram for confirmed receipt spending flowing from total spent to high-level categories and receipt subcategories, with current month, previous month, current year, and custom date range filters.
+- **Receipt page consumption visualization** — added a confirmed-receipt category/subcategory breakdown to the Receipts review page with stacked bars, amounts, total percentages, parent-category percentages, warnings, and rich period presets.
+- **Manual receipt lines** — receipt drafts now support manually adding line items when OCR finds no usable text or misses purchases.
+- **Receipt mapping training workflow** — added Receipts page actions to export an LLM-ready CSV kit with category catalog/current mappings and import validated mapping CSVs through preview and explicit confirmation.
+- **Receipt classifier terms** — added database-backed noise tokens, low-value receipt words, and OCR spelling aliases, including system defaults, household overrides, CSV import/export support, and learned observations from confirmed receipt reviews.
+- **Anonymized receipt training seed** — added a portable receipt training CSV derived from anonymized receipt labels and metadata terms, and wired seeding to apply those mappings to existing/demo households on install or upgrade.
+- **Admin receipt training maintenance** — added a system-admin-only Receipt training screen for maintaining classifier terms, learned receipt mappings, and receipt subcategories without editing the database directly.
+
+### Changed
+- **Receipt summaries** — receipt consumption totals now support period filtering, including all time, month, quarter, year, last 12 months, and custom ranges, and convert non-base receipt line amounts into the configured base currency using latest enabled exchange rates.
+- **Receipt page layout** — the main Receipts page now focuses on receipt history and review; new receipt intake lives behind the Add receipt action.
+- **Receipt review workstation** — receipt review now uses a full-width workstation layout with a collapsible history rail, sticky receipt preview, compact metadata form, and responsive line editing without page-level horizontal scrolling.
+- **Receipt totals** — receipt totals are now calculated from the sum of non-ignored line items instead of being edited as a separate free-form number.
+- **Receipt line matching** — strengthened label normalization and fuzzy scoring so confirmed mappings generalize better across OCR noise, package sizes, receipt codes, trailing prices, and merchant variants.
+- **Receipt mapping CSV format** — extended the import/export kit with classifier term rows so external/local LLM workflows can suggest reusable parsing vocabulary as well as category mappings.
+- **OCR-aware parsing and categorization** — receipt parsing now applies active `OCR_ALIAS` corrections to a temporary OCR text copy before extraction, keeps raw OCR labels visible for review, and scores common OCR spelling confusions such as `totlet`/`toilet`, `mi1k`/`milk`, and Danish character variants.
+- **Portable receipt mapping imports** — import preview now accepts category/subcategory names as a fallback when IDs are blank, while still treating supplied IDs as authoritative.
+- **Receipt OCR preprocessing** — receipt photo OCR now applies camera orientation, grayscale, and contrast preprocessing before Tesseract, then keeps the best receipt-like segmentation result so sideways phone metadata no longer produces empty line extraction.
+- **Danish receipt OCR** — the API Docker image now includes Danish Tesseract data and OCR prefers `dan+eng`, improving Danish characters such as `Ø/ø` and `Å/å` while retaining an English fallback.
+- **Danish receipt vocabulary** — expanded receipt training seed data with Danish supermarket/product vocabulary, common OCR variants, and selected brand/package noise terms so fuzzy matching has useful baseline mappings before household-specific learning.
+- **Expanded receipt subcategories** — added receipt-focused default subcategories for household supplies, personal care, clothing, children/baby, pets, leisure/gifts, dairy, bakery, fish, condiments, frozen food, snacks, drinks, and related grocery groupings.
+- **Shared household receipt category** — day-to-day receipt shopping seed mappings now use a new `Shared Household Spending` high-level category, keeping grocery, household supplies, personal care, baby, pets, pharmacy, clothing, and gift distinctions as lower-level receipt subcategories.
+- **Receipt training ownership** — receipt classifier vocabulary and learned matching data now have dedicated `/admin/receipt-training` APIs and UI, keeping bulk tuning under system administrator control.
+
+### Fixed
+- **Receipt OCR timeout** — server-side image OCR now has a bounded execution timeout so difficult uploads return to a reviewable draft instead of leaving the intake button spinning indefinitely.
+- **Local API rate limiting** — made the global API rate limit configurable and disabled it by default in the Docker dev stack so normal local web usage no longer exhausts the shared request bucket.
+- **Container startup safety** — removed the unconditional Prisma `--accept-data-loss` startup path; destructive schema push now requires explicitly setting `SCHEMA_SYNC_MODE=force-push`.
+- **Docker web caching** — changed nginx caching so the SPA shell is not cached while hashed assets remain cacheable, preventing old frontend bundles from lingering after local image rebuilds.
+
+---
+
+## [0.57.2] - 2026-05-19 — Docker API build fix
+
+### Fixed
+- **Local Docker image builds** — added OCR/PDF dependencies to the API image build while keeping package manager and Prisma downloads on normal TLS verification.
+- **Receipt import upload flow** — made the selected-file action explicit by changing the submit state to “Upload and parse receipt,” removed invalid nested label markup around the file picker, cleared the JSON content type inherited by the shared API client before sending receipt `FormData`, and surfaced upload errors with a toast as well as inline text.
+- **Receipt photo upload size** — raised nginx's request body limit to 10 MB to match the API multipart limit, allowing normal phone photos of receipts to reach the upload endpoint.
+- **Receipt currency handling** — receipt parsing now prefers the currency detected from receipt text and only falls back to the configured household/base currency when none is present; the receipt review form now uses the existing enabled currency list instead of a free-text currency field.
+
+---
+
 ## [0.57.1] - 2026-05-18 — Smarter receipt line classification
 
 ### Added

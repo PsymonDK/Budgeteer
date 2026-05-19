@@ -9,11 +9,16 @@ const prismaMock = vi.hoisted(() => ({
     findMany: vi.fn(),
     upsert: vi.fn(),
   },
+  receiptClassifierTerm: {
+    findMany: vi.fn(),
+    upsert: vi.fn(),
+    updateMany: vi.fn(),
+  },
 }))
 
 vi.mock('./prisma', () => ({ prisma: prismaMock }))
 
-import { applyCategorySuggestions } from './receiptClassifier'
+import { applyCategorySuggestions, learnReceiptMappings, normalizeReceiptLabel } from './receiptClassifier'
 
 const categories = [
   {
@@ -42,6 +47,10 @@ describe('receiptClassifier', () => {
     delete process.env.LOCAL_AI_MODEL
     prismaMock.category.findMany.mockResolvedValue(categories)
     prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([])
+    prismaMock.receiptCategoryMapping.upsert.mockResolvedValue({})
+    prismaMock.receiptClassifierTerm.findMany.mockResolvedValue([])
+    prismaMock.receiptClassifierTerm.upsert.mockResolvedValue({})
+    prismaMock.receiptClassifierTerm.updateMany.mockResolvedValue({ count: 0 })
   })
 
   it('uses exact learned mappings for the same merchant first', async () => {
@@ -87,6 +96,60 @@ describe('receiptClassifier', () => {
       subcategoryId: 'sub-food',
       confidence: 'HIGH',
     })
+  })
+
+  it('normalizes common OCR, package, receipt code, and trailing price noise', () => {
+    expect(normalizeReceiptLabel('3651001 TV-bord LYNGVIG 160cm 2.499,00')).toBe('tv bord lyngvig')
+    expect(normalizeReceiptLabel('2 x Organic Milk, 1L 12,95')).toBe('organic milk')
+    expect(normalizeReceiptLabel('VARENR 90425 Rugbrød - ØKO')).toBe('rugbrød øko')
+    expect(normalizeReceiptLabel('TOTLET')).toBe('toilet')
+    expect(normalizeReceiptLabel('CHILT SAUCE')).toBe('chili sauce')
+    expect(normalizeReceiptLabel('MINIMALK')).toBe('minimælk')
+  })
+
+  it('uses token-aware fuzzy matches for package-size variants', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ normalizedLabel: 'tv bord lyngvig', merchantKey: 'jysk', categoryId: 'cat-food', subcategoryId: 'sub-food', hitCount: 4 }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('JYSK', [
+      item('TV-bord LYNGVIG 160cm', normalizeReceiptLabel('TV-bord LYNGVIG 160cm')),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0]).toMatchObject({
+      categoryId: 'cat-food',
+      subcategoryId: 'sub-food',
+      confidence: 'MEDIUM',
+    })
+  })
+
+  it('uses OCR-confusion-aware fuzzy matches for spelling errors', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food', hitCount: 4 }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('Netto', [
+      item('Organic Mi1k', normalizeReceiptLabel('Organic Mi1k')),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0]).toMatchObject({
+      categoryId: 'cat-food',
+      subcategoryId: 'sub-food',
+      confidence: 'HIGH',
+    })
+  })
+
+  it('does not fuzzy match below conservative thresholds', async () => {
+    prismaMock.receiptCategoryMapping.findMany.mockResolvedValue([
+      mapping({ normalizedLabel: 'organic milk', merchantKey: 'netto', categoryId: 'cat-food', subcategoryId: 'sub-food', hitCount: 20 }),
+    ])
+
+    const receipt = await applyCategorySuggestions(baseReceipt('Other shop', [
+      item('Diesel fuel', 'diesel fuel'),
+    ]), 'household-1')
+
+    expect(receipt.lineItems[0].categoryId).toBe('cat-transport')
+    expect(receipt.lineItems[0].subcategoryId).toBe('sub-fuel')
   })
 
   it('falls back to deterministic keyword rules', async () => {
@@ -153,6 +216,28 @@ describe('receiptClassifier', () => {
 
     expect(receipt.lineItems[0].categoryId).toBeUndefined()
     expect(receipt.notes.at(-1)).toContain('Local AI categorizer failed with 500')
+  })
+
+  it('does not learn OCR alias source words as noise tokens', async () => {
+    prismaMock.receiptClassifierTerm.findMany.mockResolvedValue([
+      { scopeKey: 'system', termType: 'OCR_ALIAS', term: 'totlet=>toilet', isActive: true },
+    ])
+
+    await learnReceiptMappings({
+      householdId: 'household-1',
+      merchantName: 'Netto',
+      items: [{
+        originalText: 'LOTUS TOTLET 20,00',
+        label: 'LOTUS TOTLET',
+        normalizedLabel: 'lotus toilet',
+        categoryId: 'cat-food',
+        subcategoryId: 'sub-food',
+      }],
+    })
+
+    expect(prismaMock.receiptClassifierTerm.upsert).not.toHaveBeenCalledWith(expect.objectContaining({
+      where: { scopeKey_termType_term: { scopeKey: 'household-1', termType: 'NOISE_TOKEN', term: 'totlet' } },
+    }))
   })
 })
 

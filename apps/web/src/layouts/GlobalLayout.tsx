@@ -4,6 +4,7 @@ import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import { ChevronLeft } from 'lucide-react'
+import { AddReceiptButton } from '../components/AddReceiptButton'
 
 export function GlobalLayout() {
   const { activeHouseholdId } = useHousehold()
@@ -31,6 +32,7 @@ export function GlobalLayout() {
           )}
         </div>
         <div className="flex items-center gap-4">
+          {isDashboard && <AddReceiptButton />}
           <HeaderSettingsMenu />
           <HeaderUserMenu />
         </div>

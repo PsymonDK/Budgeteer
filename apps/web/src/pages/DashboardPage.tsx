@@ -89,6 +89,20 @@ interface DashboardSummary {
   warnings: Warnings
 }
 
+type ReceiptSummaryPeriod = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom'
+
+interface ReceiptConsumptionSummary {
+  total: string
+  itemCount: number
+  baseCurrency: string
+  period: ReceiptSummaryPeriod | 'allTime' | 'legacy'
+  startDate: string | null
+  endDate: string | null
+  warnings: string[]
+  byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
+  bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
+}
+
 interface Household {
   id: string
   name: string
@@ -107,6 +121,7 @@ interface SavingsHistoryRow {
 
 const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', '#f43f5e', '#22d3ee', '#fbbf24']
+const inputSelectClass = 'bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-400'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -124,6 +139,9 @@ export function DashboardPage() {
 
   // SAV-003: affordability slider (extra monthly savings)
   const [extraSavings, setExtraSavings] = useState(0)
+  const [receiptPeriod, setReceiptPeriod] = useState<ReceiptSummaryPeriod>('currentMonth')
+  const [receiptStartDate, setReceiptStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
+  const [receiptEndDate, setReceiptEndDate] = useState(() => new Date().toISOString().slice(0, 10))
 
   // Budget transfer state
   const [markPaidTransfer, setMarkPaidTransfer] = useState<BudgetTransfer | null>(null)
@@ -147,6 +165,22 @@ export function DashboardPage() {
     queryKey: ['dashboard', householdId],
     queryFn: async () => (await api.get<DashboardSummary>(`/households/${householdId}/summary`)).data,
     enabled: !!householdId,
+  })
+
+  const receiptSummaryQuery = useMemo(() => {
+    const params = new URLSearchParams({ period: receiptPeriod })
+    if (receiptPeriod === 'custom') {
+      params.set('startDate', receiptStartDate)
+      params.set('endDate', receiptEndDate)
+    }
+    return params.toString()
+  }, [receiptEndDate, receiptPeriod, receiptStartDate])
+  const receiptCustomRangeValid = receiptPeriod !== 'custom' || Boolean(receiptStartDate && receiptEndDate && receiptStartDate <= receiptEndDate)
+
+  const { data: receiptSummary } = useQuery<ReceiptConsumptionSummary>({
+    queryKey: ['receipt-summary', householdId, receiptPeriod, receiptStartDate, receiptEndDate],
+    queryFn: async () => (await api.get<ReceiptConsumptionSummary>(`/households/${householdId}/receipts/summary?${receiptSummaryQuery}`)).data,
+    enabled: !!householdId && receiptCustomRangeValid,
   })
 
   const queryClient = useQueryClient()
@@ -229,6 +263,37 @@ export function DashboardPage() {
     }
     return { nodes, links }
   }, [summary, income, savings, surplus])
+
+  const receiptSankeyData = useMemo(() => {
+    if (!receiptCustomRangeValid) return null
+    if (!receiptSummary || parseFloat(receiptSummary.total) <= 0) return null
+    const nodes: SankeyNodeDef[] = [
+      { id: 'total_spent', name: 'Total spent', color: '#f59e0b' },
+      ...receiptSummary.byCategory.map((category, index) => ({
+        id: categoryNodeId(category.categoryId),
+        name: category.categoryName,
+        color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+      })),
+      ...receiptSummary.bySubcategory.map((subcategory, index) => ({
+        id: subcategoryNodeId(subcategory.categoryId, subcategory.subcategoryId),
+        name: subcategory.subcategoryName,
+        color: CATEGORY_COLORS[index % CATEGORY_COLORS.length],
+      })),
+    ]
+    const links: SankeyLinkDef[] = [
+      ...receiptSummary.byCategory.map((category) => ({
+        source: 'total_spent',
+        target: categoryNodeId(category.categoryId),
+        value: parseFloat(category.total),
+      })),
+      ...receiptSummary.bySubcategory.map((subcategory) => ({
+        source: categoryNodeId(subcategory.categoryId),
+        target: subcategoryNodeId(subcategory.categoryId, subcategory.subcategoryId),
+        value: parseFloat(subcategory.total),
+      })),
+    ]
+    return { nodes, links }
+  }, [receiptCustomRangeValid, receiptSummary])
 
   const warnings = summary?.warnings
   const activeWarnings: { key: string; message: string }[] = []
@@ -334,6 +399,58 @@ export function DashboardPage() {
               </div>
             </div>
           )}
+
+          <div className="mb-8">
+            <div className="flex flex-col gap-3 mb-3 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Receipt consumption flow</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {receiptSummary ? `${receiptSummary.itemCount} confirmed receipt lines · ${fmt(receiptSummary.total)}` : 'Confirmed receipt lines'}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-xs text-gray-400">
+                  <span className="block mb-1">Period</span>
+                  <select value={receiptPeriod} onChange={(e) => setReceiptPeriod(e.target.value as ReceiptSummaryPeriod)} className={`${inputSelectClass} min-w-[160px]`}>
+                    <option value="currentMonth">Current month</option>
+                    <option value="previousMonth">Previous month</option>
+                    <option value="currentYear">Current year</option>
+                    <option value="custom">Custom period</option>
+                  </select>
+                </label>
+                {receiptPeriod === 'custom' && (
+                  <>
+                    <label className="text-xs text-gray-400">
+                      <span className="block mb-1">Start</span>
+                      <input type="date" value={receiptStartDate} onChange={(e) => setReceiptStartDate(e.target.value)} className={inputSelectClass} />
+                    </label>
+                    <label className="text-xs text-gray-400">
+                      <span className="block mb-1">End</span>
+                      <input type="date" value={receiptEndDate} onChange={(e) => setReceiptEndDate(e.target.value)} className={inputSelectClass} />
+                    </label>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+              {receiptSankeyData ? (
+                <SankeyChart data={receiptSankeyData} currency={receiptSummary?.baseCurrency ?? baseCurrency} height={360} />
+              ) : receiptPeriod === 'custom' && !receiptCustomRangeValid ? (
+                <div className="py-14 text-center text-sm text-amber-300">
+                  Choose a custom start date before or equal to the end date.
+                </div>
+              ) : (
+                <div className="py-14 text-center text-sm text-gray-500">
+                  No confirmed receipt consumption for this period.
+                </div>
+              )}
+              {receiptSummary?.warnings?.length ? (
+                <div className="mt-4 space-y-1 text-xs text-amber-300">
+                  {receiptSummary.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
           {/* HH-005: Member expense splits */}
           {summary.memberSplits.length > 0 && (
@@ -769,4 +886,12 @@ export function DashboardPage() {
       )}
     </main>
   )
+}
+
+function categoryNodeId(categoryId: string | null) {
+  return `receipt_cat_${categoryId ?? 'uncategorized'}`
+}
+
+function subcategoryNodeId(categoryId: string | null, subcategoryId: string | null) {
+  return `receipt_sub_${categoryId ?? 'uncategorized'}_${subcategoryId ?? 'none'}`
 }

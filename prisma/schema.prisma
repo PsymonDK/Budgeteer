@@ -102,6 +102,12 @@ enum ReceiptConfidence {
   HIGH
 }
 
+enum ReceiptClassifierTermType {
+  NOISE_TOKEN
+  LOW_VALUE_WORD
+  OCR_ALIAS
+}
+
 model User {
   id                        String                     @id @default(cuid())
   email                     String                     @unique
@@ -161,6 +167,7 @@ model Household {
   receipts    Receipt[]
   receiptSubcategories ReceiptSubcategory[]
   receiptCategoryMappings ReceiptCategoryMapping[]
+  receiptClassifierTerms ReceiptClassifierTerm[]
 }
 
 model HouseholdMember {
@@ -429,6 +436,25 @@ model ReceiptCategoryMapping {
   @@unique([householdId, normalizedLabel, merchantKey])
   @@index([householdId, categoryId])
   @@index([subcategoryId])
+}
+
+model ReceiptClassifierTerm {
+  id          String                    @id @default(cuid())
+  scopeKey    String                    @default("system")
+  householdId String?
+  household   Household?                @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  termType    ReceiptClassifierTermType
+  term        String
+  isActive    Boolean                   @default(true)
+  source      String                    @default("SYSTEM")
+  hitCount    Int                       @default(0)
+  lastSeenAt  DateTime?
+  createdAt   DateTime                  @default(now())
+  updatedAt   DateTime                  @updatedAt
+
+  @@unique([scopeKey, termType, term])
+  @@index([householdId])
+  @@index([termType, isActive])
 }
 
 model Expense {

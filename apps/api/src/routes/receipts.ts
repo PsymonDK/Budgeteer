@@ -7,7 +7,9 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertHouseholdAccess } from '../lib/ownership'
 import { BASE_CURRENCY } from '../lib/currency'
-import { learnReceiptMappings, normalizeReceiptLabel, parseReceipt } from '../lib/receiptParser'
+import { buildReceiptSummaryDateFilter, summarizeReceiptConsumption } from '../lib/receiptConsumption'
+import { buildReceiptMappingExportKit, confirmReceiptMappingImport, previewReceiptMappingImport } from '../lib/receiptMappingImport'
+import { correctReceiptOcrText, learnReceiptMappings, loadReceiptClassifierConfig, normalizeReceiptLabel, parseReceipt } from '../lib/receiptParser'
 import { extractReceiptOcrText } from '../lib/receiptOcr'
 import { toNum } from '../lib/decimal'
 
@@ -45,6 +47,43 @@ const UpdateLineItemSchema = z.object({
   isIgnored: z.boolean().optional(),
 })
 
+const CreateLineItemSchema = z.object({
+  label: z.string().min(1).max(200),
+  originalText: z.string().min(1).max(500).optional(),
+  quantity: z.number().nonnegative().nullable().optional(),
+  amount: z.number().nonnegative(),
+  categoryId: z.string().nullable().optional(),
+  subcategoryId: z.string().nullable().optional(),
+  confidence: ConfidenceSchema.optional(),
+  isIgnored: z.boolean().optional(),
+})
+
+const ReceiptSummaryQuerySchema = z.object({
+  year: z.coerce.number().int().min(1900).max(2500).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional(),
+  period: z.enum([
+    'allTime',
+    'currentMonth',
+    'previousMonth',
+    'currentQuarter',
+    'previousQuarter',
+    'currentYear',
+    'previousYear',
+    'last12Months',
+    'custom',
+  ]).optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).superRefine((data, ctx) => {
+  if (data.period === 'custom' && (!data.startDate || !data.endDate)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'startDate and endDate are required for custom period' })
+  }
+})
+
+const ReceiptMappingImportSchema = z.object({
+  csvText: z.string().min(1).max(1_000_000),
+})
+
 const receiptInclude = {
   uploadedBy: { select: { id: true, name: true } },
   account: { select: { id: true, name: true, type: true } },
@@ -76,7 +115,17 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const parsed = await parseReceipt(body.data, householdId)
+      const fallbackCurrency = await getHouseholdReceiptCurrency(householdId)
+      const classifierConfig = await loadReceiptClassifierConfig(householdId)
+      const rawText = body.data.rawText?.trim() ?? ''
+      const correctedRawText = correctReceiptOcrText(rawText, classifierConfig)
+      const parsed = await parseReceipt({
+        ...body.data,
+        rawText: correctedRawText || rawText,
+        displayRawText: rawText,
+        fallbackCurrency,
+      }, householdId)
+      const receiptCurrency = await resolveReceiptCurrency(parsed.currencyCode, fallbackCurrency)
       const receipt = await prisma.receipt.create({
         data: {
           householdId,
@@ -84,10 +133,10 @@ export async function receiptRoutes(fastify: FastifyInstance) {
           accountId: body.data.accountId ?? null,
           merchantName: parsed.merchantName ?? null,
           purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
-          totalAmount: parsed.totalAmount != null ? new Decimal(parsed.totalAmount) : null,
+          totalAmount: sumParsedLineItems(parsed.lineItems),
           taxAmount: parsed.taxAmount != null ? new Decimal(parsed.taxAmount) : null,
           feeAmount: parsed.feeAmount != null ? new Decimal(parsed.feeAmount) : null,
-          currencyCode: parsed.currencyCode || BASE_CURRENCY,
+          currencyCode: receiptCurrency,
           rawText: body.data.rawText ?? null,
           confidence: parsed.confidence,
           status: 'DRAFT',
@@ -99,7 +148,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
               normalizedLabel: item.normalizedLabel,
               quantity: item.quantity != null ? new Decimal(item.quantity) : null,
               amount: new Decimal(item.amount),
-              currencyCode: parsed.currencyCode || BASE_CURRENCY,
+              currencyCode: receiptCurrency,
               categoryId: item.categoryId ?? null,
               subcategoryId: item.subcategoryId ?? null,
               confidence: item.confidence,
@@ -136,6 +185,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     const ext = data.mimetype === 'application/pdf' ? 'pdf' : data.mimetype === 'image/png' ? 'png' : 'jpg'
     const buffer = await data.toBuffer()
+    const fallbackCurrency = await getHouseholdReceiptCurrency(householdId)
     const receipt = await prisma.receipt.create({
       data: {
         householdId,
@@ -143,7 +193,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         accountId: accountId || null,
         sourceMimeType: data.mimetype,
         sourceFileName: data.filename,
-        currencyCode: BASE_CURRENCY,
+        currencyCode: fallbackCurrency,
         status: 'DRAFT',
         confidence: 'LOW',
         notes: [],
@@ -180,11 +230,15 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     let parsed
     try {
+      const classifierConfig = await loadReceiptClassifierConfig(householdId)
+      const correctedRawText = ocr.rawText ? correctReceiptOcrText(ocr.rawText, classifierConfig) : ''
       parsed = await parseReceipt({
-        rawText: ocr.rawText || undefined,
+        rawText: correctedRawText || ocr.rawText || undefined,
+        displayRawText: ocr.rawText || undefined,
         fileName: data.filename,
         mimeType: data.mimetype as 'application/pdf' | 'image/png' | 'image/jpeg',
         fileBase64: data.mimetype.startsWith('image/') ? buffer.toString('base64') : undefined,
+        fallbackCurrency,
       }, householdId)
       parsed.notes = [...ocr.notes, ...parsed.notes]
     } catch (err) {
@@ -194,22 +248,23 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         totalAmount: null,
         taxAmount: null,
         feeAmount: null,
-        currencyCode: BASE_CURRENCY,
+        currencyCode: fallbackCurrency,
         confidence: 'LOW' as const,
         notes: [...ocr.notes, err instanceof Error ? err.message : 'Receipt parsing failed. Review the stored receipt manually.'],
         lineItems: [],
       }
     }
 
+    const receiptCurrency = await resolveReceiptCurrency(parsed.currencyCode, fallbackCurrency)
     const updated = await prisma.receipt.update({
       where: { id: receipt.id },
       data: {
         merchantName: parsed.merchantName ?? null,
         purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
-        totalAmount: parsed.totalAmount != null ? new Decimal(parsed.totalAmount) : null,
+        totalAmount: sumParsedLineItems(parsed.lineItems),
         taxAmount: parsed.taxAmount != null ? new Decimal(parsed.taxAmount) : null,
         feeAmount: parsed.feeAmount != null ? new Decimal(parsed.feeAmount) : null,
-        currencyCode: parsed.currencyCode || BASE_CURRENCY,
+        currencyCode: receiptCurrency,
         sourceStoragePath: relativePath,
         sourceFileSize: fileSize,
         rawText: ocr.rawText || null,
@@ -222,7 +277,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
             normalizedLabel: item.normalizedLabel,
             quantity: item.quantity != null ? new Decimal(item.quantity) : null,
             amount: new Decimal(item.amount),
-            currencyCode: parsed.currencyCode || BASE_CURRENCY,
+            currencyCode: receiptCurrency,
             categoryId: item.categoryId ?? null,
             subcategoryId: item.subcategoryId ?? null,
             confidence: item.confidence,
@@ -265,13 +320,17 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const { sub: userId, role } = request.user
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
-    const query = z.object({
-      year: z.coerce.number().int().min(1900).max(2500).optional(),
-      month: z.coerce.number().int().min(1).max(12).optional(),
-    }).safeParse(request.query)
+    const query = ReceiptSummaryQuerySchema.safeParse(request.query)
     if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: query.error.flatten() })
 
-    const dateFilter = buildDateFilter(query.data.year, query.data.month)
+    let periodInfo
+    try {
+      periodInfo = buildReceiptSummaryDateFilter(query.data)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Invalid query parameters'
+      return reply.status(400).send({ error: message })
+    }
+
     const lineItems = await prisma.receiptLineItem.findMany({
       where: {
         isIgnored: false,
@@ -279,7 +338,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
           householdId,
           status: 'CONFIRMED',
           deletedAt: null,
-          ...(dateFilter ? { purchaseDate: dateFilter } : {}),
+          ...(periodInfo.filter ? { purchaseDate: periodInfo.filter } : {}),
         },
       },
       include: {
@@ -289,58 +348,50 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       },
     })
 
-    const byCategory = new Map<string, { categoryId: string | null; categoryName: string; categoryIcon: string | null; total: number; itemCount: number }>()
-    const bySubcategory = new Map<string, { categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: number; itemCount: number }>()
-    const byMonth = new Map<string, number>()
-    let total = 0
+    return reply.send(await summarizeReceiptConsumption(lineItems, periodInfo))
+  })
 
-    for (const item of lineItems) {
-      const amount = toNum(item.amount)
-      total += amount
-      const key = item.categoryId ?? '__uncategorized__'
-      const existing = byCategory.get(key) ?? {
-        categoryId: item.categoryId,
-        categoryName: item.category?.name ?? 'Uncategorized',
-        categoryIcon: item.category?.icon ?? null,
-        total: 0,
-        itemCount: 0,
-      }
-      existing.total += amount
-      existing.itemCount += 1
-      byCategory.set(key, existing)
+  // GET /households/:id/receipt-mappings/export-kit
+  fastify.get('/households/:id/receipt-mappings/export-kit', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
-      const subKey = item.subcategoryId ?? `${key}::__uncategorized__`
-      const existingSub = bySubcategory.get(subKey) ?? {
-        categoryId: item.categoryId,
-        categoryName: item.category?.name ?? 'Uncategorized',
-        subcategoryId: item.subcategoryId,
-        subcategoryName: item.subcategory?.name ?? 'Uncategorized',
-        total: 0,
-        itemCount: 0,
-      }
-      existingSub.total += amount
-      existingSub.itemCount += 1
-      bySubcategory.set(subKey, existingSub)
+    return reply.send(await buildReceiptMappingExportKit(householdId))
+  })
 
-      if (item.receipt.purchaseDate) {
-        const monthKey = item.receipt.purchaseDate.toISOString().slice(0, 7)
-        byMonth.set(monthKey, (byMonth.get(monthKey) ?? 0) + amount)
-      }
+  // POST /households/:id/receipt-mappings/import-preview
+  fastify.post('/households/:id/receipt-mappings/import-preview', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
+
+    const body = ReceiptMappingImportSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+
+    try {
+      return reply.send(await previewReceiptMappingImport(householdId, body.data.csvText))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to preview receipt mappings'
+      return reply.status(400).send({ error: message })
     }
+  })
 
-    return reply.send({
-      total: total.toFixed(2),
-      itemCount: lineItems.length,
-      byCategory: [...byCategory.values()]
-        .sort((a, b) => b.total - a.total)
-        .map((row) => ({ ...row, total: row.total.toFixed(2) })),
-      bySubcategory: [...bySubcategory.values()]
-        .sort((a, b) => b.total - a.total)
-        .map((row) => ({ ...row, total: row.total.toFixed(2) })),
-      byMonth: [...byMonth.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([month, amount]) => ({ month, total: amount.toFixed(2) })),
-    })
+  // POST /households/:id/receipt-mappings/import-confirm
+  fastify.post('/households/:id/receipt-mappings/import-confirm', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+    if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
+
+    const body = ReceiptMappingImportSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+
+    try {
+      return reply.send(await confirmReceiptMappingImport(householdId, body.data.csvText))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to import receipt mappings'
+      return reply.status(400).send({ error: message })
+    }
   })
 
   // GET /households/:id/receipts/:receiptId
@@ -381,15 +432,23 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       if (accountError) return reply.status(400).send({ error: accountError })
     }
 
+    let nextCurrencyCode: string | undefined
+    if (body.data.currencyCode !== undefined) {
+      nextCurrencyCode = body.data.currencyCode.toUpperCase()
+      if (!await isEnabledReceiptCurrency(nextCurrencyCode)) {
+        return reply.status(400).send({ error: 'Currency is not enabled' })
+      }
+    }
+
+    await syncReceiptTotalFromLines(receipt.id)
     const updated = await prisma.receipt.update({
       where: { id: receipt.id },
       data: {
         ...(body.data.merchantName !== undefined && { merchantName: body.data.merchantName }),
         ...(body.data.purchaseDate !== undefined && { purchaseDate: body.data.purchaseDate ? new Date(body.data.purchaseDate) : null }),
-        ...(body.data.totalAmount !== undefined && { totalAmount: body.data.totalAmount != null ? new Decimal(body.data.totalAmount) : null }),
         ...(body.data.taxAmount !== undefined && { taxAmount: body.data.taxAmount != null ? new Decimal(body.data.taxAmount) : null }),
         ...(body.data.feeAmount !== undefined && { feeAmount: body.data.feeAmount != null ? new Decimal(body.data.feeAmount) : null }),
-        ...(body.data.currencyCode !== undefined && { currencyCode: body.data.currencyCode.toUpperCase() }),
+        ...(nextCurrencyCode !== undefined && { currencyCode: nextCurrencyCode }),
         ...(body.data.accountId !== undefined && { accountId: body.data.accountId }),
       },
       include: receiptInclude,
@@ -425,7 +484,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       where: { id: lineItemId },
       data: {
         ...(body.data.originalText !== undefined && { originalText: body.data.originalText }),
-        ...(body.data.label !== undefined && { label, normalizedLabel: normalizeReceiptLabel(label) }),
+        ...(body.data.label !== undefined && { label, normalizedLabel: normalizeReceiptLabel(label, await loadReceiptClassifierConfig(receipt.householdId)) }),
         ...(body.data.quantity !== undefined && { quantity: body.data.quantity != null ? new Decimal(body.data.quantity) : null }),
         ...(body.data.amount !== undefined && { amount: new Decimal(body.data.amount) }),
         ...(body.data.categoryId !== undefined && { categoryId: body.data.categoryId }),
@@ -443,7 +502,51 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       },
     })
 
+    await syncReceiptTotalFromLines(receipt.id)
     return reply.send(serializeLineItem(updated))
+  })
+
+  // POST /households/:id/receipts/:receiptId/line-items
+  fastify.post('/households/:id/receipts/:receiptId/line-items', { preHandler: authenticate }, async (request, reply) => {
+    const receipt = await loadReceiptForHousehold(request, reply)
+    if (!receipt) return
+
+    const body = CreateLineItemSchema.safeParse(request.body)
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+
+    if (body.data.categoryId) {
+      const category = await validateExpenseCategory(body.data.categoryId, receipt.householdId)
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+    if (body.data.subcategoryId) {
+      const subcategory = await validateReceiptSubcategory(body.data.subcategoryId, body.data.categoryId ?? null, receipt.householdId)
+      if (!subcategory) return reply.status(400).send({ error: 'Subcategory not found' })
+    }
+
+    const sortOrder = await nextReceiptLineSortOrder(receipt.id)
+    const lineItem = await prisma.receiptLineItem.create({
+      data: {
+        receiptId: receipt.id,
+        originalText: body.data.originalText?.trim() || body.data.label.trim(),
+        label: body.data.label.trim(),
+        normalizedLabel: normalizeReceiptLabel(body.data.label, await loadReceiptClassifierConfig(receipt.householdId)),
+        quantity: body.data.quantity != null ? new Decimal(body.data.quantity) : null,
+        amount: new Decimal(body.data.amount),
+        currencyCode: receipt.currencyCode,
+        categoryId: body.data.categoryId ?? null,
+        subcategoryId: body.data.subcategoryId ?? null,
+        confidence: body.data.confidence ?? 'HIGH',
+        isIgnored: body.data.isIgnored ?? false,
+        sortOrder,
+      },
+      include: {
+        category: { select: { id: true, name: true, icon: true } },
+        subcategory: { select: { id: true, name: true } },
+      },
+    })
+
+    await syncReceiptTotalFromLines(receipt.id)
+    return reply.status(201).send(serializeLineItem(lineItem))
   })
 
   // POST /households/:id/receipts/:receiptId/confirm
@@ -451,6 +554,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const receipt = await loadReceiptForHousehold(request, reply)
     if (!receipt) return
 
+    await syncReceiptTotalFromLines(receipt.id)
     const confirmed = await prisma.receipt.update({
       where: { id: receipt.id },
       data: { status: 'CONFIRMED', confirmedAt: new Date() },
@@ -462,6 +566,8 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       merchantName: confirmed.merchantName,
       items: confirmed.lineItems.map((item) => ({
         normalizedLabel: item.normalizedLabel,
+        originalText: item.originalText,
+        label: item.label,
         categoryId: item.categoryId,
         subcategoryId: item.subcategoryId,
         isIgnored: item.isIgnored,
@@ -503,6 +609,25 @@ async function validateAccountAccess(accountId: string, householdId: string, use
   return 'Account not accessible'
 }
 
+async function getHouseholdReceiptCurrency(_householdId: string): Promise<string> {
+  return BASE_CURRENCY
+}
+
+async function resolveReceiptCurrency(currencyCode: string | null | undefined, fallbackCurrency: string): Promise<string> {
+  const code = currencyCode?.toUpperCase() || fallbackCurrency
+  if (await isEnabledReceiptCurrency(code)) return code
+  return fallbackCurrency
+}
+
+async function isEnabledReceiptCurrency(currencyCode: string): Promise<boolean> {
+  if (currencyCode === BASE_CURRENCY) return true
+  const currency = await prisma.currency.findFirst({
+    where: { code: currencyCode, isEnabled: true },
+    select: { code: true },
+  })
+  return Boolean(currency)
+}
+
 async function validateExpenseCategory(categoryId: string, householdId: string) {
   return prisma.category.findFirst({
     where: {
@@ -526,11 +651,26 @@ async function validateReceiptSubcategory(subcategoryId: string, categoryId: str
   })
 }
 
-function buildDateFilter(year?: number, month?: number) {
-  if (!year) return null
-  const start = new Date(Date.UTC(year, month ? month - 1 : 0, 1))
-  const end = month ? new Date(Date.UTC(year, month, 1)) : new Date(Date.UTC(year + 1, 0, 1))
-  return { gte: start, lt: end }
+async function nextReceiptLineSortOrder(receiptId: string): Promise<number> {
+  const latest = await prisma.receiptLineItem.findFirst({
+    where: { receiptId },
+    orderBy: { sortOrder: 'desc' },
+    select: { sortOrder: true },
+  })
+  return (latest?.sortOrder ?? -1) + 1
+}
+
+async function syncReceiptTotalFromLines(receiptId: string) {
+  const lines = await prisma.receiptLineItem.findMany({
+    where: { receiptId, isIgnored: false },
+    select: { amount: true },
+  })
+  const total = lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0))
+  return prisma.receipt.update({ where: { id: receiptId }, data: { totalAmount: total } })
+}
+
+function sumParsedLineItems(lineItems: Array<{ amount: number; confidence?: string }>): Decimal {
+  return lineItems.reduce((sum, item) => sum.plus(item.amount), new Decimal(0))
 }
 
 function serializeReceipt(receipt: any) {

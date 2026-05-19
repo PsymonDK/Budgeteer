@@ -17,7 +17,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **TanStack Query** — server state and caching
 - **React Router v6** — client-side routing
 - **Recharts** — budget visualisations
-- **D3 / Sankey** — income flow diagram
+- **D3 / Sankey** — income and receipt consumption flow diagrams
 
 ### Backend
 - **Node.js + TypeScript** — runtime
@@ -34,6 +34,10 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 ### Infrastructure
 - **Docker + Docker Compose** — single-command self-hosted setup
 - **Bare metal** — setup script for direct server installs
+
+### Runtime Configuration
+- **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
+- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations, `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`.
 
 ---
 
@@ -129,6 +133,9 @@ budgeteer/
 - householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount, taxAmount, feeAmount, currencyCode
 - sourceMimeType, sourceFileName, sourceStoragePath, sourceFileSize, rawText, status (`DRAFT` | `CONFIRMED` | `FAILED`), confidence (`LOW` | `MEDIUM` | `HIGH`), notes, confirmedAt, deletedAt
 - Receipts are actual consumption data and must not create or update planned `expenses`
+- Receipt parsing uses the currency found in OCR/AI output when present and falls back to the configured household/base currency
+- Receipt totals are derived from the sum of non-ignored receipt line items, including lines added manually during review
+- Receipt summaries can be filtered by all time, current/previous month, current/previous quarter, current/previous year, last 12 calendar months, or custom date range; dashboard and receipt-page totals convert receipt line amounts to `BASE_CURRENCY` with the latest enabled currency rates
 - Uploaded receipt files are stored locally on the API server under `UPLOAD_DIR/receipts/<householdId>/` and served only through authenticated household-scoped endpoints
 - Deleted receipts are soft-deleted with `deletedAt` so consumption history can be preserved
 
@@ -139,12 +146,18 @@ budgeteer/
 
 **receipt_subcategories** — lower-level receipt classifications under expense categories
 - categoryId, householdId (nullable), name, isSystemWide, isActive
-- System defaults are seeded under top-level expense categories, for example Food & Groceries → Food, Alcohol, Beer, Wine, Vegetables, Meat, Candy, Toys
+- System defaults are seeded under top-level expense categories. Day-to-day receipt shopping defaults to `Shared Household Spending`, with lower-level subcategories such as Groceries, Dairy, Bread & Bakery, Meat, Fish & Seafood, Vegetables, Fruit, Pantry, Condiments, Paper goods, Cleaning, Personal care, Baby care, Pets, Clothing, Gifts, and Pharmacy. More specific high-level categories such as Transport, Utilities, Healthcare, and Subscriptions remain available for expenses that are not shared shopping.
 - Household members can add household-specific subcategories under any expense category visible to the household
 
 **receipt_category_mappings** — learned household-specific categorization hints
 - householdId, normalizedLabel, merchantKey, categoryId, subcategoryId (nullable), confidence, hitCount, lastUsedAt
-- Reused during future receipt parsing before falling back to rule-based category suggestions
+- Reused during future receipt parsing before falling back to fuzzy matching and rule-based category suggestions
+- Can be trained in bulk through a household-scoped CSV workflow that exports the category catalog, current mappings, and an LLM-ready prompt, then previews and confirms validated CSV rows without creating categories
+
+**receipt_classifier_terms** — configurable receipt parsing and matching vocabulary
+- scopeKey (`system` or household id), householdId (nullable), termType (`NOISE_TOKEN` | `LOW_VALUE_WORD` | `OCR_ALIAS`), term, isActive, source, hitCount, lastSeenAt
+- System terms seed default package/OCR noise, low-value receipt words, and OCR spelling aliases such as `totlet=>toilet`; household terms can extend or override them through CSV import
+- Future confirmed receipt reviews update learned household term observations; repeated learned terms become active only after recurring evidence to avoid trusting one-off OCR mistakes
 
 **savings_entries** — planned savings on a budget year
 - budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, forwardMonthlyEquivalent, notes
@@ -217,11 +230,17 @@ Receipt imports represent actual purchases, not planned budget allocations. Conf
 
 Receipt category is two-level: top-level category uses the existing Budgeteer `EXPENSE` category; receipt subcategory captures more granular consumption detail within that category.
 
-Receipt upload and parsing run server-side. The browser sends the original image/PDF file to the API, the API stores it locally, runs local OCR, and the receipt review UI loads the protected file beside extracted line items for validation. Pasted OCR text remains supported for manual imports.
+Receipt upload and parsing run server-side. The browser sends the original image/PDF file to the API, the API stores it locally, runs local OCR, and the receipt review UI loads the protected file beside extracted line items for validation. Pasted OCR text remains supported for manual imports, and failed or empty OCR still leaves a draft where line items can be added manually.
 
-Receipt OCR is local-first and server-side. Images are read through Tesseract. PDFs are rendered to temporary page images with Poppler `pdftoppm`, then OCR runs locally on those images. OCR tuning is controlled by `RECEIPT_OCR_LANG`, `RECEIPT_OCR_PSM`, `RECEIPT_OCR_PDF_DPI`, and `RECEIPT_OCR_MAX_PDF_PAGES`.
+Receipt OCR is local-first and server-side. Images are preprocessed locally to apply camera EXIF orientation, grayscale, and contrast normalization before Tesseract runs; Tesseract then tries multiple page segmentation modes and keeps the strongest receipt-like result. The Docker API image installs Danish and English Tesseract language data, and OCR defaults to `dan+eng` with an English fallback for local installs where Danish data is missing. PDFs are rendered to temporary page images with Poppler `pdftoppm`, then OCR runs locally on those images. OCR tuning is controlled by `RECEIPT_OCR_LANG`, `RECEIPT_OCR_PSM`, `RECEIPT_OCR_TIMEOUT_MS`, `RECEIPT_OCR_PDF_DPI`, `RECEIPT_OCR_MAX_PDF_PAGES`, and `RECEIPT_OCR_PREPROCESS`.
 
-Receipt line classification runs after extraction in a hybrid order: exact household-learned mappings for the same merchant, exact mappings from other merchants, fuzzy historical matches, deterministic keyword rules, and then optional local AI suggestions for any remaining unclassified lines. Learned mappings are written only when a user confirms a receipt.
+Receipt line classification runs after extraction in a hybrid order: exact household-learned mappings for the same merchant, exact mappings from other merchants, fuzzy historical matches, deterministic keyword rules, and then optional local AI suggestions for any remaining unclassified lines. Before text parsing, active `OCR_ALIAS` terms are applied to a temporary OCR text copy so common spelling errors can help merchant, total, and line extraction while the stored raw OCR text and visible line labels remain unchanged. Fuzzy matching normalizes common OCR and package noise such as quantities, weights, volumes, receipt codes, trailing prices, punctuation, and repeated whitespace before token-aware scoring. It also applies active `OCR_ALIAS` terms to the internal matching key and uses OCR-confusion-aware token similarity for common substitutions such as `1/l/i`, `0/o`, `@/ø`, and Danish `æ/ø/å` ASCII variants. Noise tokens, low-value words, and OCR aliases are loaded from `receipt_classifier_terms` rather than hard-coded as the primary source. Learned mappings are written when a user confirms a receipt or explicitly imports validated mapping CSV rows.
+
+Receipt mapping import/export is user-driven and household-scoped. Budgeteer exports a category catalog, existing mappings, classifier terms, CSV template, and prompt that can be used with an external or local LLM; it does not call hosted LLM services for this workflow. Import preview validates category IDs, subcategory/category relationships, duplicate mapping keys, classifier term rows, `OCR_ALIAS` `source=>target` format, confidence values, and required labels. Supplied category/subcategory IDs are authoritative; when IDs are blank, imports may resolve category/subcategory names as a portable fallback. Confirming an import upserts only valid create/update rows into `receipt_category_mappings` and household-scoped `receipt_classifier_terms`; invalid, skipped, and unchanged rows are left untouched.
+
+System administrators maintain receipt training data through `/admin/receipt-training`. The admin UI exposes classifier terms, learned receipt mappings, and receipt subcategories in separate tabs, with create/edit/toggle/delete actions as appropriate. Regular household receipt review can still learn mappings through confirmation, but direct maintenance of the underlying training tables is system-admin-only.
+
+`prisma/receipt-training-seed.csv` contains anonymized reusable receipt labels and classifier terms only; it excludes source photos, dates, addresses, payment identifiers, receipt totals, and raw OCR text. It includes a reusable Danish supermarket vocabulary and common OCR variants so fuzzy matching has baseline mappings before user-specific learning. Shared-account style shopping labels map to `Shared Household Spending` and then into lower-level receipt subcategories. `prisma/seed.ts` reads this portable CSV and resolves category/subcategory names against the install's own IDs, seeding system classifier terms and default household receipt mappings for existing or demo households.
 
 Optional AI enhancement may call only a local/self-hosted HTTP model endpoint configured through `LOCAL_AI_BASE_URL` and `LOCAL_AI_MODEL`; receipt data must never be sent to hosted AI services. AI extraction can improve receipt JSON cleanup when those variables are set. AI categorization requires the additional `RECEIPT_AI_CATEGORIZE=true` opt-in and may only choose from active household-visible expense category/subcategory IDs; invalid or low-confidence suggestions remain unclassified for review. Without local AI, uploaded receipts still use server-side OCR and deterministic parsing/category matching.
 
@@ -353,11 +372,15 @@ GET    /households/:id/receipt-subcategories
 POST   /households/:id/receipts/parse
 POST   /households/:id/receipts/upload
 GET    /households/:id/receipts
-GET    /households/:id/receipts/summary
+GET    /households/:id/receipts/summary?period=allTime|currentMonth|previousMonth|currentQuarter|previousQuarter|currentYear|previousYear|last12Months|custom
+GET    /households/:id/receipt-mappings/export-kit
+POST   /households/:id/receipt-mappings/import-preview
+POST   /households/:id/receipt-mappings/import-confirm
 GET    /households/:id/receipts/:receiptId
 GET    /households/:id/receipts/:receiptId/file
 PUT    /households/:id/receipts/:receiptId
 POST   /households/:id/receipts/:receiptId/confirm
+POST   /households/:id/receipts/:receiptId/line-items
 PUT    /households/:id/receipts/:receiptId/line-items/:lineItemId
 DELETE /households/:id/receipts/:receiptId
 GET    /categories/:id/subcategories
@@ -400,6 +423,16 @@ GET    /admin/currencies                               # admin only
 POST   /admin/currencies                               # admin only
 PATCH  /admin/currencies/:code                         # admin only
 POST   /admin/currencies/refresh                       # admin only
+
+GET    /admin/receipt-training                         # admin only
+POST   /admin/receipt-training/terms                   # admin only
+PATCH  /admin/receipt-training/terms/:id               # admin only
+DELETE /admin/receipt-training/terms/:id               # admin only
+POST   /admin/receipt-training/subcategories           # admin only
+PATCH  /admin/receipt-training/subcategories/:id       # admin only
+POST   /admin/receipt-training/mappings                # admin only
+PATCH  /admin/receipt-training/mappings/:id            # admin only
+DELETE /admin/receipt-training/mappings/:id            # admin only
 
 GET    /admin/automations                              # admin only
 PATCH  /admin/automations/:id/toggle                   # admin only

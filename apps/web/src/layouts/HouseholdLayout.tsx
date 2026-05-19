@@ -9,6 +9,7 @@ import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import HouseholdSwitcher from '../components/HouseholdSwitcher'
+import { AddReceiptButton } from '../components/AddReceiptButton'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '',             icon: LayoutDashboard },
@@ -113,6 +114,7 @@ export function HouseholdLayout() {
           <HouseholdSwitcher currentHouseholdId={householdId!} />
         </div>
         <div className="flex items-center gap-5">
+          <AddReceiptButton householdId={householdId} />
           <HeaderSettingsMenu householdId={householdId} />
           <HeaderUserMenu />
         </div>

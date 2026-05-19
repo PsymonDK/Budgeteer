@@ -1,15 +1,22 @@
 import { BASE_CURRENCY } from './currency'
 import {
   applyCategorySuggestions,
+  correctReceiptOcrText,
+  fallbackReceiptClassifierConfig,
   isAllowedLocalAiHost,
   learnReceiptMappings,
+  loadReceiptClassifierConfig,
   normalizeReceiptLabel,
+  type ReceiptClassifierConfig,
 } from './receiptClassifier'
 
 export {
   applyCategorySuggestions,
+  correctReceiptOcrText,
+  fallbackReceiptClassifierConfig,
   isAllowedLocalAiHost,
   learnReceiptMappings,
+  loadReceiptClassifierConfig,
   merchantMappingKey,
   normalizeReceiptLabel,
   suggestCategory,
@@ -19,9 +26,11 @@ export type ReceiptConfidence = 'LOW' | 'MEDIUM' | 'HIGH'
 
 export interface ReceiptParseInput {
   rawText?: string
+  displayRawText?: string
   fileBase64?: string
   mimeType?: 'application/pdf' | 'image/png' | 'image/jpeg'
   fileName?: string
+  fallbackCurrency?: string
 }
 
 export interface ParsedReceiptLineItem {
@@ -47,26 +56,27 @@ export interface ParsedReceipt {
   lineItems: ParsedReceiptLineItem[]
 }
 
-const LOW_VALUE_WORDS = new Set(['total', 'subtotal', 'sum', 'change', 'cash', 'card', 'visa', 'mastercard', 'dankort', 'tax', 'vat', 'moms'])
-
 export async function parseReceipt(input: ReceiptParseInput, householdId: string): Promise<ParsedReceipt> {
+  const classifierConfig = await loadReceiptClassifierConfig(householdId)
   let localAi: ParsedReceipt | null = null
   let localAiNote: string | null = null
   try {
-    localAi = await parseWithLocalAi(input)
+    localAi = await parseWithLocalAi(input, classifierConfig)
   } catch (err) {
     localAiNote = err instanceof Error ? err.message : 'Local AI receipt enhancement failed.'
   }
 
-  const parsed = localAi ?? parseReceiptText(input)
+  const parsed = localAi ?? parseReceiptText(input, classifierConfig)
   if (localAiNote) {
     parsed.notes = [...parsed.notes, localAiNote]
   }
   return applyCategorySuggestions(parsed, householdId)
 }
 
-export function parseReceiptText(input: ReceiptParseInput): ParsedReceipt {
+export function parseReceiptText(input: ReceiptParseInput, classifierConfig?: ReceiptClassifierConfig): ParsedReceipt {
+  const effectiveClassifierConfig = classifierConfig ?? fallbackReceiptClassifierConfig()
   const rawText = input.rawText?.trim() ?? ''
+  const fallbackCurrency = normalizeCurrency(input.fallbackCurrency) ?? BASE_CURRENCY
   if (!rawText) {
     return {
       merchantName: input.fileName ? input.fileName.replace(/\.[^.]+$/, '') : null,
@@ -74,25 +84,25 @@ export function parseReceiptText(input: ReceiptParseInput): ParsedReceipt {
       totalAmount: null,
       taxAmount: null,
       feeAmount: null,
-      currencyCode: BASE_CURRENCY,
+      currencyCode: fallbackCurrency,
       confidence: 'LOW',
       notes: ['No receipt text was available from server-side OCR or local AI. Review the stored receipt manually.'],
       lineItems: [],
     }
   }
 
-  const lines = rawText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
+  const lines = splitReceiptLines(rawText)
+  const displayLines = input.displayRawText?.trim()
+    ? splitReceiptLines(input.displayRawText)
+    : lines
 
   const merchantName = inferMerchant(lines)
   const purchaseDate = inferDate(lines)
-  const currencyCode = inferCurrency(rawText)
+  const currencyCode = inferCurrency(rawText) ?? fallbackCurrency
   const totalAmount = inferAmountByKeywords(lines, ['total', 'sum', 'amount due', 'beløb'])
   const taxAmount = inferAmountByKeywords(lines, ['tax', 'vat', 'moms'])
   const feeAmount = inferAmountByKeywords(lines, ['fee', 'gebyr'])
-  const lineItems = inferLineItems(lines)
+  const lineItems = inferLineItems(lines, effectiveClassifierConfig, displayLines)
 
   return {
     merchantName,
@@ -107,7 +117,7 @@ export function parseReceiptText(input: ReceiptParseInput): ParsedReceipt {
   }
 }
 
-async function parseWithLocalAi(input: ReceiptParseInput): Promise<ParsedReceipt | null> {
+async function parseWithLocalAi(input: ReceiptParseInput, classifierConfig: ReceiptClassifierConfig): Promise<ParsedReceipt | null> {
   const baseUrl = process.env.LOCAL_AI_BASE_URL
   const model = process.env.LOCAL_AI_MODEL
   if (!baseUrl || !model) return null
@@ -150,21 +160,22 @@ async function parseWithLocalAi(input: ReceiptParseInput): Promise<ParsedReceipt
     const data = await response.json() as { response?: string }
     if (!data.response) return null
     const parsed = JSON.parse(data.response) as Partial<ParsedReceipt>
-    return normalizeParsedReceipt(parsed, input)
+    return normalizeParsedReceipt(parsed, input, classifierConfig)
   } finally {
     clearTimeout(timeout)
   }
 }
 
-function normalizeParsedReceipt(parsed: Partial<ParsedReceipt>, input: ReceiptParseInput): ParsedReceipt {
+function normalizeParsedReceipt(parsed: Partial<ParsedReceipt>, input: ReceiptParseInput, classifierConfig?: ReceiptClassifierConfig): ParsedReceipt {
   const lineItems = Array.isArray(parsed.lineItems) ? parsed.lineItems : []
+  const fallbackCurrency = normalizeCurrency(input.fallbackCurrency) ?? BASE_CURRENCY
   return {
     merchantName: typeof parsed.merchantName === 'string' ? parsed.merchantName : null,
     purchaseDate: typeof parsed.purchaseDate === 'string' ? parsed.purchaseDate : null,
     totalAmount: toNullableNumber(parsed.totalAmount),
     taxAmount: toNullableNumber(parsed.taxAmount),
     feeAmount: toNullableNumber(parsed.feeAmount),
-    currencyCode: normalizeCurrency(parsed.currencyCode) ?? inferCurrency(input.rawText ?? '') ?? BASE_CURRENCY,
+    currencyCode: normalizeCurrency(parsed.currencyCode) ?? inferCurrency(input.rawText ?? '') ?? fallbackCurrency,
     confidence: normalizeConfidence(parsed.confidence),
     notes: Array.isArray(parsed.notes) ? parsed.notes.filter((n): n is string => typeof n === 'string') : [],
     lineItems: lineItems
@@ -176,7 +187,7 @@ function normalizeParsedReceipt(parsed: Partial<ParsedReceipt>, input: ReceiptPa
         const parsedItem: ParsedReceiptLineItem = {
           originalText: originalText || label,
           label,
-          normalizedLabel: normalizeReceiptLabel(label),
+          normalizedLabel: normalizeReceiptLabel(label, classifierConfig),
           amount,
           confidence: normalizeConfidence(item.confidence, index === 0 ? 'MEDIUM' : 'LOW'),
         }
@@ -206,13 +217,14 @@ function inferDate(lines: string[]): string | null {
   return null
 }
 
-function inferCurrency(text: string): string {
+function inferCurrency(text: string): string | null {
   const explicit = text.match(/\b(DKK|EUR|USD|GBP|SEK|NOK)\b/i)?.[1]
   if (explicit) return explicit.toUpperCase()
   if (/[€]/.test(text)) return 'EUR'
   if (/[$]/.test(text)) return 'USD'
   if (/[£]/.test(text)) return 'GBP'
-  return BASE_CURRENCY
+  if (/\b(?:kr\.?|kroner)\b/i.test(text) && /\b(?:moms|dankort|beløb|gebyr|kvittering|butik)\b/i.test(text)) return 'DKK'
+  return null
 }
 
 function inferAmountByKeywords(lines: string[], keywords: string[]): number | null {
@@ -226,24 +238,40 @@ function inferAmountByKeywords(lines: string[], keywords: string[]): number | nu
   return null
 }
 
-function inferLineItems(lines: string[]): ParsedReceiptLineItem[] {
+function inferLineItems(lines: string[], classifierConfig?: ReceiptClassifierConfig, displayLines: string[] = lines): ParsedReceiptLineItem[] {
   const items: ParsedReceiptLineItem[] = []
-  for (const line of lines) {
-    const amount = extractTrailingAmount(line)
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    const displayLine = displayLines[index] ?? line
+    const amount = extractTrailingAmount(line) ?? extractTrailingAmount(displayLine)
     if (amount == null || amount <= 0) continue
-    const label = line.replace(/[-+]?\d+[,.]\d{2}\s*$/, '').replace(/\s+(DKK|EUR|USD|GBP|SEK|NOK)\s*$/i, '').trim()
-    const normalizedLabel = normalizeReceiptLabel(label)
-    if (!label || !normalizedLabel) continue
-    if ([...LOW_VALUE_WORDS].some((word) => normalizedLabel.includes(word))) continue
+    const parseLabel = stripTrailingAmountAndCurrency(line)
+    const displayLabel = stripTrailingAmountAndCurrency(displayLine) || parseLabel
+    const normalizedLabel = normalizeReceiptLabel(parseLabel || displayLabel, classifierConfig)
+    if (!displayLabel || !normalizedLabel) continue
+    if (classifierConfig && [...classifierConfig.lowValueWords].some((word) => normalizedLabel.includes(word))) continue
     items.push({
-      originalText: line,
-      label: label.slice(0, 200),
+      originalText: displayLine,
+      label: displayLabel.slice(0, 200),
       normalizedLabel,
       amount,
       confidence: 'MEDIUM',
     })
   }
   return items
+}
+
+function splitReceiptLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function stripTrailingAmountAndCurrency(line: string): string {
+  return line
+    .replace(/[-+]?\d+[,.]\d{2}\s*(?:DKK|EUR|USD|GBP|SEK|NOK)?\s*$/i, '')
+    .trim()
 }
 
 function extractTrailingAmount(line: string): number | null {

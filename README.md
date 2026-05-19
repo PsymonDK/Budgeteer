@@ -87,6 +87,10 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`) |
 | `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
 | `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
+| `API_RATE_LIMIT_ENABLED` | No | `true` | Enables global API rate limiting. Local dev compose defaults this to `false` to avoid locking out the web UI during testing |
+| `API_RATE_LIMIT_MAX` | No | `200` | Maximum requests per rate-limit window when rate limiting is enabled |
+| `API_RATE_LIMIT_WINDOW` | No | `15 minutes` | Rate-limit window when rate limiting is enabled |
+| `SCHEMA_SYNC_MODE` | No | `push` | Container startup schema sync mode: `push`, `migrate`, `skip`, or explicit `force-push` for Prisma `--accept-data-loss` |
 | `UPLOAD_DIR` | No | `./uploads` | Local API storage for avatars and receipt originals. Docker deployments mount `/app/uploads` as a persistent volume |
 | `RECEIPT_OCR_LANG` | No | `eng` | Tesseract language code for server-side receipt OCR. Install the matching language data in custom images |
 | `RECEIPT_OCR_MAX_PDF_PAGES` | No | `3` | Maximum scanned PDF pages rendered and OCR'd per receipt upload |
