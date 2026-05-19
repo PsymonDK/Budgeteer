@@ -68,7 +68,9 @@ Schema changes are applied automatically on startup.
 
 ## Data
 
-All data lives in the `postgres_data` Docker volume. To back up:
+Database data lives in the `postgres_data` Docker volume. Uploaded avatars and receipt originals live in the `uploads_data` Docker volume.
+
+To back up the database:
 
 ```bash
 docker exec budgeteer-postgres-1 pg_dump -U budgeteer budgeteer > backup.sql
@@ -79,3 +81,5 @@ To restore:
 ```bash
 cat backup.sql | docker exec -i budgeteer-postgres-1 psql -U budgeteer budgeteer
 ```
+
+Also include the `uploads_data` volume in your normal Docker volume backup so receipt files remain available after restore.

@@ -24,6 +24,8 @@ import { accountRoutes } from './routes/accounts'
 import { budgetTransferRoutes } from './routes/budgetTransfers'
 import { automationRoutes } from './routes/automations'
 import { payslipRoutes } from './routes/payslips'
+import { receiptRoutes } from './routes/receipts'
+import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
@@ -31,6 +33,9 @@ import { prisma } from './lib/prisma'
 const VERSION = process.env.npm_package_version ?? '0.14.0'
 
 const app = Fastify({ logger: true })
+const rateLimitEnabled = process.env.API_RATE_LIMIT_ENABLED !== 'false'
+const rateLimitMax = Number(process.env.API_RATE_LIMIT_MAX ?? 200)
+const rateLimitWindow = process.env.API_RATE_LIMIT_WINDOW ?? '15 minutes'
 
 // Plugins
 app.register(cors, {
@@ -46,16 +51,25 @@ app.register(jwt, { secret: jwtSecret })
 // Security headers
 app.register(helmet)
 
-// Rate limiting — global: 200 req / 15 min
-app.register(rateLimit, { max: 200, timeWindow: '15 minutes' })
+// Rate limiting. Local Docker dev can disable this because the web UI can
+// produce many same-origin API calls through one local/proxy address.
+if (rateLimitEnabled) {
+  app.register(rateLimit, {
+    max: Number.isFinite(rateLimitMax) && rateLimitMax > 0 ? rateLimitMax : 200,
+    timeWindow: rateLimitWindow,
+  })
+} else {
+  app.log.warn('API rate limiting disabled by API_RATE_LIMIT_ENABLED=false')
+}
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR ?? './uploads'
 fs.mkdirSync(path.resolve(UPLOAD_DIR, 'avatars'), { recursive: true })
+fs.mkdirSync(path.resolve(UPLOAD_DIR, 'receipts'), { recursive: true })
 
-app.register(fastifyMultipart, { limits: { fileSize: 2 * 1024 * 1024 } })
+app.register(fastifyMultipart, { limits: { fileSize: 10 * 1024 * 1024 } })
 app.register(fastifyStatic, {
-  root: path.resolve(UPLOAD_DIR),
-  prefix: '/uploads/',
+  root: path.resolve(UPLOAD_DIR, 'avatars'),
+  prefix: '/uploads/avatars/',
   decorateReply: false,
 })
 
@@ -76,6 +90,8 @@ app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
+app.register(receiptRoutes)
+app.register(receiptTrainingRoutes)
 
 // Health check
 app.get('/health', async () => {

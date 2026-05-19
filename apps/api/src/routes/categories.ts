@@ -26,6 +26,11 @@ const DeleteCategorySchema = z
   .object({ replacementId: z.string().optional() })
   .optional()
 
+const CreateSubcategorySchema = z.object({
+  name: z.string().min(1).max(100),
+  householdId: z.string(),
+})
+
 const categorySelect = {
   id: true,
   name: true,
@@ -37,6 +42,16 @@ const categorySelect = {
   createdAt: true,
   createdBy: { select: { id: true, name: true } },
   _count: { select: { expenses: true, savingsEntries: true } },
+} as const
+
+const subcategorySelect = {
+  id: true,
+  categoryId: true,
+  householdId: true,
+  name: true,
+  isSystemWide: true,
+  isActive: true,
+  createdAt: true,
 } as const
 
 export async function categoryRoutes(fastify: FastifyInstance) {
@@ -77,6 +92,119 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     })
 
     return reply.send(categories)
+  })
+
+  // GET /categories/:id/subcategories?householdId=:id
+  fastify.get('/categories/:id/subcategories', { preHandler: authenticate }, async (request, reply) => {
+    const { id: categoryId } = request.params as { id: string }
+    const { householdId } = request.query as { householdId?: string }
+    const { sub: userId, role } = request.user
+    if (!householdId) return reply.status(400).send({ error: 'householdId is required' })
+
+    const category = await prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        categoryType: 'EXPENSE',
+        isActive: true,
+        OR: [{ isSystemWide: true }, { householdId }],
+      },
+    })
+    if (!category) return reply.status(404).send({ error: 'Category not found' })
+
+    if (role !== 'SYSTEM_ADMIN') {
+      const membership = await prisma.householdMember.findUnique({
+        where: { householdId_userId: { householdId, userId } },
+      })
+      if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const subcategories = await prisma.receiptSubcategory.findMany({
+      where: {
+        categoryId,
+        isActive: true,
+        OR: [{ isSystemWide: true }, { householdId }],
+      },
+      select: subcategorySelect,
+      orderBy: [{ isSystemWide: 'desc' }, { name: 'asc' }],
+    })
+
+    return reply.send(subcategories)
+  })
+
+  // GET /households/:id/receipt-subcategories — visible receipt subcategories grouped by expense category
+  fastify.get('/households/:id/receipt-subcategories', { preHandler: authenticate }, async (request, reply) => {
+    const { id: householdId } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+
+    if (role !== 'SYSTEM_ADMIN') {
+      const membership = await prisma.householdMember.findUnique({
+        where: { householdId_userId: { householdId, userId } },
+      })
+      if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const subcategories = await prisma.receiptSubcategory.findMany({
+      where: {
+        isActive: true,
+        OR: [{ isSystemWide: true }, { householdId }],
+        category: {
+          categoryType: 'EXPENSE',
+          isActive: true,
+          OR: [{ isSystemWide: true }, { householdId }],
+        },
+      },
+      select: subcategorySelect,
+      orderBy: [{ isSystemWide: 'desc' }, { name: 'asc' }],
+    })
+
+    return reply.send(subcategories)
+  })
+
+  // POST /categories/:id/subcategories — create a household receipt subcategory under an expense category
+  fastify.post('/categories/:id/subcategories', { preHandler: authenticate }, async (request, reply) => {
+    const { id: categoryId } = request.params as { id: string }
+    const result = CreateSubcategorySchema.safeParse(request.body)
+    if (!result.success) {
+      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+    }
+
+    const { name, householdId } = result.data
+    const { sub: userId, role } = request.user
+
+    const category = await prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        categoryType: 'EXPENSE',
+        isActive: true,
+        OR: [{ isSystemWide: true }, { householdId }],
+      },
+    })
+    if (!category) return reply.status(404).send({ error: 'Category not found' })
+
+    if (role !== 'SYSTEM_ADMIN') {
+      const membership = await prisma.householdMember.findUnique({
+        where: { householdId_userId: { householdId, userId } },
+      })
+      if (!membership) return reply.status(403).send({ error: 'Forbidden' })
+    }
+
+    const duplicate = await prisma.receiptSubcategory.findFirst({
+      where: {
+        categoryId,
+        name: { equals: name, mode: 'insensitive' },
+        OR: [{ isSystemWide: true }, { householdId }],
+      },
+    })
+    if (duplicate) {
+      return reply.status(409).send({ error: 'A subcategory with this name already exists for this category' })
+    }
+
+    const subcategory = await prisma.receiptSubcategory.create({
+      data: { categoryId, householdId, name, isSystemWide: false },
+      select: subcategorySelect,
+    })
+
+    return reply.status(201).send(subcategory)
   })
 
   // POST /categories — create a custom category scoped to a household

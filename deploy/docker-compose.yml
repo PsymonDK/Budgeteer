@@ -38,6 +38,8 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       # Base currency for all calculations — must be a currency Danmarks Nationalbank publishes rates for
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
+    volumes:
+      - uploads_data:/app/uploads
 
   web:
     image: ghcr.io/psymondk/budgeteer-web:latest
@@ -50,3 +52,4 @@ services:
 
 volumes:
   postgres_data:
+  uploads_data:

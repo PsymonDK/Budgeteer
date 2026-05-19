@@ -7,6 +7,7 @@ const ADMIN_NAV = [
   { label: 'Households',   path: '/admin/households' },
   { label: 'Currencies',   path: '/admin/currencies' },
   { label: 'Categories',   path: '/admin/categories' },
+  { label: 'Receipt training', path: '/admin/receipt-training' },
   { label: 'Automations',  path: '/admin/automations' },
 ]
 

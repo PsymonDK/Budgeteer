@@ -50,6 +50,8 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
       TZ: ${TIME_ZONE_VALUE}
+    volumes:
+      - ${PATH_TO_APPDATA}/budgeteer/uploads:/app/uploads
 
   budgeteer-web:
     image: ghcr.io/psymondk/budgeteer-web:latest

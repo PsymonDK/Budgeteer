@@ -1,7 +1,7 @@
 import { Link, Outlet, useParams, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, TrendingUp, PiggyBank, Receipt, Tag,
+  LayoutDashboard, TrendingUp, PiggyBank, Receipt, ScanLine, Tag,
   Calendar, Clock, BarChart2, Settings, Menu, X,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
@@ -9,12 +9,14 @@ import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import HouseholdSwitcher from '../components/HouseholdSwitcher'
+import { AddReceiptButton } from '../components/AddReceiptButton'
 
 const NAV_ITEMS = [
   { label: 'Dashboard',    path: '',             icon: LayoutDashboard },
   { label: 'Household Income', path: 'income',   icon: TrendingUp },
   { label: 'Savings',      path: 'savings',      icon: PiggyBank },
   { label: 'Expenses',     path: 'expenses',     icon: Receipt },
+  { label: 'Receipts',     path: 'receipts',     icon: ScanLine },
   { label: 'Categories',   path: 'categories',   icon: Tag },
   { label: 'Budget Years', path: 'budget-years', icon: Calendar },
   { label: 'History',      path: 'history',      icon: Clock },
@@ -112,6 +114,7 @@ export function HouseholdLayout() {
           <HouseholdSwitcher currentHouseholdId={householdId!} />
         </div>
         <div className="flex items-center gap-5">
+          <AddReceiptButton householdId={householdId} />
           <HeaderSettingsMenu householdId={householdId} />
           <HeaderUserMenu />
         </div>

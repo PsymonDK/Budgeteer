@@ -1,6 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import bcrypt from 'bcryptjs'
+import fs from 'node:fs'
+import path from 'node:path'
+import { parseCsvRows } from '../apps/api/src/lib/csv'
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }) })
 
@@ -9,10 +12,88 @@ const DEFAULT_CATEGORIES: { name: string; icon: string }[] = [
   { name: 'Transport',       icon: 'Car' },
   { name: 'Utilities',       icon: 'Zap' },
   { name: 'Food & Groceries',icon: 'ShoppingCart' },
+  { name: 'Shared Household Spending', icon: 'ShoppingBasket' },
   { name: 'Insurance',       icon: 'Shield' },
   { name: 'Subscriptions',   icon: 'RefreshCw' },
   { name: 'Healthcare',      icon: 'Heart' },
   { name: 'Other',           icon: 'Tag' },
+]
+
+const DEFAULT_RECEIPT_SUBCATEGORIES: Record<string, string[]> = {
+  'Food & Groceries': ['Food'],
+  'Shared Household Spending': [
+    'Groceries',
+    'Food',
+    'Dairy',
+    'Bread & Bakery',
+    'Meat',
+    'Fish & Seafood',
+    'Vegetables',
+    'Fruit',
+    'Pantry',
+    'Condiments',
+    'Frozen',
+    'Snacks',
+    'Candy',
+    'Drinks',
+    'Soda',
+    'Coffee & Tea',
+    'Breakfast',
+    'Baby food',
+    'Alcohol',
+    'Beer',
+    'Wine',
+    'Toys',
+    'Household goods',
+    'Household supplies',
+    'Paper goods',
+    'Cleaning',
+    'Laundry',
+    'Cleaning & Laundry',
+    'Kitchen supplies',
+    'Bags & Foil',
+    'Batteries',
+    'Light bulbs',
+    'Personal care',
+    'Hygiene',
+    'Hair care',
+    'Skin care',
+    'Dental',
+    'Shaving',
+    'Deodorant',
+    'Cosmetics',
+    'Pharmacy',
+    'Medicine',
+    'Baby & children',
+    'Diapers',
+    'Baby care',
+    'Baby food',
+    'School supplies',
+    'Pets',
+    'Pet food',
+    'Pet supplies',
+    'Clothing',
+    'Shoes',
+    'Accessories',
+    'Gifts & misc',
+    'Gifts',
+    'Books',
+    'Games',
+    'Flowers',
+    'Electronics accessories',
+  ],
+  Transport: ['Fuel', 'Public transport', 'Parking', 'Taxi'],
+  Subscriptions: ['Streaming', 'Software', 'Memberships'],
+  Healthcare: ['Medicine', 'Doctor', 'Dental'],
+  Utilities: ['Electricity', 'Water', 'Heating', 'Internet'],
+  Other: ['Unsorted'],
+}
+
+const DEFAULT_RECEIPT_CLASSIFIER_TERMS: Array<{ termType: 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS'; term: string }> = [
+  ...['stk', 'pcs', 'pc', 'kg', 'g', 'l', 'ml', 'cl', 'cm', 'mm', 'ltr', 'liter', 'gram', 'varenr', 'vare', 'nr', 'dk', 'kr', 'dkk']
+    .map((term) => ({ termType: 'NOISE_TOKEN' as const, term })),
+  ...['total', 'subtotal', 'sum', 'change', 'cash', 'card', 'visa', 'mastercard', 'dankort', 'tax', 'vat', 'moms']
+    .map((term) => ({ termType: 'LOW_VALUE_WORD' as const, term })),
 ]
 
 const DEFAULT_SAVINGS_CATEGORIES: { name: string; icon: string }[] = [
@@ -80,6 +161,41 @@ async function main() {
   }
   if (seeded > 0) console.log(`✓ Seeded ${seeded} default expense categories.`)
   else console.log(`Default expense categories already exist, skipping.`)
+
+  // ── Default system-wide receipt subcategories (idempotent) ────────────────
+  let subcategoriesSeeded = 0
+  for (const [categoryName, subcategories] of Object.entries(DEFAULT_RECEIPT_SUBCATEGORIES)) {
+    const category = await prisma.category.findFirst({
+      where: { name: categoryName, isSystemWide: true, categoryType: 'EXPENSE' },
+    })
+    if (!category) continue
+
+    for (const subcategoryName of subcategories) {
+      const existing = await prisma.receiptSubcategory.findFirst({
+        where: { categoryId: category.id, householdId: null, name: { equals: subcategoryName, mode: 'insensitive' } },
+      })
+      if (existing) continue
+      await prisma.receiptSubcategory.create({
+        data: { categoryId: category.id, name: subcategoryName, isSystemWide: true },
+      })
+      subcategoriesSeeded++
+    }
+  }
+  if (subcategoriesSeeded > 0) console.log(`✓ Seeded ${subcategoriesSeeded} default receipt subcategories.`)
+  else console.log(`Default receipt subcategories already exist, skipping.`)
+
+  // ── Default receipt classifier terms (idempotent) ────────────────────────
+  let classifierTermsSeeded = 0
+  for (const term of DEFAULT_RECEIPT_CLASSIFIER_TERMS) {
+    await prisma.receiptClassifierTerm.upsert({
+      where: { scopeKey_termType_term: { scopeKey: 'system', termType: term.termType, term: term.term } },
+      create: { scopeKey: 'system', ...term, source: 'SYSTEM' },
+      update: {},
+    })
+    classifierTermsSeeded++
+  }
+  console.log(`✓ Ensured ${classifierTermsSeeded} default receipt classifier terms.`)
+  await seedReceiptTrainingSeed()
 
   // ── Default system-wide savings categories (idempotent) ────────────────────
   let savingsSeeded = 0
@@ -345,7 +461,122 @@ async function main() {
   })
 
   console.log('✓ Created Carol & Dave household (1 active budget year)')
+  await seedReceiptTrainingSeed()
   console.log('Demo data complete. Log in as alice@demo.local / demo1234 to explore.')
+}
+
+async function seedReceiptTrainingSeed() {
+  const seedPath = path.join(process.cwd(), 'prisma', 'receipt-training-seed.csv')
+  if (!fs.existsSync(seedPath)) return
+
+  const rows = parseSeedCsv(fs.readFileSync(seedPath, 'utf8'))
+  const categories = await prisma.category.findMany({
+    where: { categoryType: 'EXPENSE', isActive: true },
+    include: { receiptSubcategories: { where: { isActive: true } } },
+  })
+  const categoryByName = new Map(categories.map((category) => [nameKey(category.name), category]))
+
+  let termsSeeded = 0
+  let mappingSeeded = 0
+  for (const row of rows) {
+    const termType = row.termType?.trim().toUpperCase()
+    const term = normalizeSeedClassifierTerm(termType, row.term ?? '')
+    if ((termType === 'NOISE_TOKEN' || termType === 'LOW_VALUE_WORD' || termType === 'OCR_ALIAS') && term) {
+      await prisma.receiptClassifierTerm.upsert({
+        where: { scopeKey_termType_term: { scopeKey: 'system', termType, term } },
+        create: {
+          scopeKey: 'system',
+          termType,
+          term,
+          isActive: parseSeedBoolean(row.isActive, true),
+          source: 'RECEIPT_SEED',
+        },
+        update: {
+          isActive: parseSeedBoolean(row.isActive, true),
+        },
+      })
+      termsSeeded++
+      continue
+    }
+
+    const normalizedLabel = row.normalizedLabel?.trim()
+    const category = categoryByName.get(nameKey(row.categoryName ?? ''))
+    if (!normalizedLabel || !category) continue
+    const subcategoryName = row.subcategoryName?.trim()
+    const subcategory = subcategoryName
+      ? category.receiptSubcategories.find((candidate) => nameKey(candidate.name) === nameKey(subcategoryName))
+      : null
+    const merchantKey = normalizeMerchantKey(row.merchantKey || row.merchantName || '')
+    const households = await prisma.household.findMany({ where: { isActive: true }, select: { id: true } })
+    for (const household of households) {
+      const existing = await prisma.receiptCategoryMapping.findUnique({
+        where: {
+          householdId_normalizedLabel_merchantKey: {
+            householdId: household.id,
+            normalizedLabel,
+            merchantKey,
+          },
+        },
+      })
+      if (existing) continue
+      await prisma.receiptCategoryMapping.create({
+        data: {
+          householdId: household.id,
+          normalizedLabel,
+          merchantKey,
+          categoryId: category.id,
+          subcategoryId: subcategory?.id ?? null,
+          confidence: Number(row.confidence) || 0.85,
+          hitCount: 1,
+        },
+      })
+      mappingSeeded++
+    }
+  }
+
+  console.log(`✓ Ensured receipt training seed (${termsSeeded} terms, ${mappingSeeded} household mappings).`)
+}
+
+function parseSeedCsv(text: string): Array<Record<string, string>> {
+  const [header = [], ...body] = parseCsvRows(text)
+  return body
+    .filter((cells) => cells.some((value) => value.trim()))
+    .map((cells) => Object.fromEntries(header.map((name, index) => [name, cells[index]?.trim() ?? ''])))
+}
+
+function nameKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function normalizeSeedTerm(value: string): string {
+  return value.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, ' ').trim().replace(/\s+/g, ' ')
+}
+
+function normalizeSeedClassifierTerm(termType: string | undefined, value: string): string {
+  if (termType === 'OCR_ALIAS') {
+    const match = value.trim().toLowerCase().match(/^(.+?)(?:=>|->)(.+)$/)
+    if (!match) return ''
+    const source = normalizeSeedAliasSide(match[1])
+    const target = normalizeSeedAliasSide(match[2])
+    return source && target && source !== target ? `${source}=>${target}` : ''
+  }
+  return normalizeSeedTerm(value)
+}
+
+function normalizeSeedAliasSide(value: string): string {
+  return value.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ').trim().replace(/\s+/g, ' ')
+}
+
+function normalizeMerchantKey(value: string): string {
+  return normalizeSeedTerm(value)
+}
+
+function parseSeedBoolean(value: string | undefined, fallback: boolean): boolean {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) return fallback
+  if (['true', '1', 'yes', 'active'].includes(normalized)) return true
+  if (['false', '0', 'no', 'inactive'].includes(normalized)) return false
+  return fallback
 }
 
 main()
