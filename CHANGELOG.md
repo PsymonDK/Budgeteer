@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.58.1] - 2026-05-24 — Receipt parser and API Docker rebuild fix
+
+### Changed
+- **Footer version** bumped to `0.58.1`.
+- **API package version** bumped to `0.14.1` for the rebuilt backend image.
+
+### Fixed
+- **Receipt line extraction** — Danish supermarket receipt parsing now folds unit-price and discount continuation lines into the preceding product, ignores `AT BETALE`/payment/footer metadata as purchases, handles OCR-spaced decimals such as `31 .95`, and extracts tax amounts from parenthesized `MOMS` lines.
+- **API Docker rebuilds** — moved the API image to the Node 22 Alpine base, kept dependency installation scoped to the API workspace for Prisma generation/startup, disabled npm audit/funding side calls during image installs, and scoped local certificate workarounds to build-time package and Prisma client generation steps.
+
+---
+
 ## [0.58.0] - 2026-05-19 — Receipt entry and consumption dashboard
 
 ### Added

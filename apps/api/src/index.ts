@@ -30,7 +30,7 @@ import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
 
-const VERSION = process.env.npm_package_version ?? '0.14.0'
+const VERSION = process.env.npm_package_version ?? '0.14.1'
 
 const app = Fastify({ logger: true })
 const rateLimitEnabled = process.env.API_RATE_LIMIT_ENABLED !== 'false'

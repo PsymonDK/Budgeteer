@@ -302,8 +302,11 @@ TAXA 4x35,taxa 4x35,Taxameter,taxameter,,Transport,,Taxi,0.98,,,,
 ,,,,,,,,,NOISE_TOKEN,kaergarden,true,OCR variant of Kærgården
 ,,,,,,,,,LOW_VALUE_WORD,approval,true,Payment authorization line
 ,,,,,,,,,LOW_VALUE_WORD,amount,true,Payment authorization line
+,,,,,,,,,LOW_VALUE_WORD,at betale,true,Receipt total line
+,,,,,,,,,LOW_VALUE_WORD,betale,true,Receipt total line
 ,,,,,,,,,LOW_VALUE_WORD,betalt,true,Payment line
 ,,,,,,,,,LOW_VALUE_WORD,betaling,true,Payment line
+,,,,,,,,,LOW_VALUE_WORD,betalingskort,true,Payment line
 ,,,,,,,,,LOW_VALUE_WORD,byttepenge,true,Change line
 ,,,,,,,,,LOW_VALUE_WORD,rabat,true,Discount line
 ,,,,,,,,,LOW_VALUE_WORD,rabatten,true,Discount line

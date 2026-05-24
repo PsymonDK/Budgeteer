@@ -92,7 +92,7 @@ const DEFAULT_RECEIPT_SUBCATEGORIES: Record<string, string[]> = {
 const DEFAULT_RECEIPT_CLASSIFIER_TERMS: Array<{ termType: 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS'; term: string }> = [
   ...['stk', 'pcs', 'pc', 'kg', 'g', 'l', 'ml', 'cl', 'cm', 'mm', 'ltr', 'liter', 'gram', 'varenr', 'vare', 'nr', 'dk', 'kr', 'dkk']
     .map((term) => ({ termType: 'NOISE_TOKEN' as const, term })),
-  ...['total', 'subtotal', 'sum', 'change', 'cash', 'card', 'visa', 'mastercard', 'dankort', 'tax', 'vat', 'moms']
+  ...['total', 'subtotal', 'sum', 'i alt', 'ialt', 'at betale', 'betale', 'til betaling', 'betaling', 'betalt', 'beløb', 'belob', 'change', 'cash', 'card', 'kort', 'kreditkort', 'betalingskort', 'visa', 'mastercard', 'dankort', 'mobilepay', 'kontant', 'tax', 'vat', 'moms', 'rabat', 'rabatten', 'retur']
     .map((term) => ({ termType: 'LOW_VALUE_WORD' as const, term })),
 ]
 

@@ -30,6 +30,71 @@ describe('receiptParser', () => {
     ])
   })
 
+  it('parses Danish supermarket continuation lines and skips totals', () => {
+    const receipt = parseReceiptText({
+      rawText: [
+        'REMA 1000',
+        'Rema 1000, Turpinsvinget',
+        'V/ Mikkel Bryld',
+        'T11:88 32 14 58',
+        'CVR-NR: 27964125',
+        'COCA COLA ZERO',
+        'å 18,00 18,00',
+        ', -3,00 15,00',
+        'FLASKEPANT 3.00',
+        'STAY STRONG SKYR 20,00',
+        'PEANUT BUTTER 25,00',
+        'HAVREDRIK 11,95',
+        'ÆBLEJUICE 12,95',
+        'FLASKEPANT 3,00',
+        'øKO OLIVENOL. 58,12',
+        'CASTELLO HAVARTI',
+        'å 25,00 50,00',
+        'REMA 1000 RELISH 13,95',
+        'øKO. RISTEDE LØG 10,09',
+        '2 LURPAK SMØR',
+        'å 10,00 20,00',
+        'ØKO AGURK 13,00',
+        'REMA 1000 øKO ÆG 31,95',
+        'FAIRTRADE BANAN 10,00',
+        'SUPER GLUE 31 .95',
+        'SOLSIKKEBOLLER',
+        'å 25,9 25,95',
+        'Rabat -15,95 10,00',
+        'AT BETALE 339,96',
+        'MASTERCARD 339,',
+        '(HERAF MOMS 67,99) z',
+        '(S: 2 BON: — 20025341 22.05.26 12.43',
+      ].join('\n'),
+    })
+
+    expect(receipt.totalAmount).toBe(339.96)
+    expect(receipt.taxAmount).toBe(67.99)
+    expect(receipt.purchaseDate).toBe('2026-05-22')
+    expect(receipt.lineItems.map((item) => [item.label, item.amount])).toEqual([
+      ['COCA COLA ZERO', 15],
+      ['FLASKEPANT', 3],
+      ['STAY STRONG SKYR', 20],
+      ['PEANUT BUTTER', 25],
+      ['HAVREDRIK', 11.95],
+      ['ÆBLEJUICE', 12.95],
+      ['FLASKEPANT', 3],
+      ['øKO OLIVENOL.', 58.12],
+      ['CASTELLO HAVARTI', 50],
+      ['REMA 1000 RELISH', 13.95],
+      ['øKO. RISTEDE LØG', 10.09],
+      ['2 LURPAK SMØR', 20],
+      ['ØKO AGURK', 13],
+      ['REMA 1000 øKO ÆG', 31.95],
+      ['FAIRTRADE BANAN', 10],
+      ['SUPER GLUE', 31.95],
+      ['SOLSIKKEBOLLER', 10],
+    ])
+    expect(receipt.lineItems.find((item) => item.label === '2 LURPAK SMØR')?.quantity).toBe(2)
+    expect(receipt.lineItems.reduce((sum, item) => sum + item.amount, 0)).toBeCloseTo(339.96, 2)
+    expect(receipt.lineItems.some((item) => item.label === 'AT BETALE')).toBe(false)
+  })
+
   it('uses corrected OCR text for parsing while keeping raw line labels visible', () => {
     const classifierConfig = {
       noiseTokens: new Set<string>(),
