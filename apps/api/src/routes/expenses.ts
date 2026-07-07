@@ -99,6 +99,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
     const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
 
@@ -179,6 +180,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
     const existing = await prisma.expense.findUnique({ where: { id: expenseId } })
     if (!existing || existing.budgetYearId !== id) {
@@ -289,6 +291,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
     const { ids, categoryId, accountId } = result.data
 
@@ -323,6 +326,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
     const existing = await prisma.expense.findUnique({ where: { id: expenseId } })
     if (!existing || existing.budgetYearId !== id) {

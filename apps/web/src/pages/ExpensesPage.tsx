@@ -187,6 +187,7 @@ export function ExpensesPage() {
       ? budgetYears.find((y) => y.id === selectedYearId)
       : budgetYears.find((y) => y.status === 'ACTIVE') ?? budgetYears[0]
   ) ?? null
+  const isReadOnly = activeBudgetYear?.status === 'RETIRED'
 
   const { data: expenses = [], isLoading: expensesLoading } = useQuery<Expense[]>({
     queryKey: ['expenses', activeBudgetYear?.id],
@@ -249,7 +250,7 @@ export function ExpensesPage() {
       }
       return sortAsc ? cmp : -cmp
     })
-  }, [expenses, filterCategories, sortKey, sortAsc])
+  }, [expenses, filterAccounts, filterCategories, sortKey, sortAsc])
 
   const totalMonthly = useMemo(
     () => filtered.reduce((sum, e) => sum + parseFloat(e.monthlyWhenActive), 0),
@@ -356,12 +357,14 @@ export function ExpensesPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function openAdd() {
+    if (isReadOnly) return
     setForm(emptyForm(baseCurrency))
     setFormError('')
     setShowAdd(true)
   }
 
   function openEdit(expense: Expense) {
+    if (isReadOnly) return
     setForm({
       label: expense.label,
       amount: expense.originalAmount ?? expense.amount,
@@ -457,6 +460,8 @@ export function ExpensesPage() {
       : <ChevronDown size={14} className="text-amber-400 ml-1" />
   }
 
+  const totalLabelColSpan = isReadOnly ? 4 : 5
+
   return (
     <>
       <main className={view === 'calendar' ? 'w-full px-6 py-8' : 'max-w-6xl mx-auto px-6 py-8'}>
@@ -483,6 +488,9 @@ export function ExpensesPage() {
                   <option key={y.id} value={y.id}>{yearLabel(y)}</option>
                 ))}
               </select>
+            )}
+            {isReadOnly && (
+              <span className="text-xs text-gray-600 italic">Read-only (retired)</span>
             )}
           </div>
         )}
@@ -555,18 +563,20 @@ export function ExpensesPage() {
                       Calendar
                     </button>
                   </div>
-                  <button
-                    onClick={openAdd}
-                    className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
-                  >
-                    + Add expense
-                  </button>
+                  {!isReadOnly && (
+                    <button
+                      onClick={openAdd}
+                      className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                    >
+                      + Add expense
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Bulk action bar */}
-            {selectedIds.size > 0 && (
+            {!isReadOnly && selectedIds.size > 0 && (
               <div className="flex items-center gap-3 bg-amber-400/10 border border-amber-400/30 rounded-lg px-4 py-2.5 mb-3">
                 <span className="text-amber-400 text-sm font-medium">{selectedIds.size} selected</span>
                 <button
@@ -599,16 +609,18 @@ export function ExpensesPage() {
                 <table className="w-full text-sm min-w-[700px]">
                   <thead>
                     <tr className="border-b border-gray-800 text-gray-400 text-left select-none">
-                      <th className="pl-4 pr-2 py-3 w-8">
-                        <input
-                          type="checkbox"
-                          checked={filtered.length > 0 && filtered.every((e) => selectedIds.has(e.id))}
-                          ref={(el) => { if (el) el.indeterminate = filtered.some((e) => selectedIds.has(e.id)) && !filtered.every((e) => selectedIds.has(e.id)) }}
-                          onChange={toggleSelectAll}
-                          className="accent-amber-400 cursor-pointer"
-                          aria-label="Select all"
-                        />
-                      </th>
+                      {!isReadOnly && (
+                        <th className="pl-4 pr-2 py-3 w-8">
+                          <input
+                            type="checkbox"
+                            checked={filtered.length > 0 && filtered.every((e) => selectedIds.has(e.id))}
+                            ref={(el) => { if (el) el.indeterminate = filtered.some((e) => selectedIds.has(e.id)) && !filtered.every((e) => selectedIds.has(e.id)) }}
+                            onChange={toggleSelectAll}
+                            className="accent-amber-400 cursor-pointer"
+                            aria-label="Select all"
+                          />
+                        </th>
+                      )}
                       <th className="px-4 py-3 font-medium">
                         <button onClick={() => handleSort('label')} className="hover:text-white flex items-center">
                           Label <SortIcon col="label" />
@@ -634,7 +646,7 @@ export function ExpensesPage() {
                           /month <SortIcon col="monthly" />
                         </button>
                       </th>
-                      <th className="px-4 py-3 sr-only">Actions</th>
+                      {!isReadOnly && <th className="px-4 py-3 sr-only">Actions</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -644,15 +656,17 @@ export function ExpensesPage() {
                       const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
                       return (
                       <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}${selectedIds.has(e.id) ? ' bg-amber-400/5' : ''}`}>
-                        <td className="pl-4 pr-2 py-3 w-8">
-                          <input
-                            type="checkbox"
-                            checked={selectedIds.has(e.id)}
-                            onChange={() => toggleSelect(e.id)}
-                            className="accent-amber-400 cursor-pointer"
-                            aria-label={`Select ${e.label}`}
-                          />
-                        </td>
+                        {!isReadOnly && (
+                          <td className="pl-4 pr-2 py-3 w-8">
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(e.id)}
+                              onChange={() => toggleSelect(e.id)}
+                              className="accent-amber-400 cursor-pointer"
+                              aria-label={`Select ${e.label}`}
+                            />
+                          </td>
+                        )}
                         <td className="px-4 py-3 text-white">
                           <div className="flex items-center gap-2 flex-wrap">
                             {e.label}
@@ -704,34 +718,36 @@ export function ExpensesPage() {
                         <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
                           {fmt(parseFloat(e.monthlyWhenActive))}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => openEdit(e)}
-                              className="text-xs text-gray-400 hover:text-white transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => setDeleteTarget(e)}
-                              className="text-xs text-red-500 hover:text-red-400 transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
+                        {!isReadOnly && (
+                          <td className="px-4 py-3 text-right">
+                            <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => openEdit(e)}
+                                className="text-xs text-gray-400 hover:text-white transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => setDeleteTarget(e)}
+                                className="text-xs text-red-500 hover:text-red-400 transition-colors"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     )})}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-gray-700 bg-gray-800/50">
-                      <td colSpan={5} className="px-4 py-3 text-sm text-gray-400 font-medium">
+                      <td colSpan={totalLabelColSpan} className="px-4 py-3 text-sm text-gray-400 font-medium">
                         Total{(filterCategories.size > 0 || filterAccounts.size > 0) ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
                       </td>
                       <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">
                         {fmt(totalMonthly)}
                       </td>
-                      <td />
+                      {!isReadOnly && <td />}
                     </tr>
                   </tfoot>
                 </table>
@@ -743,7 +759,7 @@ export function ExpensesPage() {
       </main>
 
       {/* Add / Edit modal */}
-      {(showAdd || editingExpense) && (
+      {!isReadOnly && (showAdd || editingExpense) && (
         <Modal
           title={editingExpense ? 'Edit expense' : 'New expense'}
           onClose={() => { setShowAdd(false); setEditingExpense(null) }}
@@ -1013,7 +1029,7 @@ export function ExpensesPage() {
       )}
 
       {/* Bulk edit modal */}
-      {bulkEditOpen && (
+      {!isReadOnly && bulkEditOpen && (
         <Modal
           title={`Edit ${selectedIds.size} expense${selectedIds.size !== 1 ? 's' : ''}`}
           onClose={() => setBulkEditOpen(false)}
@@ -1085,7 +1101,7 @@ export function ExpensesPage() {
       )}
 
       {/* Delete confirmation */}
-      {deleteTarget && (
+      {!isReadOnly && deleteTarget && (
         <Modal title="Delete expense" onClose={() => setDeleteTarget(null)} size="sm">
           <p className="text-gray-300 text-sm mb-1">
             Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?

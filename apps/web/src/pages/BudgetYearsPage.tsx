@@ -91,6 +91,7 @@ export function BudgetYearsPage() {
   })
 
   const isAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
+  const currentYear = new Date().getFullYear()
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['budget-years', householdId] })
@@ -334,6 +335,22 @@ export function BudgetYearsPage() {
                                   >
                                     Retire
                                   </button>
+                                )}
+                                {by.status === 'RETIRED' && by.year >= currentYear && (
+                                  <>
+                                    <button
+                                      onClick={() => setPromoteTarget(by)}
+                                      className="text-xs text-green-600 hover:text-green-400 transition-colors"
+                                    >
+                                      Restore
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteTarget(by)}
+                                      className="text-xs text-red-600 hover:text-red-400 transition-colors"
+                                    >
+                                      Delete
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -668,18 +685,33 @@ export function BudgetYearsPage() {
 
       {/* ── Promote confirm modal ─────────────────────────────────────────────── */}
       {promoteTarget && (
-        <Modal title="Promote to active?" onClose={() => setPromoteTarget(null)} size="sm">
-          <p className="text-gray-300 text-sm mb-1">
-            <span className="text-purple-300 font-medium">"{promoteTarget.simulationName}"</span> will become the active budget for {promoteTarget.year}.
-          </p>
-          <p className="text-gray-500 text-xs mb-6">The current active budget year will be automatically retired.</p>
+        <Modal title={promoteTarget.status === 'SIMULATION' ? 'Promote to active?' : `Restore ${promoteTarget.year}?`} onClose={() => setPromoteTarget(null)} size="sm">
+          {promoteTarget.status === 'SIMULATION' ? (
+            <>
+              <p className="text-gray-300 text-sm mb-1">
+                <span className="text-purple-300 font-medium">"{promoteTarget.simulationName}"</span> will become the active budget for {promoteTarget.year}.
+              </p>
+              <p className="text-gray-500 text-xs mb-6">The current active budget year will be automatically retired.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-300 text-sm mb-1">
+                {promoteTarget.year} will become editable again as a {promoteTarget.year === currentYear ? 'current active' : 'future'} budget year.
+              </p>
+              <p className="text-gray-500 text-xs mb-6">
+                {promoteTarget.year === currentYear
+                  ? 'Any other active budget year will be automatically retired.'
+                  : 'Past retired budget years remain protected and read-only.'}
+              </p>
+            </>
+          )}
           <div className="flex gap-3">
             <button
               onClick={() => promoteMutation.mutate(promoteTarget.id)}
               disabled={promoteMutation.isPending}
               className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
             >
-              {promoteMutation.isPending ? 'Promoting…' : 'Promote'}
+              {promoteMutation.isPending ? 'Saving…' : promoteTarget.status === 'SIMULATION' ? 'Promote' : 'Restore'}
             </button>
             <button
               onClick={() => setPromoteTarget(null)}
@@ -691,12 +723,18 @@ export function BudgetYearsPage() {
         </Modal>
       )}
 
-      {/* ── Delete simulation confirm modal ───────────────────────────────────── */}
+      {/* ── Delete budget year confirm modal ─────────────────────────────────── */}
       {deleteTarget && (
-        <Modal title="Delete simulation?" onClose={() => setDeleteTarget(null)} size="sm">
-          <p className="text-gray-300 text-sm mb-1">
-            <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses will be permanently deleted.
-          </p>
+        <Modal title={deleteTarget.status === 'SIMULATION' ? 'Delete simulation?' : `Delete ${deleteTarget.year}?`} onClose={() => setDeleteTarget(null)} size="sm">
+          {deleteTarget.status === 'SIMULATION' ? (
+            <p className="text-gray-300 text-sm mb-1">
+              <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses and savings will be permanently deleted.
+            </p>
+          ) : (
+            <p className="text-gray-300 text-sm mb-1">
+              {deleteTarget.year} and all its expenses, savings, income allocations, and transfers will be permanently deleted.
+            </p>
+          )}
           <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
           <div className="flex gap-3">
             <button

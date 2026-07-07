@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { Prisma } from '@prisma/client'
+import { BudgetStatus, Prisma } from '@prisma/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { deriveBudgetStatus } from '../lib/calculations'
@@ -35,6 +35,28 @@ async function assertHouseholdAdmin(householdId: string, userId: string, role: s
 type SourceBudgetYear = Prisma.BudgetYearGetPayload<{
   include: { expenses: { include: { customSplits: true } }; savingsEntries: { include: { customSplits: true } } }
 }>
+
+type BudgetYearLifecycleTarget = {
+  id: string
+  year: number
+  status: BudgetStatus
+}
+
+export function getRestoredRegularBudgetStatus(
+  target: BudgetYearLifecycleTarget,
+  currentYear = new Date().getFullYear(),
+): 'ACTIVE' | 'FUTURE' | null {
+  if (target.status !== 'RETIRED' || target.year < currentYear) return null
+  const restoredStatus = deriveBudgetStatus(target.year)
+  return restoredStatus === 'RETIRED' ? null : restoredStatus
+}
+
+export function canDeleteBudgetYear(
+  target: BudgetYearLifecycleTarget,
+  currentYear = new Date().getFullYear(),
+): boolean {
+  return target.status === 'SIMULATION' || (target.status === 'RETIRED' && target.year >= currentYear)
+}
 
 async function copyBudgetYearContent(
   tx: Prisma.TransactionClient,
@@ -87,6 +109,32 @@ async function copyBudgetYearContent(
       })
     }
   }
+}
+
+export async function deleteBudgetYearWithDependencies(
+  tx: Prisma.TransactionClient,
+  yearId: string,
+) {
+  const expenses = await tx.expense.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
+  const expenseIds = expenses.map((e) => e.id)
+  if (expenseIds.length > 0) {
+    await tx.expenseOccurrence.deleteMany({ where: { expenseId: { in: expenseIds } } })
+    await tx.expenseCustomSplit.deleteMany({ where: { expenseId: { in: expenseIds } } })
+  }
+  await tx.expense.deleteMany({ where: { budgetYearId: yearId } })
+
+  const savings = await tx.savingsEntry.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
+  const savingsIds = savings.map((s) => s.id)
+  if (savingsIds.length > 0) {
+    await tx.savingsOccurrence.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
+    await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
+  }
+  await tx.savingsEntry.deleteMany({ where: { budgetYearId: yearId } })
+
+  await tx.householdIncomeAllocation.deleteMany({ where: { budgetYearId: yearId } })
+  await tx.budgetTransfer.deleteMany({ where: { budgetYearId: yearId } })
+  await tx.budgetYear.updateMany({ where: { copiedFromId: yearId }, data: { copiedFromId: null } })
+  await tx.budgetYear.delete({ where: { id: yearId } })
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -265,7 +313,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     return reply.send(updated)
   })
 
-  // PATCH /households/:id/budget-years/:yearId/promote — promote a simulation to active
+  // PATCH /households/:id/budget-years/:yearId/promote — promote a simulation or restore a retired regular year
   fastify.patch('/households/:id/budget-years/:yearId/promote', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId, yearId } = request.params as { id: string; yearId: string }
     const { sub: userId, role } = request.user
@@ -275,29 +323,57 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
     if (!target) return reply.status(404).send({ error: 'Budget year not found' })
-    if (target.status !== 'SIMULATION') {
-      return reply.status(400).send({ error: 'Only simulations can be promoted' })
+
+    if (target.status === 'SIMULATION') {
+      const promoted = await prisma.$transaction(async (tx) => {
+        await tx.budgetYear.updateMany({
+          where: { householdId, status: 'ACTIVE' },
+          data: { status: 'RETIRED' },
+        })
+
+        return tx.budgetYear.update({
+          where: { id: yearId },
+          data: { status: 'ACTIVE', simulationName: null },
+          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+        })
+      })
+
+      recalculateTransfer(promoted.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+
+      return reply.send(promoted)
     }
 
-    const promoted = await prisma.$transaction(async (tx) => {
-      await tx.budgetYear.updateMany({
-        where: { householdId, status: 'ACTIVE' },
-        data: { status: 'RETIRED' },
+    const restoredStatus = getRestoredRegularBudgetStatus(target)
+    if (!restoredStatus) {
+      return reply.status(400).send({
+        error: 'Only simulations or current/future retired budget years can be promoted',
+        code: 'BUDGET_YEAR_NOT_PROMOTABLE',
       })
+    }
+
+    const restored = await prisma.$transaction(async (tx) => {
+      if (restoredStatus === 'ACTIVE') {
+        await tx.budgetYear.updateMany({
+          where: { householdId, status: 'ACTIVE', id: { not: yearId } },
+          data: { status: 'RETIRED' },
+        })
+      }
 
       return tx.budgetYear.update({
         where: { id: yearId },
-        data: { status: 'ACTIVE', simulationName: null },
+        data: { status: restoredStatus },
         include: { _count: { select: { expenses: true, savingsEntries: true } } },
       })
     })
 
-    recalculateTransfer(promoted.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    if (restoredStatus === 'ACTIVE') {
+      recalculateTransfer(restored.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    }
 
-    return reply.send(promoted)
+    return reply.send(restored)
   })
 
-  // DELETE /households/:id/budget-years/:yearId — delete a simulation
+  // DELETE /households/:id/budget-years/:yearId — delete a simulation or current/future retired regular year
   fastify.delete('/households/:id/budget-years/:yearId', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId, yearId } = request.params as { id: string; yearId: string }
     const { sub: userId, role } = request.user
@@ -307,36 +383,15 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })
     if (!target) return reply.status(404).send({ error: 'Budget year not found' })
-    if (target.status !== 'SIMULATION') {
-      return reply.status(400).send({ error: 'Only simulations can be deleted' })
+    if (!canDeleteBudgetYear(target)) {
+      return reply.status(400).send({
+        error: 'Only simulations or current/future retired budget years can be deleted',
+        code: 'BUDGET_YEAR_NOT_DELETABLE',
+      })
     }
 
     await prisma.$transaction(async (tx) => {
-      // Delete expense child records before expenses
-      const expenses = await tx.expense.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
-      const expenseIds = expenses.map((e) => e.id)
-      if (expenseIds.length > 0) {
-        await tx.expenseOccurrence.deleteMany({ where: { expenseId: { in: expenseIds } } })
-        await tx.expenseCustomSplit.deleteMany({ where: { expenseId: { in: expenseIds } } })
-      }
-      await tx.expense.deleteMany({ where: { budgetYearId: yearId } })
-
-      // Delete savings child records before savings entries
-      const savings = await tx.savingsEntry.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
-      const savingsIds = savings.map((s) => s.id)
-      if (savingsIds.length > 0) {
-        await tx.savingsOccurrence.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
-        await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: { in: savingsIds } } })
-      }
-      await tx.savingsEntry.deleteMany({ where: { budgetYearId: yearId } })
-
-      await tx.householdIncomeAllocation.deleteMany({ where: { budgetYearId: yearId } })
-      await tx.budgetTransfer.deleteMany({ where: { budgetYearId: yearId } })
-
-      // Detach any budget years that were copied from this simulation
-      await tx.budgetYear.updateMany({ where: { copiedFromId: yearId }, data: { copiedFromId: null } })
-
-      await tx.budgetYear.delete({ where: { id: yearId } })
+      await deleteBudgetYearWithDependencies(tx, yearId)
     })
 
     return reply.status(204).send()

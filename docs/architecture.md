@@ -263,9 +263,11 @@ The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-imple
 [ACTIVE] → (new year or manual action) → [RETIRED]
 [ACTIVE | FUTURE] → (copy) → [SIMULATION]
 [SIMULATION] → (promote) → becomes ACTIVE, previous ACTIVE → RETIRED
+[RETIRED current/future regular year] → (restore) → date-derived ACTIVE or FUTURE
 ```
 
-- Status is date-derived: year < current = RETIRED, year = current = ACTIVE, year > current = FUTURE
+- New regular-year status is date-derived: year < current = RETIRED, year = current = ACTIVE, year > current = FUTURE
+- Manually retired current/future regular years can be restored to their date-derived status or hard-deleted; past retired regular years remain protected history
 - Simulations override date logic — always editable
 - Multiple simulations per year allowed, each with a unique name
 - Retired budget years are read-only
