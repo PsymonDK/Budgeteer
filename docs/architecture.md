@@ -271,6 +271,7 @@ The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-imple
 - Simulations override date logic — always editable
 - Multiple simulations per year allowed, each with a unique name
 - Retired budget years are read-only
+- Default household and user dashboards select the active regular budget year first; if no active year exists, they fall back to the earliest future regular year
 
 ---
 

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **API package version** bumped to `0.14.1` for the rebuilt backend image.
 
 ### Fixed
+- **Dashboard budget-year selection** — household and user dashboards now prefer the active budget year when future budget years exist, falling back to the earliest future year only when no active year is available.
 - **Retired current/future budget-year recovery** — household admins can now restore mistakenly retired current/future regular budget years back to their date-derived status or delete them entirely; past retired years remain protected read-only history.
 - **Receipt line extraction** — Danish supermarket receipt parsing now folds unit-price and discount continuation lines into the preceding product, ignores `AT BETALE`/payment/footer metadata as purchases, handles OCR-spaced decimals such as `31 .95`, and extracts tax amounts from parenthesized `MOMS` lines.
 - **API Docker rebuilds** — moved the API image to the Node 22 Alpine base, kept dependency installation scoped to the API workspace for Prisma generation/startup, disabled npm audit/funding side calls during image installs, and scoped local certificate workarounds to build-time package and Prisma client generation steps.

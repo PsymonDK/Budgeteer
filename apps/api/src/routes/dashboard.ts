@@ -5,6 +5,7 @@ import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { assertHouseholdAccess, partitionByEffectiveAmount, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
+import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /me/summary ──────────────────────────────────────────────────────────
@@ -26,10 +27,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       memberships.map(async (m) => {
         const h = m.household
 
-        const activeBY = await prisma.budgetYear.findFirst({
+        const defaultYears = await prisma.budgetYear.findMany({
           where: { householdId: h.id, status: { in: ['ACTIVE', 'FUTURE'] } },
-          orderBy: [{ status: 'asc' }, { year: 'asc' }],
+          orderBy: { year: 'asc' },
         })
+        const activeBY = pickDefaultBudgetYear(defaultYears)
 
         if (!activeBY) {
           return {
@@ -160,10 +162,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       })
       if (!activeBudgetYear) return reply.status(404).send({ error: 'Budget year not found' })
     } else {
-      activeBudgetYear = await prisma.budgetYear.findFirst({
+      const defaultYears = await prisma.budgetYear.findMany({
         where: { householdId, status: { in: ['ACTIVE', 'FUTURE'] } },
-        orderBy: [{ status: 'asc' }, { year: 'asc' }],
+        orderBy: { year: 'asc' },
       })
+      activeBudgetYear = pickDefaultBudgetYear(defaultYears)
     }
 
     if (!activeBudgetYear) {

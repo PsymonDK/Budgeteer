@@ -4,6 +4,7 @@ import { authenticate } from '../plugins/authenticate'
 import { getJobMonthlyIncome, calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { toNum } from '../lib/decimal'
 import { partitionByOwnership } from '../lib/ownership'
+import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -516,8 +517,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
           include: {
             budgetYears: {
               where: { status: { in: ['ACTIVE', 'FUTURE'] } },
-              orderBy: { year: 'desc' },
-              take: 1,
+              orderBy: { year: 'asc' },
             },
           },
         },
@@ -535,7 +535,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const savingsYearMap = new Map<number, number>() // year -> user's total savings share
 
     for (const membership of memberships) {
-      const activeBY = membership.household.budgetYears[0]
+      const activeBY = pickDefaultBudgetYear(membership.household.budgetYears)
       if (!activeBY) continue
 
       const [expenses, savings, incomeResult] = await Promise.all([
