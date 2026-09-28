@@ -35,6 +35,9 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') {
+      return reply.status(400).send({ error: 'Retired budget years are read-only', code: 'BUDGET_YEAR_READ_ONLY' })
+    }
 
     const result = MarkPaidSchema.safeParse(request.body)
     if (!result.success) {
@@ -46,20 +49,19 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Transfer not found' })
     }
 
-    const { actualAmount } = result.data
-    const calculatedAmount = parseFloat(transfer.calculatedAmount.toString())
-    const status = actualAmount === calculatedAmount ? 'PAID' : 'ADJUSTED'
+    const actualAmount = new Decimal(result.data.actualAmount)
+    const status = actualAmount.eq(new Decimal(transfer.calculatedAmount.toString())) ? 'PAID' : 'ADJUSTED'
 
     const updated = await prisma.budgetTransfer.update({
       where: { id: transferId },
       data: {
-        actualAmount: new Decimal(actualAmount),
+        actualAmount,
         status,
         paidAt: new Date(),
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(updated)
   })
@@ -71,6 +73,9 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') {
+      return reply.status(400).send({ error: 'Retired budget years are read-only', code: 'BUDGET_YEAR_READ_ONLY' })
+    }
 
     const transfer = await prisma.budgetTransfer.findUnique({ where: { id: transferId } })
     if (!transfer || transfer.budgetYearId !== id) {
@@ -86,7 +91,7 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(updated)
   })

@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Pay/No-pay item checklist** — households on the Pay/No-pay model get an "Items this month" panel on the dashboard: mark each expense and savings item paid on its own or all at once, browse other months, and see what will carry over. New endpoints `GET /budget-years/:id/occurrences`, `PATCH /budget-years/:id/occurrences/:kind/:occurrenceId`, `POST /budget-years/:id/occurrences/mark-all-paid`. Previously nothing could mark an item paid, so every item carried over every month and transfers grew without bound (1000, 2000, 3000 …).
+- **Automatic budget-year lifecycle** — FUTURE years become ACTIVE when their year arrives and past years retire, at startup, daily, and before the monthly automation. Previously statuses only changed on create/copy/promote, so last year stayed ACTIVE after New Year.
 - **CI workflow** (`.github/workflows/ci.yml`) — pull requests, and every push to `main`/version tag before images are published, now run `npm ci`, migrations against a fresh Postgres plus a schema drift check, typecheck (both apps, including API tests), ESLint, Vitest, and full API/web/seed builds. Previously CI only built and pushed images.
 - **ESLint** — root flat config (`eslint.config.mjs`) covering API, web, and seed code with TypeScript and React Hooks rules. The web `lint` script referenced ESLint without it being installed. Root scripts `npm run lint`, `npm run typecheck`, and `npm run test`.
 - **Global API error handler** — Prisma not-found/unique/foreign-key errors now return 404/409 in the `{ error, code }` shape, and unexpected errors return a generic 500 instead of leaking Prisma queries and file paths.
@@ -23,7 +25,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
-- **Switching household kept the previous household's page state** — household pages are now remounted on switch. Previously an open rename form could rename the newly selected household to the old name, Expenses offered to create a duplicate budget year, and bulk-edit selections from one household could be sent to another.
+- **Month rollover wiped carry-overs when re-run** — rollover now derives carry from the closed month's rows, so a manual trigger or second API replica gives the same result instead of resetting all carries to 0. A PAID item that receives new carry is reopened.
+- **New Year rollover used the wrong year** — the automation now closes December and auto-marks the December transfer in the budget year that owns it (last year's), instead of looking for December under the new year.
+- **Editing a Pay/No-pay expense didn't change its upcoming months** — pending occurrences now follow the expense's current schedule.
+- **Daily FX sync corrupted partial-year and retired entries** — it skipped the partial-year average (a June–August expense became ~4× too large after the first sync), rewrote RETIRED years, used float math, and never recalculated transfers. It now shares the save-time calculation, leaves retired years alone, and recalculates affected transfers.
+- **Past FX rates were locked at the wrong rate** — entries are now locked at the stored rate on or before their payment period, before today's re-pricing runs (previously the lock captured whatever the latest rate was on the first sync after the period).
+- **Changing currency on a locked entry reused the old currency's rate** — switching currency now unlocks and uses the new currency's latest rate.
+- **Copying a budget year dropped currency, account and period fields** — copied EUR entries turned into DKK on their next edit; copies now keep currency/account/period and are re-priced at today's rate. Copying into the current year now calculates its transfers.
+- **Promoting a future-year simulation retired the live current year** — a simulation now replaces the regular year for its own calendar year (a 2027 simulation becomes the FUTURE 2027 year). Past-year simulations can no longer be promoted.
+- **Budget model change recalculated the wrong year** — the `FUTURE`-before-`ACTIVE` enum sort picked the future year; it now recalculates the ACTIVE year.
+- **`DELETE /households/:id` always failed** on foreign keys with a raw 500; it now deletes budget years, members, automations and unreferenced custom categories in one transaction.
+- **Transfer recalculation raced the response** — writes now wait for the recalculation (failures are still logged, not returned), and concurrent recalculations no longer collide creating occurrence rows.
+- **Retired budget years' transfers could be marked paid/pending** — now rejected as read-only.
+- **Seeded demo households had no monthly automation** — the seed now ensures every household has one.
+ the previous household's page state** — household pages are now remounted on switch. Previously an open rename form could rename the newly selected household to the old name, Expenses offered to create a duplicate budget year, and bulk-edit selections from one household could be sent to another.
 - **Logout left the previous user's data cached** — logout now clears the query cache and the remembered active household, so the next user in the same tab never sees it.
 - **Transient API errors logged users out** — only a 401/403 from `/users/me` ends the session; network errors and API restarts no longer wipe it. Failed logins are no longer routed through the token-refresh flow.
 - **Profile preferred-currency dropdown was empty** — it read `currencyCode` while the API returns `code`.

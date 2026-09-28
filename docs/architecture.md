@@ -177,7 +177,14 @@ budgeteer/
 **budget_transfers** — monthly inter-member transfer snapshots
 - budgetYearId, year, month, calculatedAmount, actualAmount (nullable), status (`PENDING` | `PAID` | `ADJUSTED`)
 - calculatedAt, paidAt (nullable), automationRunId (nullable)
-- One record per budget year per month; recalculated when income or expenses change
+- One record per budget year per month; recalculated (awaited) when income, expenses, savings or FX rates change
+- PAY_NO_PAY: a month's amount is everything due that month (scheduled + carried) across PENDING and PAID occurrences, so paying items doesn't shrink it; closed months keep their recorded amount
+
+**Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
+- Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
+- Members mark items PAID one by one or all at once for a month (`actualAmount` = amount due)
+- Month rollover (1st of the month automation) closes the previous month: PENDING → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent
+- At the year boundary December is closed without carry — the new year's expenses are separate rows
 
 **currencies** — admin-managed catalog of available currencies
 - code (PK), name, isEnabled
@@ -186,7 +193,8 @@ budgeteer/
 **currency_rates** — time-series exchange rates fetched from Danmarks Nationalbank
 - currencyCode, rate (relative to BASE_CURRENCY), baseCurrency, fetchedDate
 - New rows appended daily; queries use `DISTINCT ON` to get the latest rate per currency
-- Past expense/savings rates are locked at `rateDate`; future ones recalculate on sync
+- Past expense/savings rates are locked at `rateDate` using the stored rate on or before the payment period (`frequencyPeriod`); unlocked ones are re-priced at the latest rate on each daily sync, using the same `calcMonthlyInBase` as save-time (partial-year average included). RETIRED years are never rewritten
+- A locked rate is kept on edit only while the currency is unchanged; switching currency unlocks and uses the latest rate
 
 **automations** — scheduled or manually-triggered household jobs
 - householdId, key (unique per household), label, description, schedule (cron), isEnabled
@@ -261,12 +269,15 @@ The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-imple
 ## Budget Lifecycle
 
 ```
-[FUTURE] → (year arrives or manual promotion) → [ACTIVE]
-[ACTIVE] → (new year or manual action) → [RETIRED]
+[FUTURE] → (its year arrives — automatic) → [ACTIVE]
+[ACTIVE] → (year ends — automatic, or manual action) → [RETIRED]
 [ACTIVE | FUTURE] → (copy) → [SIMULATION]
-[SIMULATION] → (promote) → becomes ACTIVE, previous ACTIVE → RETIRED
+[SIMULATION] → (promote) → takes the place of the regular year for its own year (date-derived ACTIVE or FUTURE; that year's existing regular year → RETIRED). Past-year simulations can't be promoted
 [RETIRED current/future regular year] → (restore) → date-derived ACTIVE or FUTURE
 ```
+
+- Calendar transitions run in `lib/budgetYearLifecycle.ts` at API startup, daily at 00:05, and before the monthly automations. RETIRED years are never auto-restored
+- Copying a year carries currency, account and period fields; foreign-currency entries are re-priced (unlocked) at today's rate
 
 - New regular-year status is date-derived: year < current = RETIRED, year = current = ACTIVE, year > current = FUTURE
 - Manually retired current/future regular years can be restored to their date-derived status or hard-deleted; past retired regular years remain protected history
@@ -415,6 +426,9 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
+GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY items for a month (default: current)
+PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month }
 
 GET    /categories
 POST   /categories

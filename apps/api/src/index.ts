@@ -27,8 +27,10 @@ import { automationRoutes } from './routes/automations'
 import { payslipRoutes } from './routes/payslips'
 import { receiptRoutes } from './routes/receipts'
 import { receiptTrainingRoutes } from './routes/receiptTraining'
+import { occurrenceRoutes } from './routes/occurrences'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
+import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
 import { prisma } from './lib/prisma'
 import { toErrorResponse } from './lib/errors'
 
@@ -97,6 +99,7 @@ app.register(savingsRoutes)
 app.register(currencyRoutes)
 app.register(profileRoutes)
 app.register(budgetTransferRoutes)
+app.register(occurrenceRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
 app.register(receiptRoutes)
@@ -129,6 +132,15 @@ const start = async () => {
         app.log.warn({ err }, 'Initial currency sync failed — rates will load on next daily sync')
       }
     }
+
+    // Budget-year statuses follow the calendar (FUTURE → ACTIVE → RETIRED). Run now in
+    // case the server was down over New Year, and daily after midnight.
+    const runLifecycle = () =>
+      runBudgetYearLifecycle()
+        .then((n) => { if (n > 0) app.log.info(`Budget-year lifecycle: ${n} year(s) activated`) })
+        .catch((err) => app.log.error({ err }, 'Budget-year lifecycle failed'))
+    await runLifecycle()
+    cron.schedule('5 0 * * *', runLifecycle)
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00
     cron.schedule('0 0 1 * *', () => {

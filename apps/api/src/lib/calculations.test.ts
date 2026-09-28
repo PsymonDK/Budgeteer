@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/client'
-import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus } from './calculations'
+import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus, calcMonthlyInBase } from './calculations'
 
 // ── calcMonthlyEquivalent ─────────────────────────────────────────────────────
 
@@ -122,5 +122,19 @@ describe('deriveBudgetStatus', () => {
 
   it('far past year → RETIRED', () => {
     expect(deriveBudgetStatus(currentYear - 10)).toBe('RETIRED')
+  })
+})
+
+// ── calcMonthlyInBase ─────────────────────────────────────────────────────────
+
+describe('calcMonthlyInBase', () => {
+  it('converts, normalises frequency and averages partial years like save-time', () => {
+    // 100 EUR monthly for June–August at 7.46: 746/month active → 186.50 annual average
+    expect(calcMonthlyInBase('100', '7.46', 'MONTHLY', 6, 8).toFixed(2)).toBe('186.50')
+  })
+
+  it('handles full-year entries and non-monthly frequencies', () => {
+    expect(calcMonthlyInBase('1200', '1', 'ANNUAL').toFixed(2)).toBe('100.00')
+    expect(calcMonthlyInBase('300', '2', 'QUARTERLY').toFixed(2)).toBe('200.00')
   })
 })

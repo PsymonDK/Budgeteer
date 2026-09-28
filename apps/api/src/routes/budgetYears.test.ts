@@ -4,8 +4,10 @@ vi.mock('../lib/prisma', () => ({ prisma: {} }))
 vi.mock('../plugins/authenticate', () => ({ authenticate: vi.fn() }))
 vi.mock('../lib/budgetTransfer', () => ({ recalculateTransfer: vi.fn() }))
 
+import { Prisma } from '@prisma/client'
 import {
   canDeleteBudgetYear,
+  copiedCurrencyFields,
   deleteBudgetYearWithDependencies,
   getRestoredRegularBudgetStatus,
 } from './budgetYears'
@@ -125,5 +127,40 @@ describe('deleteBudgetYearWithDependencies', () => {
       data: { copiedFromId: null },
     })
     expect(tx.budgetYear.delete).toHaveBeenCalledWith({ where: { id: 'budget-year-1' } })
+  })
+})
+
+describe('copiedCurrencyFields', () => {
+  const base = {
+    amount: new Prisma.Decimal(100),
+    originalAmount: new Prisma.Decimal(100),
+    rateUsed: new Prisma.Decimal('7.40'),
+    monthlyEquivalent: new Prisma.Decimal('740.00'),
+    frequency: 'MONTHLY' as const,
+    startMonth: null,
+    endMonth: null,
+  }
+
+  it('keeps the currency and re-prices at the latest rate, unlocked', () => {
+    const fields = copiedCurrencyFields(
+      { ...base, currencyCode: 'EUR' },
+      new Map([['EUR', new Prisma.Decimal('7.46')]]),
+    )
+    expect(fields.currencyCode).toBe('EUR')
+    expect(fields.rateDate).toBeNull()
+    expect(fields.rateUsed?.toString()).toBe('7.46')
+    expect(fields.monthlyEquivalent.toFixed(2)).toBe('746.00')
+  })
+
+  it('falls back to the source rate when no current rate exists', () => {
+    const fields = copiedCurrencyFields({ ...base, currencyCode: 'EUR' }, new Map([['EUR', null]]))
+    expect(fields.rateUsed?.toString()).toBe('7.4')
+    expect(fields.monthlyEquivalent.toFixed(2)).toBe('740.00')
+  })
+
+  it('leaves base-currency entries unchanged', () => {
+    const fields = copiedCurrencyFields({ ...base, currencyCode: null, rateUsed: null }, new Map())
+    expect(fields).toMatchObject({ currencyCode: null, originalAmount: null, rateUsed: null })
+    expect(fields.monthlyEquivalent.toString()).toBe('740')
   })
 })

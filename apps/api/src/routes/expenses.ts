@@ -3,10 +3,9 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcMonthlyEquivalent, calcAnnualAverage, activeMonthCount } from '../lib/calculations'
-import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
+import { calcMonthlyInBase, activeMonthCount } from '../lib/calculations'
+import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
 import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
-import { toNum } from '../lib/decimal'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
@@ -117,15 +116,11 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (ownershipError) return reply.status(400).send({ error: ownershipError })
 
     const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
-    const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
-    if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    const resolved = await resolveSaveRate(currency)
+    if (!resolved) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    const { rate } = resolved
 
-    const amountInBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
-    const monthlyEquivalent = calcAnnualAverage(
-      calcMonthlyEquivalent(amountInBase, frequency),
-      startMonth ?? null,
-      endMonth ?? null,
-    )
+    const monthlyEquivalent = calcMonthlyInBase(amount, rate, frequency, startMonth ?? null, endMonth ?? null)
 
     const expense = await prisma.$transaction(async (tx) => {
       const created = await tx.expense.create({
@@ -142,7 +137,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           monthlyEquivalent,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
           originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
-          rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          rateUsed: currency !== BASE_CURRENCY ? rate : null,
           ownership,
           ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
           accountId: accountId ?? null,
@@ -164,7 +159,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return created
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(201).send(expense)
   })
 
@@ -212,30 +207,18 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     )
     if (ownershipError) return reply.status(400).send({ error: ownershipError })
 
-    // Determine currency and rate — respect locked rate if rateDate is set
+    // Determine currency and rate — a locked rate is kept only while the currency is unchanged
     const newCurrency = currencyCode ? currencyCode.toUpperCase()
       : (existing.currencyCode ?? BASE_CURRENCY)
-    let rate: number
-    if (newCurrency === BASE_CURRENCY) {
-      rate = 1
-    } else if (existing.rateDate && existing.rateUsed) {
-      rate = toNum(existing.rateUsed)
-    } else {
-      const fetched = await getLatestRate(newCurrency)
-      if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
-      rate = fetched
-    }
+    const resolved = await resolveSaveRate(newCurrency, existing)
+    if (!resolved) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
+    const { rate } = resolved
 
-    const newAmount = amount !== undefined ? amount : toNum(existing.amount)
+    const newAmount = amount !== undefined ? new Decimal(amount) : new Decimal(existing.amount.toString())
     const newFrequency = frequency ?? existing.frequency
     const newStartMonth = startMonth !== undefined ? (startMonth ?? null) : existing.startMonth
     const newEndMonth = endMonth !== undefined ? (endMonth ?? null) : existing.endMonth
-    const amountInBase = newAmount * rate
-    const monthlyEquivalent = calcAnnualAverage(
-      calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency),
-      newStartMonth,
-      newEndMonth,
-    )
+    const monthlyEquivalent = calcMonthlyInBase(newAmount, rate, newFrequency, newStartMonth, newEndMonth)
 
     const expense = await prisma.$transaction(async (tx) => {
       // Always replace custom splits when ownership fields are touched
@@ -254,8 +237,9 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
           monthlyEquivalent,
           currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
-          originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
-          rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          originalAmount: newCurrency !== BASE_CURRENCY ? newAmount : null,
+          rateUsed: newCurrency !== BASE_CURRENCY ? rate : null,
+          rateDate: newCurrency !== BASE_CURRENCY ? resolved.rateDate : null,
           ...(accountId !== undefined && { accountId: accountId ?? null }),
         },
         include: expenseInclude,
@@ -275,7 +259,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return updated
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send(expense)
   })
 
@@ -315,7 +299,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send({ updated: count })
   })
 
@@ -335,7 +319,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     await prisma.expense.delete({ where: { id: expenseId } })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()
   })
 }

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 import { recalculateTransfer } from '../lib/budgetTransfer'
+import { deleteHouseholdWithDependencies } from '../lib/householdDeletion'
 
 const CreateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
@@ -152,12 +153,10 @@ export async function householdRoutes(fastify: FastifyInstance) {
     // Recalculate transfers whenever budget model changes so the history reflects
     // the new model immediately rather than on the next expense/savings mutation.
     if (budgetModel !== undefined) {
-      const activeBY = await prisma.budgetYear.findFirst({
-        where: { householdId: id, status: { in: ['ACTIVE', 'FUTURE'] } },
-        orderBy: [{ status: 'asc' }, { year: 'asc' }],
-      })
+      // Only the ACTIVE year has transfers (recalculateTransfer ignores others)
+      const activeBY = await prisma.budgetYear.findFirst({ where: { householdId: id, status: 'ACTIVE' } })
       if (activeBY) {
-        recalculateTransfer(activeBY.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed after budgetModel change'))
+        await recalculateTransfer(activeBY.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed after budgetModel change'))
       }
     }
 
@@ -297,7 +296,10 @@ export async function householdRoutes(fastify: FastifyInstance) {
       return reply.status(409).send({ error: 'Cannot delete a household with an active budget year. Retire or deactivate it first.' })
     }
 
-    await prisma.household.delete({ where: { id } })
+    const household = await prisma.household.findUnique({ where: { id }, select: { id: true } })
+    if (!household) return reply.status(404).send({ error: 'Household not found' })
+
+    await prisma.$transaction((tx) => deleteHouseholdWithDependencies(tx, id), { timeout: 60_000 })
     return reply.status(204).send()
   })
 }

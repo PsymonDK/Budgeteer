@@ -11,6 +11,7 @@ import { FREQ_LABELS } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 import { useTransfers, type BudgetTransfer } from '../hooks/useTransfers'
 import { useTransferBreakdown } from '../hooks/useTransferBreakdown'
+import { MonthItemsPanel } from '../components/MonthItemsPanel'
 import { toast } from 'sonner'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
@@ -745,6 +746,9 @@ export function DashboardPage() {
               <p className="text-gray-500 text-sm">All transfers paid</p>
             )}
           </div>
+
+          {/* Pay/No-pay: per-item paid checklist for the month */}
+          {summary?.budgetYear?.id && <MonthItemsPanel budgetYearId={summary.budgetYear.id} fmt={fmt} />}
 
           {/* Transfer history */}
           <div className="mb-8">

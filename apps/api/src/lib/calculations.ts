@@ -84,3 +84,19 @@ export function deriveBudgetStatus(year: number): 'ACTIVE' | 'FUTURE' | 'RETIRED
   if (year === current) return 'ACTIVE'
   return 'FUTURE'
 }
+
+/**
+ * The stored monthlyEquivalent in base currency: amount × rate, normalised to a month
+ * by frequency, then averaged over the active months of the year. Used on save and
+ * by the daily FX sync so both always agree.
+ */
+export function calcMonthlyInBase(
+  amount: Decimal | number | string,
+  rate: Decimal | number | string,
+  frequency: Frequency,
+  startMonth: number | null = null,
+  endMonth: number | null = null,
+): Decimal {
+  const inBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
+  return calcAnnualAverage(calcMonthlyEquivalent(inBase, frequency), startMonth, endMonth)
+}

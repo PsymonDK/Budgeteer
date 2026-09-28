@@ -593,7 +593,31 @@ function parseSeedBoolean(value: string | undefined, fallback: boolean): boolean
   return fallback
 }
 
+/**
+ * Every household needs its monthly transfer automation. Households created through
+ * the API get one; seeded demo households and older installs may not. Idempotent.
+ */
+async function ensureHouseholdAutomations() {
+  const households = await prisma.household.findMany({
+    where: { automations: { none: { key: 'monthly_transfer_snapshot' } } },
+    select: { id: true },
+  })
+  for (const { id } of households) {
+    await prisma.automation.create({
+      data: {
+        key: 'monthly_transfer_snapshot',
+        label: 'Monthly budget transfer calculation',
+        description: 'Calculates and records the recommended monthly transfer on the 1st of each month',
+        schedule: '0 0 1 * *',
+        householdId: id,
+      },
+    })
+  }
+  if (households.length > 0) console.log(`✓ Added monthly transfer automation to ${households.length} household(s).`)
+}
+
 main()
+  .then(() => ensureHouseholdAutomations())
   .catch((err) => {
     console.error(err)
     process.exit(1)

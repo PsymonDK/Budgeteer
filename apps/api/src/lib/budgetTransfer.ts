@@ -2,6 +2,20 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import { calcForwardMonthlyNeed, calcOccurrenceScheduledAmount, activeMonthCount } from './calculations'
 
+type ScheduleSource = { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }
+
+/**
+ * The month (1-12) the budget year is "in" relative to today. Past years are fully
+ * elapsed (13), future years haven't started (1). Transfer calculations use this
+ * instead of the calendar month so a non-current ACTIVE year is handled sanely.
+ */
+export function effectiveCurrentMonth(budgetYear: number, now: Date = new Date()): number {
+  const year = now.getFullYear()
+  if (budgetYear < year) return 13
+  if (budgetYear > year) return 1
+  return now.getMonth() + 1
+}
+
 export async function recalculateTransfer(budgetYearId: string): Promise<void> {
   const budgetYear = await prisma.budgetYear.findUnique({
     where: { id: budgetYearId },
@@ -10,8 +24,8 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
   if (!budgetYear || budgetYear.status !== 'ACTIVE') return
 
   const { budgetModel } = budgetYear.household
-  const currentMonth = new Date().getMonth() + 1
   const year = budgetYear.year
+  const currentMonth = effectiveCurrentMonth(year)
 
   const expenses = await prisma.expense.findMany({
     where: { budgetYearId },
@@ -26,11 +40,10 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
     return
   }
 
-  const annualNeed = expenses.reduce(
-    (sum, e) => sum.add(new Decimal(e.monthlyEquivalent.toString()).mul(12)),
+  const perMonth = expenses.reduce(
+    (sum, e) => sum.add(new Decimal(e.monthlyEquivalent.toString())),
     new Decimal(0),
   )
-  const perMonth = annualNeed.div(12)
 
   if (budgetModel === 'FORWARD_LOOKING') {
     await recalculateForwardLooking(budgetYearId, year, currentMonth, expenses, byMonth, perMonth)
@@ -59,7 +72,7 @@ async function recalculateForwardLooking(
   budgetYearId: string,
   year: number,
   currentMonth: number,
-  expenses: { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }[],
+  expenses: ScheduleSource[],
   byMonth: Map<number, { status: string }>,
   perMonth: Decimal,
 ): Promise<void> {
@@ -103,45 +116,94 @@ async function recalculateForwardLooking(
   }
 }
 
+// ── PAY_NO_PAY occurrences ───────────────────────────────────────────────────
+
+type ExistingOccurrence = { id: string; entryId: string; month: number; status: string; scheduledAmount: Decimal }
+
+export type OccurrenceSyncPlan = {
+  create: { entryId: string; month: number; scheduledAmount: Decimal }[]
+  update: { id: string; scheduledAmount: Decimal }[]
+}
+
+/**
+ * Plans how occurrence rows for the given months must change so PENDING rows match
+ * each entry's current schedule. PAID and SKIPPED rows are history and never touched.
+ * `scheduleFor` returns the amount due for an entry in a month, or null when inactive.
+ */
+export function planOccurrenceSync(
+  entryIds: string[],
+  months: number[],
+  existing: ExistingOccurrence[],
+  scheduleFor: (entryId: string, month: number) => Decimal | null,
+): OccurrenceSyncPlan {
+  const byKey = new Map(existing.map((o) => [`${o.entryId}:${o.month}`, o]))
+  const plan: OccurrenceSyncPlan = { create: [], update: [] }
+  for (const entryId of entryIds) {
+    for (const month of months) {
+      const scheduled = scheduleFor(entryId, month)
+      const occ = byKey.get(`${entryId}:${month}`)
+      if (!occ) {
+        if (scheduled !== null) plan.create.push({ entryId, month, scheduledAmount: scheduled })
+        continue
+      }
+      if (occ.status !== 'PENDING') continue
+      const target = scheduled ?? new Decimal(0)
+      if (!new Decimal(occ.scheduledAmount.toString()).eq(target)) plan.update.push({ id: occ.id, scheduledAmount: target })
+    }
+  }
+  return plan
+}
+
+/** Amount still owed on an occurrence: scheduled + carried − paid so far. */
+export function unpaidAmount(occ: { scheduledAmount: Decimal; carriedAmount: Decimal; actualAmount: Decimal | null }): Decimal {
+  return new Decimal(occ.scheduledAmount.toString())
+    .add(new Decimal(occ.carriedAmount.toString()))
+    .sub(occ.actualAmount ? new Decimal(occ.actualAmount.toString()) : new Decimal(0))
+}
+
+/**
+ * Month total for the transfer: everything due that month (scheduled + carried),
+ * whether already paid or not. SKIPPED rows were closed and carried to a later
+ * month, so they're excluded to avoid counting the same money twice.
+ */
+export function sumMonthObligations(
+  occurrences: { month: number; status: string; scheduledAmount: Decimal; carriedAmount: Decimal }[],
+): Map<number, Decimal> {
+  const totals = new Map<number, Decimal>()
+  for (const occ of occurrences) {
+    if (occ.status === 'SKIPPED') continue
+    const prev = totals.get(occ.month) ?? new Decimal(0)
+    totals.set(occ.month, prev.add(new Decimal(occ.scheduledAmount.toString())).add(new Decimal(occ.carriedAmount.toString())))
+  }
+  return totals
+}
+
 async function recalculatePayNoPay(
   budgetYearId: string,
   year: number,
   currentMonth: number,
-  expenses: { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }[],
+  expenses: ScheduleSource[],
   byMonth: Map<number, { status: string }>,
 ): Promise<void> {
-  // Seed occurrences for the current month through end of year so that all remaining
-  // months have amounts rather than showing 0 (e.g. after switching to PAY_NO_PAY).
-  for (let m = currentMonth; m <= 12; m++) {
-    await seedCurrentMonthOccurrences(budgetYearId, year, m, expenses)
-  }
+  await syncPayNoPayOccurrences(budgetYearId, year, currentMonth, expenses)
 
-  // Aggregate PENDING obligations per month from occurrence tables
   const [expOccs, savOccs] = await Promise.all([
     prisma.expenseOccurrence.findMany({
-      where: { expense: { budgetYearId }, year, status: 'PENDING' },
-      select: { month: true, scheduledAmount: true, carriedAmount: true },
+      where: { expense: { budgetYearId }, year },
+      select: { month: true, status: true, scheduledAmount: true, carriedAmount: true },
     }),
     prisma.savingsOccurrence.findMany({
-      where: { savingsEntry: { budgetYearId }, year, status: 'PENDING' },
-      select: { month: true, scheduledAmount: true, carriedAmount: true },
+      where: { savingsEntry: { budgetYearId }, year },
+      select: { month: true, status: true, scheduledAmount: true, carriedAmount: true },
     }),
   ])
-
-  const occByMonth = new Map<number, Decimal>()
-  for (const occ of [...expOccs, ...savOccs]) {
-    const prev = occByMonth.get(occ.month) ?? new Decimal(0)
-    occByMonth.set(
-      occ.month,
-      prev
-        .add(new Decimal(occ.scheduledAmount.toString()))
-        .add(new Decimal(occ.carriedAmount.toString())),
-    )
-  }
+  const occByMonth = sumMonthObligations([...expOccs, ...savOccs])
 
   for (let m = 1; m <= 12; m++) {
     const existing = byMonth.get(m)
     if (existing && (existing.status === 'PAID' || existing.status === 'ADJUSTED')) continue
+    // Closed months are history: keep an existing transfer as recorded
+    if (existing && m < currentMonth) continue
 
     const calculatedAmount = occByMonth.get(m) ?? new Decimal(0)
 
@@ -153,59 +215,99 @@ async function recalculatePayNoPay(
   }
 }
 
-/** Creates occurrence rows for the current month for any expense/savings entry that lacks one. */
-async function seedCurrentMonthOccurrences(
+/**
+ * Creates missing occurrence rows from the current month through December and
+ * updates PENDING rows whose schedule changed (e.g. after an expense edit), so
+ * every remaining month reflects the current expenses and savings.
+ */
+async function syncPayNoPayOccurrences(
   budgetYearId: string,
   year: number,
-  month: number,
-  expenses: { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }[],
+  currentMonth: number,
+  expenses: ScheduleSource[],
 ): Promise<void> {
+  const months = Array.from({ length: Math.max(0, 13 - currentMonth) }, (_, i) => currentMonth + i)
+  if (months.length === 0) return
+
   const [existingExpOccs, savingsEntries, existingSavOccs] = await Promise.all([
     prisma.expenseOccurrence.findMany({
-      where: { expenseId: { in: expenses.map((e) => e.id) }, year, month },
-      select: { expenseId: true },
+      where: { expense: { budgetYearId }, year, month: { in: months } },
+      select: { id: true, expenseId: true, month: true, status: true, scheduledAmount: true },
     }),
-    prisma.savingsEntry.findMany({
-      where: { budgetYearId },
-      select: { id: true, monthlyEquivalent: true },
-    }),
+    prisma.savingsEntry.findMany({ where: { budgetYearId }, select: { id: true, monthlyEquivalent: true } }),
     prisma.savingsOccurrence.findMany({
-      where: { savingsEntry: { budgetYearId }, year, month },
-      select: { savingsEntryId: true },
+      where: { savingsEntry: { budgetYearId }, year, month: { in: months } },
+      select: { id: true, savingsEntryId: true, month: true, status: true, scheduledAmount: true },
     }),
   ])
 
-  const existingExpIds = new Set(existingExpOccs.map((o) => o.expenseId))
-  const existingSavIds = new Set(existingSavOccs.map((o) => o.savingsEntryId))
+  const expenseById = new Map(expenses.map((e) => [e.id, e]))
+  const expPlan = planOccurrenceSync(
+    expenses.map((e) => e.id),
+    months,
+    existingExpOccs.map((o) => ({ ...o, entryId: o.expenseId })),
+    (id, month) => calcOccurrenceScheduledAmount(expenseById.get(id)!, month),
+  )
+  const savingsById = new Map(savingsEntries.map((s) => [s.id, s]))
+  const savPlan = planOccurrenceSync(
+    savingsEntries.map((s) => s.id),
+    months,
+    existingSavOccs.map((o) => ({ ...o, entryId: o.savingsEntryId })),
+    (id) => new Decimal(savingsById.get(id)!.monthlyEquivalent.toString()),
+  )
 
-  const newExpOccs = expenses
-    .filter((e) => !existingExpIds.has(e.id))
-    .flatMap((e) => {
-      const scheduledAmount = calcOccurrenceScheduledAmount(e, month)
-      if (scheduledAmount === null) return []
-      return [{ expenseId: e.id, year, month, scheduledAmount, carriedAmount: new Decimal(0) }]
-    })
-
-  const newSavOccs = savingsEntries
-    .filter((s) => !existingSavIds.has(s.id))
-    .map((s) => ({
-      savingsEntryId: s.id,
-      year,
-      month,
-      scheduledAmount: new Decimal(s.monthlyEquivalent.toString()),
-      carriedAmount: new Decimal(0),
-    }))
-
+  // skipDuplicates: concurrent recalculations may race to create the same rows
   await Promise.all([
-    newExpOccs.length > 0 ? prisma.expenseOccurrence.createMany({ data: newExpOccs }) : Promise.resolve(),
-    newSavOccs.length > 0 ? prisma.savingsOccurrence.createMany({ data: newSavOccs }) : Promise.resolve(),
+    expPlan.create.length > 0
+      ? prisma.expenseOccurrence.createMany({
+          data: expPlan.create.map((c) => ({ expenseId: c.entryId, year, month: c.month, scheduledAmount: c.scheduledAmount })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    savPlan.create.length > 0
+      ? prisma.savingsOccurrence.createMany({
+          data: savPlan.create.map((c) => ({ savingsEntryId: c.entryId, year, month: c.month, scheduledAmount: c.scheduledAmount })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    ...expPlan.update.map((u) => prisma.expenseOccurrence.update({ where: { id: u.id }, data: { scheduledAmount: u.scheduledAmount } })),
+    ...savPlan.update.map((u) => prisma.savingsOccurrence.update({ where: { id: u.id }, data: { scheduledAmount: u.scheduledAmount } })),
   ])
 }
 
+/** Marks every PENDING occurrence of a month SKIPPED (closed). Safe to run repeatedly. */
+export async function closePayNoPayMonth(budgetYearId: string, year: number, month: number): Promise<void> {
+  await Promise.all([
+    prisma.expenseOccurrence.updateMany({
+      where: { expense: { budgetYearId }, year, month, status: 'PENDING' },
+      data: { status: 'SKIPPED' },
+    }),
+    prisma.savingsOccurrence.updateMany({
+      where: { savingsEntry: { budgetYearId }, year, month, status: 'PENDING' },
+      data: { status: 'SKIPPED' },
+    }),
+  ])
+}
+
+/** Unpaid balance per entry from a closed month's SKIPPED occurrences. */
+export function carryFromClosedMonth(
+  occurrences: { entryId: string; status: string; scheduledAmount: Decimal; carriedAmount: Decimal; actualAmount: Decimal | null }[],
+): Map<string, Decimal> {
+  const carry = new Map<string, Decimal>()
+  for (const occ of occurrences) {
+    if (occ.status !== 'SKIPPED') continue
+    const unpaid = unpaidAmount(occ)
+    if (unpaid.gt(0)) carry.set(occ.entryId, unpaid)
+  }
+  return carry
+}
+
 /**
- * Called at month rollover for PAY_NO_PAY households.
- * Closes all PENDING occurrences from the closing month (marks them SKIPPED),
- * then opens occurrence rows for the new month — carrying over any unpaid balances.
+ * Called at month rollover (within one budget year) for PAY_NO_PAY households.
+ * Closes the month (PENDING → SKIPPED) and carries each closed item's unpaid balance
+ * into the opening month. Carry is derived from all SKIPPED rows of the closing
+ * month, so re-running (manual trigger, second replica) produces the same result
+ * instead of wiping the carry.
  */
 export async function rolloverPayNoPayOccurrences(
   budgetYearId: string,
@@ -213,92 +315,56 @@ export async function rolloverPayNoPayOccurrences(
   closingMonth: number,
   openingMonth: number,
 ): Promise<void> {
-  // 1. Find PENDING occurrences from the closing month
-  const [pendingExpOccs, pendingSavOccs] = await Promise.all([
-    prisma.expenseOccurrence.findMany({
-      where: { expense: { budgetYearId }, year, month: closingMonth, status: 'PENDING' },
-    }),
-    prisma.savingsOccurrence.findMany({
-      where: { savingsEntry: { budgetYearId }, year, month: closingMonth, status: 'PENDING' },
-    }),
-  ])
+  await closePayNoPayMonth(budgetYearId, year, closingMonth)
 
-  // 2. Mark them SKIPPED
-  await Promise.all([
-    pendingExpOccs.length > 0
-      ? prisma.expenseOccurrence.updateMany({
-          where: { id: { in: pendingExpOccs.map((o) => o.id) } },
-          data: { status: 'SKIPPED' },
-        })
-      : Promise.resolve(),
-    pendingSavOccs.length > 0
-      ? prisma.savingsOccurrence.updateMany({
-          where: { id: { in: pendingSavOccs.map((o) => o.id) } },
-          data: { status: 'SKIPPED' },
-        })
-      : Promise.resolve(),
-  ])
-
-  // 3. Build carry-over maps: unpaid balance = scheduledAmount + carriedAmount - (actualAmount ?? 0)
-  const expenseCarryMap = new Map<string, Decimal>()
-  for (const occ of pendingExpOccs) {
-    const unpaid = new Decimal(occ.scheduledAmount.toString())
-      .add(new Decimal(occ.carriedAmount.toString()))
-      .sub(occ.actualAmount ? new Decimal(occ.actualAmount.toString()) : new Decimal(0))
-    if (unpaid.gt(0)) expenseCarryMap.set(occ.expenseId, unpaid)
-  }
-
-  const savingsCarryMap = new Map<string, Decimal>()
-  for (const occ of pendingSavOccs) {
-    const unpaid = new Decimal(occ.scheduledAmount.toString())
-      .add(new Decimal(occ.carriedAmount.toString()))
-      .sub(occ.actualAmount ? new Decimal(occ.actualAmount.toString()) : new Decimal(0))
-    if (unpaid.gt(0)) savingsCarryMap.set(occ.savingsEntryId, unpaid)
-  }
-
-  // 4. Fetch all expenses and savings entries for the budget year
-  const [expenses, savingsEntries] = await Promise.all([
+  const [closedExpOccs, closedSavOccs, expenses, savingsEntries] = await Promise.all([
+    prisma.expenseOccurrence.findMany({ where: { expense: { budgetYearId }, year, month: closingMonth, status: 'SKIPPED' } }),
+    prisma.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId }, year, month: closingMonth, status: 'SKIPPED' } }),
     prisma.expense.findMany({
       where: { budgetYearId },
       select: { id: true, monthlyEquivalent: true, startMonth: true, endMonth: true },
     }),
-    prisma.savingsEntry.findMany({
-      where: { budgetYearId },
-      select: { id: true, monthlyEquivalent: true },
-    }),
+    prisma.savingsEntry.findMany({ where: { budgetYearId }, select: { id: true, monthlyEquivalent: true } }),
   ])
 
-  // 5. Upsert opening month occurrences (create fresh or merge carry into existing)
+  const expenseCarry = carryFromClosedMonth(closedExpOccs.map((o) => ({ ...o, entryId: o.expenseId })))
+  const savingsCarry = carryFromClosedMonth(closedSavOccs.map((o) => ({ ...o, entryId: o.savingsEntryId })))
+
   await Promise.all([
     ...expenses.map(async (expense) => {
       const scheduledAmount = calcOccurrenceScheduledAmount(expense, openingMonth)
-      const carriedAmount = expenseCarryMap.get(expense.id) ?? new Decimal(0)
+      const carriedAmount = expenseCarry.get(expense.id) ?? new Decimal(0)
       if (scheduledAmount === null && carriedAmount.eq(0)) return
-      await prisma.expenseOccurrence.upsert({
-        where: { expenseId_year_month: { expenseId: expense.id, year, month: openingMonth } },
-        create: {
-          expenseId: expense.id,
-          year,
-          month: openingMonth,
-          scheduledAmount: scheduledAmount ?? new Decimal(0),
-          carriedAmount,
-        },
-        update: { carriedAmount },
-      })
+      await upsertOpeningOccurrence('expense', expense.id, year, openingMonth, scheduledAmount ?? new Decimal(0), carriedAmount)
     }),
     ...savingsEntries.map(async (entry) => {
-      const carriedAmount = savingsCarryMap.get(entry.id) ?? new Decimal(0)
-      await prisma.savingsOccurrence.upsert({
-        where: { savingsEntryId_year_month: { savingsEntryId: entry.id, year, month: openingMonth } },
-        create: {
-          savingsEntryId: entry.id,
-          year,
-          month: openingMonth,
-          scheduledAmount: new Decimal(entry.monthlyEquivalent.toString()),
-          carriedAmount,
-        },
-        update: { carriedAmount },
-      })
+      const carriedAmount = savingsCarry.get(entry.id) ?? new Decimal(0)
+      await upsertOpeningOccurrence('savings', entry.id, year, openingMonth, new Decimal(entry.monthlyEquivalent.toString()), carriedAmount)
     }),
   ])
+}
+
+async function upsertOpeningOccurrence(
+  kind: 'expense' | 'savings',
+  entryId: string,
+  year: number,
+  month: number,
+  scheduledAmount: Decimal,
+  carriedAmount: Decimal,
+): Promise<void> {
+  // A row the user already marked PAID gets new carry → it owes money again, so reopen it
+  const reopen = carriedAmount.gt(0) ? { status: 'PENDING' as const } : {}
+  if (kind === 'expense') {
+    await prisma.expenseOccurrence.upsert({
+      where: { expenseId_year_month: { expenseId: entryId, year, month } },
+      create: { expenseId: entryId, year, month, scheduledAmount, carriedAmount },
+      update: { carriedAmount, ...reopen },
+    })
+  } else {
+    await prisma.savingsOccurrence.upsert({
+      where: { savingsEntryId_year_month: { savingsEntryId: entryId, year, month } },
+      create: { savingsEntryId: entryId, year, month, scheduledAmount, carriedAmount },
+      update: { carriedAmount, ...reopen },
+    })
+  }
 }
