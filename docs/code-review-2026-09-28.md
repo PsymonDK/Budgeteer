@@ -2,6 +2,20 @@
 
 Whole-codebase review (API, receipts/OCR, web, schema/infra/docs). Findings marked ✅ were re-verified by hand against the code; the rest were traced by a reviewer with file:line evidence. Line numbers refer to commit `7f74fd1`.
 
+## Progress
+
+| Phase | Branch | Status |
+|---|---|---|
+| 0 — Safety net | `chore/REF-000-safety-net` | Done |
+| 3 — Frontend quick fixes | `fix/REF-003-frontend-quick-fixes` | Done |
+| 1 — Data integrity (budget/transfers + income) | `fix/REF-001-data-integrity` | Done |
+| 2 — Security | `fix/REF-002-security` | Done (deferred: tokens in localStorage → httpOnly cookies; avatar auth; upload magic bytes → phase 5) |
+| 4 — Structure + soft delete/trash | `refactor/REF-004-structure` | Done (open: float money math in dashboard/compare/profile; client-computed payslip net submitted by IncomePage) |
+| 5 — Receipts | — | Not started |
+| 6 — Docs & deploy | — | Not started |
+
+Branches are stacked in the order above (each builds on the previous).
+
 Baseline at review time: API `tsc` ✅, 65/65 Vitest tests ✅, web build ✅ (1.1 MB main chunk), web lint ❌ (eslint not installed, no config).
 
 ---
