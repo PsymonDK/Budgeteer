@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyInBase, activeMonthCount } from '../lib/calculations'
 import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
-import { assertBudgetYearAccess, validateOwnership } from '../lib/ownership'
+import { assertBudgetYearAccess, findUsableCategory, validateAccountAccess, validateOwnership } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
@@ -102,14 +102,12 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
 
-    const category = await prisma.category.findUnique({ where: { id: categoryId } })
+    const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE')
     if (!category) return reply.status(400).send({ error: 'Category not found' })
 
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
@@ -185,15 +183,13 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const { amount, frequency, categoryId, currencyCode, ownership, ownedByUserId, customSplits, startMonth, endMonth, accountId, ...rest } = result.data
 
     if (categoryId) {
-      const category = await prisma.category.findUnique({ where: { id: categoryId } })
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE', existing.categoryId)
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const newOwnership = ownership ?? existing.ownership
@@ -280,15 +276,13 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     const { ids, categoryId, accountId } = result.data
 
     if (categoryId !== undefined) {
-      const category = await prisma.category.findUnique({ where: { id: categoryId } })
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE')
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
     if (accountId !== undefined && accountId !== null) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const { count } = await prisma.expense.updateMany({

@@ -6,6 +6,7 @@ import crypto from 'crypto'
 import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
+import { ACCESS_TOKEN_TTL, issueSession, revokeAllSessions } from '../lib/sessions'
 
 const UpdateMeSchema = z
   .object({
@@ -143,6 +144,13 @@ export async function userRoutes(fastify: FastifyInstance) {
       select: userSelect,
     })
 
+    // A role change, deactivation, or conversion to a (login-less) proxy must take
+    // effect now, not when the user's tokens expire
+    const roleChanged = result.data.role !== undefined && result.data.role !== existing.role
+    const deactivated = result.data.isActive === false && existing.isActive
+    const madeProxy = result.data.isProxy === true && !existing.isProxy
+    if (roleChanged || deactivated || madeProxy) await revokeAllSessions(id)
+
     return reply.send(user)
   })
 
@@ -163,6 +171,8 @@ export async function userRoutes(fastify: FastifyInstance) {
       data: { passwordHash, mustChangePassword: true },
       select: userSelect,
     })
+    // Sign the user out everywhere: a reset usually means the old password leaked
+    await revokeAllSessions(id)
     return reply.send(user)
   })
 
@@ -265,7 +275,12 @@ export async function userRoutes(fastify: FastifyInstance) {
       data: { passwordHash, mustChangePassword: false },
       select: userSelect,
     })
-    return reply.send(updated)
+
+    // End every other session (a stolen token stops working) and hand this client a
+    // fresh pair so it stays signed in.
+    await revokeAllSessions(userId)
+    const session = await issueSession(user, (payload) => fastify.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL }))
+    return reply.send({ ...updated, ...session })
   })
 
   // POST /users/me/avatar — upload avatar image

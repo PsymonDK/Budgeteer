@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
+import { getActiveMembership } from '../lib/ownership'
 
 const CreateCategorySchema = z.object({
   name: z.string().min(1).max(100),
@@ -73,9 +74,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     if (householdId) {
       // Verify requester is a member of this household (or system admin)
       if (!isAdmin) {
-        const membership = await prisma.householdMember.findUnique({
-          where: { householdId_userId: { householdId, userId: request.user.sub } },
-        })
+        const membership = await getActiveMembership(householdId, request.user.sub)
         if (!membership) return reply.status(403).send({ error: 'Forbidden' })
       }
       where = { ...typeFilter, ...activeFilter, OR: [{ isSystemWide: true }, { householdId }] }
@@ -112,9 +111,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     if (!category) return reply.status(404).send({ error: 'Category not found' })
 
     if (role !== 'SYSTEM_ADMIN') {
-      const membership = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
+      const membership = await getActiveMembership(householdId, userId)
       if (!membership) return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -137,9 +134,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     const { sub: userId, role } = request.user
 
     if (role !== 'SYSTEM_ADMIN') {
-      const membership = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
+      const membership = await getActiveMembership(householdId, userId)
       if (!membership) return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -182,9 +177,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     if (!category) return reply.status(404).send({ error: 'Category not found' })
 
     if (role !== 'SYSTEM_ADMIN') {
-      const membership = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
+      const membership = await getActiveMembership(householdId, userId)
       if (!membership) return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -218,9 +211,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 
     // Requester must be a member of the household
     if (role !== 'SYSTEM_ADMIN') {
-      const membership = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId, userId } },
-      })
+      const membership = await getActiveMembership(householdId, userId)
       if (!membership) return reply.status(403).send({ error: 'Forbidden' })
     }
 
@@ -353,9 +344,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 
     // Custom categories: household admin or system admin
     if (!category.isSystemWide && role !== 'SYSTEM_ADMIN') {
-      const membership = await prisma.householdMember.findUnique({
-        where: { householdId_userId: { householdId: category.householdId!, userId } },
-      })
+      const membership = await getActiveMembership(category.householdId!, userId)
       if (membership?.role !== 'ADMIN') {
         return reply.status(403).send({ error: 'Forbidden' })
       }
@@ -372,15 +361,34 @@ export async function categoryRoutes(fastify: FastifyInstance) {
         })
       }
 
-      // Validate replacement exists
-      const replacement = await prisma.category.findUnique({ where: { id: replacementId } })
+      // The replacement must be usable where this category was: same type, active,
+      // and system-wide or from the same household (system categories: system-wide only)
+      const replacement = await prisma.category.findFirst({
+        where: {
+          id: replacementId,
+          NOT: { id },
+          categoryType: category.categoryType,
+          isActive: true,
+          OR: category.isSystemWide
+            ? [{ isSystemWide: true }]
+            : [{ isSystemWide: true }, { householdId: category.householdId }],
+        },
+      })
       if (!replacement) return reply.status(400).send({ error: 'Replacement category not found' })
 
-      // Reassign all expenses and savings entries then delete in a transaction
+      // Retired budget years are read-only history: reassign only editable years, and
+      // keep the category (deactivated) if retired entries still reference it.
+      const editable = { budgetYear: { status: { not: 'RETIRED' as const } } }
+      const retiredInUse =
+        (await prisma.expense.count({ where: { categoryId: id, budgetYear: { status: 'RETIRED' } } })) +
+        (await prisma.savingsEntry.count({ where: { categoryId: id, budgetYear: { status: 'RETIRED' } } }))
+
       await prisma.$transaction([
-        prisma.expense.updateMany({ where: { categoryId: id }, data: { categoryId: replacementId } }),
-        prisma.savingsEntry.updateMany({ where: { categoryId: id }, data: { categoryId: replacementId } }),
-        prisma.category.delete({ where: { id } }),
+        prisma.expense.updateMany({ where: { categoryId: id, ...editable }, data: { categoryId: replacementId } }),
+        prisma.savingsEntry.updateMany({ where: { categoryId: id, ...editable }, data: { categoryId: replacementId } }),
+        retiredInUse > 0
+          ? prisma.category.update({ where: { id }, data: { isActive: false } })
+          : prisma.category.delete({ where: { id } }),
       ])
     } else {
       await prisma.category.delete({ where: { id } })

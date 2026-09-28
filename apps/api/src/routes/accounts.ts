@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertBudgetYearAccess } from '../lib/ownership'
+import { assertBudgetYearAccess, getActiveMembership } from '../lib/ownership'
 
 const AccountTypeEnum = z.enum(['BANK', 'CREDIT_CARD', 'MOBILE_PAY'])
 
@@ -21,11 +21,7 @@ const accountInclude = {
   _count: { select: { expenses: true, savingsEntries: true } },
 } as const
 
-async function getHouseholdMembership(householdId: string, userId: string) {
-  return prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
-}
+const getHouseholdMembership = getActiveMembership
 
 export async function accountRoutes(fastify: FastifyInstance) {
   // ── Personal accounts ─────────────────────────────────────────────────────

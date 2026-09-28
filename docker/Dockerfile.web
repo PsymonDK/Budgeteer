@@ -1,3 +1,7 @@
+# syntax=docker/dockerfile:1
+
+# Behind a TLS-intercepting proxy, pass its root CA as a build secret (see
+# docker/Dockerfile.api):  --secret id=extra_ca,src=/path/to/root-ca.pem
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -5,7 +9,13 @@ WORKDIR /app
 COPY package*.json ./
 COPY apps/web/package*.json ./apps/web/
 
-RUN npm ci --workspace=apps/web --include-workspace-root --no-audit --no-fund
+RUN --mount=type=secret,id=extra_ca,required=false \
+  if [ -s /run/secrets/extra_ca ]; then \
+    cat /etc/ssl/certs/ca-certificates.crt /run/secrets/extra_ca > /tmp/ca-bundle.pem; \
+    export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/tmp/ca-bundle.pem; \
+  fi; \
+  npm ci --workspace=apps/web --include-workspace-root --no-audit --no-fund; \
+  status=$?; rm -f /tmp/ca-bundle.pem; exit $status
 
 COPY apps/web ./apps/web
 

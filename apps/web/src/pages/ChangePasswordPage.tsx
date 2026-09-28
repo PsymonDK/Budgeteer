@@ -30,7 +30,13 @@ export function ChangePasswordPage() {
 
     setIsPending(true)
     try {
-      await api.post('/users/me/change-password', { currentPassword, newPassword })
+      const res = await api.post<{ accessToken: string; refreshToken: string }>(
+        '/users/me/change-password',
+        { currentPassword, newPassword },
+      )
+      // Changing the password ends every session; keep this one with the fresh tokens
+      localStorage.setItem('accessToken', res.data.accessToken)
+      localStorage.setItem('refreshToken', res.data.refreshToken)
       updateUser({ mustChangePassword: false })
       navigate('/', { replace: true })
     } catch (err) {

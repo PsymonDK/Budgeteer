@@ -3,11 +3,21 @@ import { prisma } from './prisma'
 
 // ── Internal ──────────────────────────────────────────────────────────────────
 
-async function isMember(householdId: string, userId: string): Promise<boolean> {
+/**
+ * The user's membership in a household, or null when they aren't a member or the
+ * household is deactivated. Deactivated households are closed to members; only
+ * system admins (and the household settings routes, for reactivation) reach them.
+ */
+export async function getActiveMembership(householdId: string, userId: string) {
   const m = await prisma.householdMember.findUnique({
     where: { householdId_userId: { householdId, userId } },
+    include: { household: { select: { isActive: true } } },
   })
-  return m !== null
+  return m && m.household.isActive ? m : null
+}
+
+async function isMember(householdId: string, userId: string): Promise<boolean> {
+  return (await getActiveMembership(householdId, userId)) !== null
 }
 
 // ── Budget year access ────────────────────────────────────────────────────────
@@ -18,8 +28,39 @@ export async function assertBudgetYearAccess(budgetYearId: string, userId: strin
     include: { household: { include: { members: { where: { userId } } } } },
   })
   if (!by) return null
-  if (!systemAdmin && by.household.members.length === 0) return null
+  if (!systemAdmin && (by.household.members.length === 0 || !by.household.isActive)) return null
   return by
+}
+
+// ── Category / account validation ────────────────────────────────────────────
+
+/**
+ * A category the household may use for the given type: system-wide or the household's
+ * own, and active. `keepCategoryId` allows an entry to keep a category that has since
+ * been deactivated (editing other fields shouldn't fail).
+ */
+export async function findUsableCategory(
+  categoryId: string,
+  householdId: string,
+  categoryType: 'EXPENSE' | 'SAVINGS',
+  keepCategoryId?: string | null,
+) {
+  return prisma.category.findFirst({
+    where: {
+      id: categoryId,
+      categoryType,
+      OR: [{ isSystemWide: true }, { householdId }],
+      ...(categoryId === keepCategoryId ? {} : { isActive: true }),
+    },
+  })
+}
+
+/** Null when the account can be used in the household by this user, else an error message. */
+export async function validateAccountAccess(accountId: string, householdId: string, userId: string): Promise<string | null> {
+  const account = await prisma.account.findUnique({ where: { id: accountId } })
+  if (!account || !account.isActive) return 'Account not found'
+  if (account.householdId === householdId || account.ownedByUserId === userId) return null
+  return 'Account not accessible'
 }
 
 // ── Ownership validation ──────────────────────────────────────────────────────
@@ -61,9 +102,7 @@ export async function assertHouseholdAccess(
   reply: FastifyReply,
 ): Promise<boolean> {
   if (role === 'SYSTEM_ADMIN') return true
-  const member = await prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
+  const member = await getActiveMembership(householdId, userId)
   if (!member) {
     reply.status(403).send({ error: 'Forbidden' })
     return false

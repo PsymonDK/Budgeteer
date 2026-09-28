@@ -39,6 +39,8 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
 - **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations (the image ships `prisma/migrations`), `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
 - **Migration history** — `prisma/migrations/` starts from a single `20260928000000_baseline` migration generated from the full schema (earlier incremental migrations could not build a fresh database). CI applies all migrations to an empty Postgres and fails if they drift from `schema.prisma`. An existing database that was kept in sync with `push` can switch to `migrate` by marking the baseline as applied once: `npx prisma migrate resolve --applied 20260928000000_baseline`.
+- **Client IP / proxies** — Fastify trusts `X-Forwarded-For` from `TRUST_PROXY` (default `loopback,uniquelocal`: loopback and private networks, i.e. the nginx container and any LAN reverse proxy in front of it). nginx forwards `X-Forwarded-For`/`X-Real-IP`, so rate limits apply per real client instead of to the whole instance. Clients on private networks can set the header themselves; set `TRUST_PROXY` to the proxy's exact address (or `false`) to rule that out.
+- **Image builds behind TLS-intercepting proxies** — both Dockerfiles accept an optional BuildKit secret `extra_ca` (a PEM root CA) used only during `npm ci`, `apk add` and Prisma engine downloads; it is never written to an image layer. Certificate verification is never disabled. The API image fetches Prisma's schema engine at build time, so container start needs no network access.
 - **API error responses** — a global Fastify error handler (`apps/api/src/lib/errors.ts`) maps Prisma not-found/unique/foreign-key errors to 404/409, keeps 4xx framework errors (validation, rate limit, body parsing), and returns a generic `{ error, code: "INTERNAL_ERROR" }` for anything else so internals never reach the client.
 
 ---
@@ -204,8 +206,19 @@ budgeteer/
 - automationId, triggeredBy (`SCHEDULE` | `MANUAL`), triggeredByUserId (nullable)
 - startedAt, finishedAt, status (`SUCCESS` | `ERROR` | `SKIPPED`), message (nullable)
 
-**refresh_tokens** — JWT refresh token store
-- token, userId, expiresAt
+**refresh_tokens** — refresh token store
+- token (SHA-256 of the client's token; rows from before hashing may hold the raw value until rotated), userId, expiresAt, revokedAt
+- Rotated tokens are marked `revokedAt` instead of deleted. Presenting one again after a 30-second grace window (concurrent tabs) is treated as theft and revokes all of the user's sessions. Expired tokens are purged daily
+
+**Sessions**
+- `users.sessionsValidAfter`: access tokens issued before it are rejected. Set (and all refresh tokens deleted) on password change, admin password reset, role change, deactivation, and conversion to a proxy user. `POST /users/me/change-password` returns a fresh `accessToken`/`refreshToken` so the current client stays signed in
+- `authenticate` reads the user on every request: role comes from the database (demotions apply immediately), deactivated users are rejected, and `mustChangePassword` blocks everything except `GET /users/me` and `POST /users/me/change-password` (403 `PASSWORD_CHANGE_REQUIRED`)
+- Login answers unknown, inactive and proxy accounts exactly like a wrong password (including timing)
+
+**Household access**
+- `getActiveMembership` (`lib/ownership.ts`) is the membership check for household data: deactivated households are closed to members (system admins excepted). The household settings routes keep working so an admin can reactivate
+- Expense/savings categories must be system-wide or the household's own, active, and of the right type (`findUsableCategory`); an entry may keep a category deactivated after it was assigned
+- Income can only be allocated to a household the job's owner belongs to
 
 ---
 

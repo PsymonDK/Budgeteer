@@ -90,6 +90,7 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `API_RATE_LIMIT_ENABLED` | No | `true` | Enables global API rate limiting. Local dev compose defaults this to `false` to avoid locking out the web UI during testing |
 | `API_RATE_LIMIT_MAX` | No | `200` | Maximum requests per rate-limit window when rate limiting is enabled |
 | `API_RATE_LIMIT_WINDOW` | No | `15 minutes` | Rate-limit window when rate limiting is enabled |
+| `TRUST_PROXY` | No | `loopback,uniquelocal` | Proxies whose `X-Forwarded-For` the API trusts for the client IP (rate limiting). Default trusts loopback and private networks (the bundled nginx and LAN reverse proxies). Set to a specific address or `false` to tighten |
 | `SCHEMA_SYNC_MODE` | No | `push` | Container startup schema sync mode: `push`, `migrate`, `skip`, or explicit `force-push` for Prisma `--accept-data-loss` |
 | `UPLOAD_DIR` | No | `./uploads` | Local API storage for avatars and receipt originals. Docker deployments mount `/app/uploads` as a persistent volume |
 | `RECEIPT_OCR_LANG` | No | `eng` | Tesseract language code for server-side receipt OCR. Install the matching language data in custom images |
@@ -172,6 +173,12 @@ ADMIN_NAME=Admin
 SEED_DEMO_DATA=false
 BASE_CURRENCY=DKK
 APP_PORT=7272
+```
+
+**Behind a TLS-intercepting proxy** (e.g. a corporate gateway): point `EXTRA_CA_FILE` at the proxy's root CA (PEM) in `.env`. It is used only while building the images and never ends up in them; certificate checks stay on.
+
+```dotenv
+EXTRA_CA_FILE=/path/to/corporate-root-ca.pem
 ```
 
 **3. Rebuild after code changes**

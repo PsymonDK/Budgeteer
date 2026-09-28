@@ -5,7 +5,7 @@ import fs from 'fs'
 import path from 'path'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertHouseholdAccess } from '../lib/ownership'
+import { assertHouseholdAccess, findUsableCategory, validateAccountAccess } from '../lib/ownership'
 import { BASE_CURRENCY } from '../lib/currency'
 import { buildReceiptSummaryDateFilter, summarizeReceiptConsumption } from '../lib/receiptConsumption'
 import { buildReceiptMappingExportKit, confirmReceiptMappingImport, previewReceiptMappingImport } from '../lib/receiptMappingImport'
@@ -220,12 +220,13 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       } catch {
         // best-effort cleanup; the failure is recorded below
       }
+      // Filesystem errors carry absolute server paths: log them, don't show them
+      request.log.error({ err }, 'Receipt file could not be stored')
       await prisma.receipt.update({
         where: { id: receipt.id },
-        data: { status: 'FAILED', notes: [err instanceof Error ? err.message : 'Receipt upload failed'] },
+        data: { status: 'FAILED', notes: ['Receipt upload failed'] },
       })
-      const message = err instanceof Error ? err.message : 'Receipt upload failed'
-      return reply.status(422).send({ error: message, code: 'PARSE_ERROR' })
+      return reply.status(422).send({ error: 'Receipt upload failed', code: 'PARSE_ERROR' })
     }
 
     const ocr = await extractReceiptOcrText({
@@ -612,13 +613,6 @@ async function loadReceiptForHousehold(request: any, reply: any) {
   return receipt
 }
 
-async function validateAccountAccess(accountId: string, householdId: string, userId: string): Promise<string | null> {
-  const account = await prisma.account.findUnique({ where: { id: accountId } })
-  if (!account || !account.isActive) return 'Account not found'
-  if (account.householdId === householdId || account.ownedByUserId === userId) return null
-  return 'Account not accessible'
-}
-
 function getReceiptFileExtension(mimeType: string): ReceiptFileExtension | null {
   if (mimeType === 'application/pdf') return 'pdf'
   if (mimeType === 'image/png') return 'png'
@@ -672,15 +666,8 @@ async function isEnabledReceiptCurrency(currencyCode: string): Promise<boolean> 
   return Boolean(currency)
 }
 
-async function validateExpenseCategory(categoryId: string, householdId: string) {
-  return prisma.category.findFirst({
-    where: {
-      id: categoryId,
-      categoryType: 'EXPENSE',
-      isActive: true,
-      OR: [{ isSystemWide: true }, { householdId }],
-    },
-  })
+function validateExpenseCategory(categoryId: string, householdId: string) {
+  return findUsableCategory(categoryId, householdId, 'EXPENSE')
 }
 
 async function validateReceiptSubcategory(subcategoryId: string, categoryId: string | null, householdId: string) {

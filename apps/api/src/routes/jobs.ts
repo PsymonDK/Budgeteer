@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYearDetailed, getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
-import { assertHouseholdAccess } from '../lib/ownership'
+import { assertHouseholdAccess, getActiveMembership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { calcDanishDeductions, PayslipLine } from '../lib/taxCalcDK'
 import { buildIncomeHistory, monthStartUTC, pickTaxCardAt, taxCardToInput, yearMonthOfLocalDate } from '../lib/jobIncome'
@@ -849,10 +849,10 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
-    const membership = await prisma.householdMember.findUnique({
-      where: { householdId_userId: { householdId, userId } },
-    })
-    if (!membership) return reply.status(403).send({ error: 'You are not a member of this household' })
+    // The job's owner must belong to the household — a bookkeeper or admin managing
+    // someone's income can't route it into a household that person isn't part of
+    const ownerMembership = await getActiveMembership(householdId, job.userId)
+    if (!ownerMembership) return reply.status(403).send({ error: 'The job owner is not a member of this household' })
 
     const budgetYear = await findDefaultBudgetYear(householdId)
     if (!budgetYear) return reply.status(409).send(NO_BUDGET_YEAR_ERROR)

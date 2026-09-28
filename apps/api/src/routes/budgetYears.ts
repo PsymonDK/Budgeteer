@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyInBase, deriveBudgetStatus } from '../lib/calculations'
 import { BASE_CURRENCY, getLatestRate } from '../lib/currency'
-import { assertHouseholdAccess } from '../lib/ownership'
+import { assertHouseholdAccess, getActiveMembership } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -27,9 +27,7 @@ const RenameSimulationSchema = z.object({
 
 async function assertHouseholdAdmin(householdId: string, userId: string, role: string) {
   if (role === 'SYSTEM_ADMIN') return true
-  const member = await prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
+  const member = await getActiveMembership(householdId, userId)
   return member?.role === 'ADMIN'
 }
 

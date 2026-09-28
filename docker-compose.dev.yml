@@ -22,6 +22,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+      secrets: [extra_ca]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -44,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
+      secrets: [extra_ca]
     restart: unless-stopped
     depends_on:
       - api
@@ -53,3 +55,9 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+
+# Optional root CA for builds behind a TLS-intercepting proxy (see README).
+# The default placeholder is empty, which means "none".
+secrets:
+  extra_ca:
+    file: ${EXTRA_CA_FILE:-./docker/no-extra-ca.pem}

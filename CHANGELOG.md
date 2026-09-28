@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Server-side session revocation** — password changes, admin password resets, role changes, deactivation and conversion to a proxy user now end all of the user's sessions immediately (refresh tokens deleted, older access tokens rejected). Changing your own password returns fresh tokens so the current tab stays signed in.
+- **Refresh token theft detection** — refresh tokens are stored hashed, rotated tokens are kept as revoked, and presenting a rotated token again revokes every session of that user. Expired tokens are purged daily.
+- **`TRUST_PROXY`** and optional **`EXTRA_CA_FILE`** build secret (see README).
 - **Pay/No-pay item checklist** — households on the Pay/No-pay model get an "Items this month" panel on the dashboard: mark each expense and savings item paid on its own or all at once, browse other months, and see what will carry over. New endpoints `GET /budget-years/:id/occurrences`, `PATCH /budget-years/:id/occurrences/:kind/:occurrenceId`, `POST /budget-years/:id/occurrences/mark-all-paid`. Previously nothing could mark an item paid, so every item carried over every month and transfers grew without bound (1000, 2000, 3000 …).
 - **Automatic budget-year lifecycle** — FUTURE years become ACTIVE when their year arrives and past years retire, at startup, daily, and before the monthly automation. Previously statuses only changed on create/copy/promote, so last year stayed ACTIVE after New Year.
 - **CI workflow** (`.github/workflows/ci.yml`) — pull requests, and every push to `main`/version tag before images are published, now run `npm ci`, migrations against a fresh Postgres plus a schema drift check, typecheck (both apps, including API tests), ESLint, Vitest, and full API/web/seed builds. Previously CI only built and pushed images.
@@ -19,12 +22,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
 
 ### Changed
+- **Login no longer reveals which accounts exist** — unknown, inactive and proxy accounts all answer "Invalid credentials" with the same timing as a wrong password.
+- **Roles are read from the database on every request**, so demoting an admin takes effect immediately instead of after the access token expires.
+- **Docker images no longer disable TLS verification** — the API image had `strict-ssl=false`, `NODE_TLS_REJECT_UNAUTHORIZED=0` and `apk --no-check-certificate` baked into its build. Builds behind TLS-intercepting proxies now pass the proxy's root CA as a BuildKit secret instead, and the API image downloads Prisma's schema engine at build time so containers start without network access.
 - **Prisma migrations squashed into a baseline** — the old migration chain started with `ALTER TABLE` on tables no migration created, so `npm run db:migrate` and `SCHEMA_SYNC_MODE=migrate` failed on a fresh database. `prisma/migrations` is now a single baseline generated from the current schema and is shipped in the API image. Existing `push`-managed databases are unaffected; see `docs/architecture.md` to switch them to `migrate`.
 - **Local development loads `.env`** — the API, Prisma CLI, and seed script now read the repo-root `.env` (existing environment variables win), and the Vite dev proxy strips `/api` like nginx does, so `npm run dev` works without Docker. `VITE_API_URL` was removed from `.env.example` because Vite never read it from the root.
 - **Web image** — Node 22 (matching the API) and `npm ci` for reproducible builds.
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Rate limits applied to the whole instance behind nginx** — the API saw every request as coming from nginx, so ten failed logins by anyone locked everyone out for 15 minutes and normal use could hit the global limit. nginx now forwards the client address and the API trusts it from private-network proxies (`TRUST_PROXY`).
+- **Deactivated households stayed fully usable** through direct API calls — members can no longer read or write them (system admins and the reactivate action excepted).
+- **`mustChangePassword` was only enforced by the frontend** — the API now blocks everything except loading the profile and changing the password until a temporary password is replaced.
+- **Expenses and savings could use another household's category** (or a savings category on an expense, or an inactive one) — categories are now checked for household, type and active status; savings categories were not validated at all.
+- **Deleting a category with a replacement rewrote retired budget years** and accepted a replacement from another household or of another type — only editable years are reassigned, a category still used by retired years is deactivated instead of deleted, and the replacement must match.
+- **Income could be allocated to a household the job's owner isn't in** (e.g. by a bookkeeper managing a proxy user).
+- **Scanned-PDF conversion had no timeout**, and OCR/upload failures stored raw error text (command lines, absolute server paths) on the receipt where users could see it.
 - **Bonuses never reached budget income** — budget-included bonuses now count toward household income (amount ÷ 12 in budget-year figures); income history spreads SPREAD_ANNUALLY bonuses ÷ 12 instead of treating them like one-offs.
 - **Income history, trends and sparklines ignored exchange rates** — foreign-currency salaries and bonuses are converted with their stored rate everywhere, via one shared monthly-income implementation (replacing five diverging copies and their N+1 queries).
 - **Ended jobs kept counting as income** after their end date; quarterly/yearly history buckets held only their first month instead of the period total.

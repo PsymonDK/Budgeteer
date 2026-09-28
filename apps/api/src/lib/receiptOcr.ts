@@ -78,7 +78,11 @@ async function extractPdfText(filePath: string): Promise<string> {
       String(maxPages),
       filePath,
       outputPrefix,
-    ])
+    ], {
+      // A crafted PDF (huge page size) must not tie up the request indefinitely
+      timeout: Math.max(1, Number(process.env.RECEIPT_OCR_TIMEOUT_MS ?? 45_000)),
+      maxBuffer: 1024 * 1024,
+    })
 
     const files = (await fs.readdir(tempDir))
       .filter((file) => file.endsWith('.png'))
@@ -206,7 +210,10 @@ function buildOcrErrorNote(err: unknown): string {
     if ('code' in err && err.code === 'ENOENT') {
       return 'Server-side OCR is unavailable because required local OCR binaries are not installed.'
     }
-    return `Server-side OCR failed: ${err.message}`
+    if ('killed' in err && err.killed) return 'Server-side OCR timed out for this receipt.'
+    // The raw error contains the command line and absolute upload paths; it is stored
+    // on the receipt and shown to users, so keep it generic.
+    return 'Server-side OCR failed for this receipt.'
   }
   return 'Server-side OCR failed for this receipt.'
 }

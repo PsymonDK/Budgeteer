@@ -6,7 +6,7 @@ import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyInBase } from '../lib/calculations'
 import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
-import { assertBudgetYearAccess, assertHouseholdAccess, validateOwnership } from '../lib/ownership'
+import { assertBudgetYearAccess, assertHouseholdAccess, findUsableCategory, validateAccountAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
@@ -89,11 +89,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
 
+    if (categoryId) {
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
@@ -163,11 +166,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const { ownership, ownedByUserId, categoryId, customSplits, accountId, ...data } = result.data
 
+    if (categoryId) {
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS', existing.categoryId)
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const newOwnership = ownership ?? existing.ownership
@@ -251,15 +257,13 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const { ids, categoryId, accountId } = result.data
 
     if (categoryId !== undefined && categoryId !== null) {
-      const category = await prisma.category.findUnique({ where: { id: categoryId } })
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
     if (accountId !== undefined && accountId !== null) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const { count } = await prisma.savingsEntry.updateMany({

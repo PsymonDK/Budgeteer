@@ -31,12 +31,17 @@ import { occurrenceRoutes } from './routes/occurrences'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
+import { purgeRefreshTokens } from './lib/sessions'
 import { prisma } from './lib/prisma'
 import { toErrorResponse } from './lib/errors'
 
 const VERSION = process.env.npm_package_version ?? '0.14.1'
 
-const app = Fastify({ logger: true })
+// The API normally sits behind nginx. Trust X-Forwarded-For only from loopback and
+// private networks (the Docker network) so request.ip — and with it rate limiting —
+// is the real client, while a directly exposed API can't have its IP spoofed.
+const trustProxy = process.env.TRUST_PROXY ?? 'loopback,uniquelocal'
+const app = Fastify({ logger: true, trustProxy: trustProxy === 'false' ? false : trustProxy })
 
 app.setErrorHandler((error, request, reply) => {
   const { statusCode, body } = toErrorResponse(error)
@@ -51,7 +56,6 @@ const rateLimitWindow = process.env.API_RATE_LIMIT_WINDOW ?? '15 minutes'
 // Plugins
 app.register(cors, {
   origin: process.env.PUBLIC_URL ?? process.env.CORS_ORIGIN ?? 'http://localhost:5173',
-  credentials: true,
 })
 
 const jwtSecret = process.env.JWT_SECRET
@@ -141,6 +145,14 @@ const start = async () => {
         .catch((err) => app.log.error({ err }, 'Budget-year lifecycle failed'))
     await runLifecycle()
     cron.schedule('5 0 * * *', runLifecycle)
+
+    // Expired refresh tokens are never used again; keep the table small
+    const purgeTokens = () =>
+      purgeRefreshTokens()
+        .then((n) => { if (n > 0) app.log.info(`Purged ${n} expired refresh token(s)`) })
+        .catch((err) => app.log.error({ err }, 'Refresh token purge failed'))
+    await purgeTokens()
+    cron.schedule('10 0 * * *', purgeTokens)
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00
     cron.schedule('0 0 1 * *', () => {
