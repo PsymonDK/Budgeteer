@@ -9,8 +9,10 @@ import { qk } from '../api/queryKeys'
 import { useHouseholdDetail } from '../api/queries'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { FormError } from '../components/FormError'
 import { PageLoader } from '../components/LoadingSpinner'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
 import { getApiError } from '../lib/apiError'
 import type {
@@ -593,21 +595,19 @@ export function HouseholdPage() {
                 <option value="ADMIN">Admin</option>
               </select>
             </div>
-            {addError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{addError}</div>
-            )}
+            <FormError message={addError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={addMemberMutation.isPending || !addUserId}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {addMemberMutation.isPending ? 'Adding…' : 'Add member'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowAddMember(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -618,65 +618,49 @@ export function HouseholdPage() {
 
       {/* Confirm remove member */}
       {confirmRemove && (
-        <Modal title="Remove member" onClose={() => setConfirmRemove(null)} size="sm">
+        <ConfirmDialog
+          title="Remove member"
+          onClose={() => setConfirmRemove(null)}
+          onConfirm={() => { removeMemberMutation.mutate(confirmRemove.userId); setConfirmRemove(null) }}
+          confirmLabel="Remove"
+        >
           <p className="text-gray-300 text-sm mb-6">
             Remove <span className="font-semibold text-white">{confirmRemove.user.name}</span> from this household? They will lose access immediately.
           </p>
-          <div className="flex gap-3">
-            <button onClick={() => { removeMemberMutation.mutate(confirmRemove.userId); setConfirmRemove(null) }}
-              className="flex-1 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Remove
-            </button>
-            <button onClick={() => setConfirmRemove(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* Confirm deactivate */}
       {confirmDeactivate && (
-        <Modal title="Deactivate household" onClose={() => setConfirmDeactivate(false)} size="sm">
+        <ConfirmDialog
+          title="Deactivate household"
+          onClose={() => setConfirmDeactivate(false)}
+          onConfirm={() => { deactivateMutation.mutate(); setConfirmDeactivate(false) }}
+          pending={deactivateMutation.isPending}
+          confirmLabel="Deactivate"
+        >
           <p className="text-gray-300 text-sm mb-6">
             This will hide <span className="font-semibold text-white">{household.name}</span> from the dashboard. All data is preserved and the household can be reactivated from the settings page.
           </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => { deactivateMutation.mutate(); setConfirmDeactivate(false) }}
-              disabled={deactivateMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Deactivate
-            </button>
-            <button onClick={() => setConfirmDeactivate(false)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* Confirm role change */}
       {confirmRoleChange && (
-        <Modal title="Change role" onClose={() => setConfirmRoleChange(null)} size="sm">
+        <ConfirmDialog
+          title="Change role"
+          onClose={() => setConfirmRoleChange(null)}
+          onConfirm={() => { updateRoleMutation.mutate({ memberId: confirmRoleChange.member.userId, role: confirmRoleChange.newRole }); setConfirmRoleChange(null) }}
+          confirmClassName={primaryBtn}
+          confirmLabel="Confirm"
+        >
           <p className="text-gray-300 text-sm mb-6">
             Make <span className="font-semibold text-white">{confirmRoleChange.member.user.name}</span> a{' '}
             <span className="font-semibold text-white">{confirmRoleChange.newRole === 'ADMIN' ? 'household admin' : 'regular member'}</span>?
             {confirmRoleChange.newRole === 'ADMIN' && ' They will be able to manage members and settings.'}
             {confirmRoleChange.newRole === 'MEMBER' && ' They will no longer be able to manage members and settings.'}
           </p>
-          <div className="flex gap-3">
-            <button onClick={() => { updateRoleMutation.mutate({ memberId: confirmRoleChange.member.userId, role: confirmRoleChange.newRole }); setConfirmRoleChange(null) }}
-              className="flex-1 bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Confirm
-            </button>
-            <button onClick={() => setConfirmRoleChange(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* Add/Edit account modal */}
@@ -710,21 +694,17 @@ export function HouseholdPage() {
                 ))}
               </select>
             </div>
-            {accountFormError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
-                {accountFormError}
-              </div>
-            )}
+            <FormError message={accountFormError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={createAccountMutation.isPending || updateAccountMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createAccountMutation.isPending || updateAccountMutation.isPending ? 'Saving…' : editingAccount ? 'Save changes' : 'Add account'}
               </button>
               <button type="button" onClick={closeAccountModal}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+                className={`flex-1 ${secondaryBtn}`}>
                 Cancel
               </button>
             </div>
@@ -734,7 +714,13 @@ export function HouseholdPage() {
 
       {/* Delete account confirmation */}
       {deleteAccountTarget && (
-        <Modal title="Delete account" onClose={() => { setDeleteAccountTarget(null); setAccountDeleteError('') }} size="sm">
+        <ConfirmDialog
+          title="Delete account"
+          onClose={() => { setDeleteAccountTarget(null); setAccountDeleteError('') }}
+          onConfirm={() => deleteAccountMutation.mutate(deleteAccountTarget.id)}
+          pending={deleteAccountMutation.isPending}
+          confirmLabel={deleteAccountMutation.isPending ? 'Deleting…' : 'Delete'}
+        >
           <p className="text-gray-300 text-sm mb-2">
             Delete <span className="font-semibold text-white">"{deleteAccountTarget.name}"</span>?
           </p>
@@ -746,25 +732,8 @@ export function HouseholdPage() {
           ) : (
             <p className="text-gray-500 text-xs mb-4">This action cannot be undone.</p>
           )}
-          {accountDeleteError && (
-            <div className="bg-red-950 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-xs mb-4">
-              {accountDeleteError}
-            </div>
-          )}
-          <div className="flex gap-3">
-            <button
-              onClick={() => deleteAccountMutation.mutate(deleteAccountTarget.id)}
-              disabled={deleteAccountMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {deleteAccountMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-            <button onClick={() => { setDeleteAccountTarget(null); setAccountDeleteError('') }}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+          <FormError message={accountDeleteError} size="sm" className="mb-4" />
+        </ConfirmDialog>
       )}
     </>
   )

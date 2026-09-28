@@ -14,12 +14,14 @@ import { qk } from '../api/queryKeys'
 import { useConfig, useCurrencies, useHouseholds } from '../api/queries'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn, primaryBtnSm, segmentGroupPlain, segmentBtnSolid } from '../lib/styles'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, toLocalISOMonth } from '../lib/dates'
+import { FormError } from '../components/FormError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -684,7 +686,7 @@ function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: PayslipImp
             <input ref={csvInputRef} type="file" accept=".csv,text/csv" onChange={handleCsvFile}
               className="block w-full text-sm text-gray-400 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:bg-gray-700 file:text-gray-300 hover:file:bg-gray-600 cursor-pointer" />
           </div>
-          {csvError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{csvError}</div>}
+          <FormError message={csvError} />
         </div>
       )}
 
@@ -749,7 +751,7 @@ function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: PayslipImp
             </div>
           </div>
 
-          {manError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{manError}</div>}
+          <FormError message={manError} />
           <button type="button" onClick={handleManualReview}
             className="w-full bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
             Review →
@@ -788,7 +790,7 @@ function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: PayslipImp
                   placeholder="Copy and paste the text content of your payslip here..."
                   className={`${inputClass} resize-y text-xs font-mono`} />
               </div>
-              {aiError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{aiError}</div>}
+              <FormError message={aiError} />
               <button type="button" onClick={handleAiParse} disabled={aiLoading || (!aiFile && !aiText.trim())}
                 className="w-full bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2.5 rounded-lg transition-colors">
                 {aiLoading ? 'Parsing…' : 'Parse with AI →'}
@@ -1083,11 +1085,11 @@ function PayslipReviewModal({ extraction, jobName, onClose, onConfirm, isPending
 
         <div className="flex gap-3 pt-1">
           <button type="button" onClick={handleConfirm} disabled={isPending || (updateTaxCard && !traekprocent)}
-            className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+            className={`flex-1 ${primaryBtn}`}>
             {isPending ? 'Saving…' : updateTaxCard && traekprocent ? 'Confirm, Save & Update Tax Card' : 'Confirm & Save'}
           </button>
           <button type="button" onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+            className={`flex-1 ${secondaryBtn}`}>
             Cancel
           </button>
         </div>
@@ -1208,11 +1210,11 @@ function TaxCardFromPayslipModal({ extraction, jobName, onClose, onConfirm, isPe
 
         <div className="flex gap-3 pt-1">
           <button type="button" onClick={handleConfirm} disabled={isPending || !traekprocent}
-            className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+            className={`flex-1 ${primaryBtn}`}>
             {isPending ? 'Saving…' : 'Save Tax Card'}
           </button>
           <button type="button" onClick={onClose}
-            className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
+            className={`flex-1 ${secondaryBtn}`}>
             Cancel
           </button>
         </div>
@@ -1817,19 +1819,19 @@ export function IncomePage() {
                 <input type="month" value={histTo} onChange={(e) => setHistTo(e.target.value)}
                   className="bg-gray-800 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-amber-400" />
               </div>
-              <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+              <div className={segmentGroupPlain}>
                 {(['monthly', 'quarterly', 'yearly'] as Granularity[]).map((g) => (
                   <button key={g} onClick={() => setGranularity(g)}
-                    className={`px-3 py-1.5 transition-colors ${granularity === g ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>
+                    className={segmentBtnSolid(granularity === g)}>
                     {g.charAt(0).toUpperCase() + g.slice(1)}
                   </button>
                 ))}
               </div>
-              <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+              <div className={segmentGroupPlain}>
                 <button onClick={() => setShowGross(false)}
-                  className={`px-3 py-1.5 transition-colors ${!showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Net</button>
+                  className={segmentBtnSolid(!showGross)}>Net</button>
                 <button onClick={() => setShowGross(true)}
-                  className={`px-3 py-1.5 transition-colors ${showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Gross</button>
+                  className={segmentBtnSolid(showGross)}>Gross</button>
               </div>
             </div>
           </div>
@@ -1873,7 +1875,7 @@ export function IncomePage() {
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-lg font-semibold">Jobs & Salary</h2>
                 <button onClick={() => { setShowAddJob(true); setJobForm(emptyJob()); setJobFormError('') }}
-                  className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
+                  className={primaryBtnSm}>
                   + Add job
                 </button>
               </div>
@@ -2217,14 +2219,14 @@ export function IncomePage() {
                   className={inputClass} />
               </div>
             </div>
-            {jobFormError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{jobFormError}</div>}
+            <FormError message={jobFormError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                className={`flex-1 ${primaryBtn}`}>
                 {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving…' : editingJob ? 'Save changes' : 'Add job'}
               </button>
               <button type="button" onClick={() => { setShowAddJob(false); setEditingJob(null) }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+                className={`flex-1 ${secondaryBtn}`}>Cancel</button>
             </div>
           </form>
         </Modal>
@@ -2321,7 +2323,7 @@ export function IncomePage() {
               />
             )}
 
-            {salaryError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{salaryError}</div>}
+            <FormError message={salaryError} />
             <div className="flex items-center gap-3">
               <button type="submit" disabled={addSalaryMutation.isPending || updateSalaryMutation.isPending}
                 className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
@@ -2398,14 +2400,14 @@ export function IncomePage() {
               </div>
             )}
 
-            {overrideError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{overrideError}</div>}
+            <FormError message={overrideError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={upsertOverrideMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                className={`flex-1 ${primaryBtn}`}>
                 {upsertOverrideMutation.isPending ? 'Saving…' : 'Save override'}
               </button>
               <button type="button" onClick={() => { setOverrideJobId(null); setOverrideDeductionOpen(false); setOverrideDeductionOverrides(emptyDeductionOverrides()) }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+                className={`flex-1 ${secondaryBtn}`}>Cancel</button>
             </div>
           </form>
         </Modal>
@@ -2476,14 +2478,14 @@ export function IncomePage() {
                 </div>
               </div>
             )}
-            {bonusError && <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{bonusError}</div>}
+            <FormError message={bonusError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors">
+                className={`flex-1 ${primaryBtn}`}>
                 {createBonusMutation.isPending || updateBonusMutation.isPending ? 'Saving…' : editingBonus ? 'Save changes' : 'Add bonus'}
               </button>
               <button type="button" onClick={() => { setBonusJobId(null); setEditingBonus(null) }}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">Cancel</button>
+                className={`flex-1 ${secondaryBtn}`}>Cancel</button>
             </div>
           </form>
         </Modal>
@@ -2491,44 +2493,31 @@ export function IncomePage() {
 
       {/* ── Confirm close job ───────────────────────────────────────────────── */}
       {confirmCloseJob && (
-        <Modal title="Close job" onClose={() => setConfirmCloseJob(null)} size="sm">
+        <ConfirmDialog
+          title="Close job"
+          onClose={() => setConfirmCloseJob(null)}
+          onConfirm={() => { closeJobMutation.mutate(confirmCloseJob.id); setConfirmCloseJob(null) }}
+          pending={closeJobMutation.isPending}
+          confirmClassName={primaryBtn}
+          confirmLabel="Close job"
+        >
           <p className="text-gray-300 text-sm mb-6">
             Close <span className="font-semibold text-white">{confirmCloseJob.name}</span>? This will set today as the end date. You can re-open it by editing the job.
           </p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => { closeJobMutation.mutate(confirmCloseJob.id); setConfirmCloseJob(null) }}
-              disabled={closeJobMutation.isPending}
-              className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Close job
-            </button>
-            <button onClick={() => setConfirmCloseJob(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* ── Confirm delete bonus ────────────────────────────────────────────── */}
       {confirmDeleteBonus && (
-        <Modal title="Delete bonus" onClose={() => setConfirmDeleteBonus(null)} size="sm">
+        <ConfirmDialog
+          title="Delete bonus"
+          onClose={() => setConfirmDeleteBonus(null)}
+          onConfirm={() => { deleteBonusMutation.mutate(confirmDeleteBonus); setConfirmDeleteBonus(null) }}
+          pending={deleteBonusMutation.isPending}
+          confirmLabel="Delete"
+        >
           <p className="text-gray-300 text-sm mb-6">Delete this bonus? This action cannot be undone.</p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => { deleteBonusMutation.mutate(confirmDeleteBonus); setConfirmDeleteBonus(null) }}
-              disabled={deleteBonusMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Delete
-            </button>
-            <button onClick={() => setConfirmDeleteBonus(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* ── Confirm delete override ─────────────────────────────────────────── */}
@@ -2579,22 +2568,15 @@ export function IncomePage() {
       )}
 
       {confirmDeleteOverride && (
-        <Modal title="Delete override" onClose={() => setConfirmDeleteOverride(null)} size="sm">
+        <ConfirmDialog
+          title="Delete override"
+          onClose={() => setConfirmDeleteOverride(null)}
+          onConfirm={() => { deleteOverrideMutation.mutate(confirmDeleteOverride); setConfirmDeleteOverride(null) }}
+          pending={deleteOverrideMutation.isPending}
+          confirmLabel="Delete"
+        >
           <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => { deleteOverrideMutation.mutate(confirmDeleteOverride); setConfirmDeleteOverride(null) }}
-              disabled={deleteOverrideMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Delete
-            </button>
-            <button onClick={() => setConfirmDeleteOverride(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
     </div>
   )

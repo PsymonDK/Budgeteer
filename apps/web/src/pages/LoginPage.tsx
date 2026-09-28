@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import { inputClass } from '../lib/styles'
+import { FormError } from '../components/FormError'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -72,11 +73,7 @@ export function LoginPage() {
               />
             </div>
 
-            {error && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            <FormError message={error} />
 
             <button
               type="submit"

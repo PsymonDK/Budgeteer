@@ -9,6 +9,8 @@ import { api } from '../api/client'
 import { qk } from '../api/queryKeys'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
+import { StatusBadge } from '../components/StatusBadge'
+import { RETIRED_STATUS_CLASS_MUTED, statusLabel } from '../lib/budgetYear'
 import { useFmt } from '../hooks/useFmt'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -32,12 +34,6 @@ interface TrendRow {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-
-function statusBadgeClass(status: string) {
-  if (status === 'ACTIVE') return 'bg-green-900/50 text-green-300'
-  if (status === 'FUTURE') return 'bg-blue-900/50 text-blue-300'
-  return 'bg-gray-800 text-gray-500'
-}
 
 const CHART_COLOURS = {
   income:   '#f59e0b',
@@ -198,9 +194,10 @@ export function HistoryPage() {
                     >
                       <div className="flex items-center gap-4">
                         <span className="text-lg font-semibold text-white">{row.year}</span>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusBadgeClass(row.status)}`}>
-                          {row.status.charAt(0) + row.status.slice(1).toLowerCase()}
-                        </span>
+                        {/* Trends exclude simulations, so only active/future/retired reach the badge */}
+                        <StatusBadge status={row.status} retiredClass={RETIRED_STATUS_CLASS_MUTED}>
+                          {statusLabel(row.status)}
+                        </StatusBadge>
                       </div>
                       <div className="flex items-center gap-6 text-sm">
                         <span className="text-gray-400">

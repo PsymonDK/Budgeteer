@@ -18,6 +18,7 @@ import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
 import type { BudgetYearRef, Category } from '../api/types'
 import { qk } from '../api/queryKeys'
 import { useHouseholdDetail } from '../api/queries'
+import { segmentGroup, segmentBtn } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -562,16 +563,16 @@ export function DashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Expenses</h2>
               {/* DASH-002: monthly / actual toggle */}
-              <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
+              <div className={segmentGroup}>
                 <button
                   onClick={() => setExpenseView('monthly')}
-                  className={`px-3 py-1.5 transition-colors ${expenseView === 'monthly' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+                  className={segmentBtn(expenseView === 'monthly')}
                 >
                   Monthly
                 </button>
                 <button
                   onClick={() => setExpenseView('actual')}
-                  className={`px-3 py-1.5 transition-colors ${expenseView === 'actual' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+                  className={segmentBtn(expenseView === 'actual')}
                 >
                   Actual charge
                 </button>

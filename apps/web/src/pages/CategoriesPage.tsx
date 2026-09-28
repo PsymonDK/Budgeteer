@@ -10,11 +10,12 @@ import { IconPicker } from '../components/IconPicker'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn, dangerBtn, primaryBtnSm } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
 import type { Category } from '../api/types'
 import { qk } from '../api/queryKeys'
 import { useCategories, useHouseholdDetail } from '../api/queries'
+import { FormError } from '../components/FormError'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -140,7 +141,7 @@ export function CategoriesPage() {
             {isHouseholdAdmin && (
               <button
                 onClick={() => openCreate('EXPENSE')}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className={primaryBtnSm}
               >
                 + New category
               </button>
@@ -211,7 +212,7 @@ export function CategoriesPage() {
             {isHouseholdAdmin && (
               <button
                 onClick={() => openCreate('SAVINGS')}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className={primaryBtnSm}
               >
                 + New category
               </button>
@@ -374,21 +375,19 @@ export function CategoriesPage() {
                 />
               )}
             </div>
-            {createError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-            )}
+            <FormError message={createError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -435,21 +434,19 @@ export function CategoriesPage() {
                 </p>
               )
             })()}
-            {deleteError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{deleteError}</div>
-            )}
+            <FormError message={deleteError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={deleteMutation.isPending || ((deleteTarget._count.expenses + deleteTarget._count.savingsEntries) > 0 && !replacementId)}
-                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${dangerBtn}`}
               >
                 {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
               </button>
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>

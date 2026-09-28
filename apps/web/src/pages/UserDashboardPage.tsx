@@ -14,8 +14,10 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart } from '../components/SankeyChart'
 import { Sparkline } from '../components/Sparkline'
-import { inputClass } from '../lib/styles'
+import { StatusBadge } from '../components/StatusBadge'
+import { inputClass, primaryBtn, secondaryBtn, primaryBtnSm, segmentGroup, segmentGroupPlain, segmentBtn, segmentBtnSolid } from '../lib/styles'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
+import { FormError } from '../components/FormError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -94,13 +96,6 @@ const JOB_COLORS = [
   '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
   '#ec4899', '#06b6d4', '#84cc16',
 ]
-
-const STATUS_STYLES: Record<string, string> = {
-  ACTIVE: 'bg-green-900/50 text-green-300',
-  FUTURE: 'bg-blue-900/50 text-blue-300',
-  RETIRED: 'bg-gray-800 text-gray-400',
-  SIMULATION: 'bg-purple-900/50 text-purple-300',
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -206,20 +201,20 @@ export function UserDashboardPage() {
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
+            <div className={segmentGroup}>
               <button
                 onClick={() => setPeriod('monthly')}
-                className={`px-3 py-1.5 transition-colors ${period === 'monthly' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+                className={segmentBtn(period === 'monthly')}
               >Monthly</button>
               <button
                 onClick={() => setPeriod('annual')}
-                className={`px-3 py-1.5 transition-colors ${period === 'annual' ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+                className={segmentBtn(period === 'annual')}
               >Annual</button>
             </div>
             {me?.role === 'SYSTEM_ADMIN' && (
               <button
                 onClick={() => { setShowCreate(true); setCreateError('') }}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className={primaryBtnSm}
               >
                 + New household
               </button>
@@ -381,11 +376,11 @@ export function UserDashboardPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-gray-200">12-month income trend</h3>
-                <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs">
+                <div className={segmentGroupPlain}>
                   <button onClick={() => setShowGross(true)}
-                    className={`px-3 py-1.5 transition-colors ${showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Gross</button>
+                    className={segmentBtnSolid(showGross)}>Gross</button>
                   <button onClick={() => setShowGross(false)}
-                    className={`px-3 py-1.5 transition-colors ${!showGross ? 'bg-amber-400 text-gray-950 font-semibold' : 'bg-gray-800 text-gray-400 hover:text-white'}`}>Net</button>
+                    className={segmentBtnSolid(!showGross)}>Net</button>
                 </div>
               </div>
               {incomeTrend && incomeTrend.jobs.length > 0 ? (
@@ -457,21 +452,19 @@ export function UserDashboardPage() {
                 placeholder="e.g. Family Budget"
               />
             </div>
-            {createError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-            )}
+            <FormError message={createError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -504,9 +497,9 @@ function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { household:
               {h.myRole === 'ADMIN' ? 'Admin' : 'Member'}
             </span>
             {h.budgetYear && (
-              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_STYLES[h.budgetYear.status] ?? 'bg-gray-800 text-gray-400'}`}>
+              <StatusBadge status={h.budgetYear.status} shape="pill">
                 {h.budgetYear.year} · {h.budgetYear.status}
-              </span>
+              </StatusBadge>
             )}
             {!h.budgetYear && <span className="text-xs text-gray-600">No active budget</span>}
           </div>

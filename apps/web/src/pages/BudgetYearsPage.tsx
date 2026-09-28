@@ -6,27 +6,17 @@ import { toast } from 'sonner'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { StatusBadge } from '../components/StatusBadge'
+import { RETIRED_STATUS_CLASS_MUTED, statusLabel } from '../lib/budgetYear'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn, primaryBtnSm } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
 import type { BudgetYear } from '../api/types'
 import { qk } from '../api/queryKeys'
 import { useBudgetYears, useHouseholdDetail } from '../api/queries'
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function statusBadge(by: BudgetYear) {
-  if (by.status === 'ACTIVE') return 'bg-green-900/50 text-green-300'
-  if (by.status === 'FUTURE') return 'bg-blue-900/50 text-blue-300'
-  if (by.status === 'SIMULATION') return 'bg-purple-900/50 text-purple-300'
-  return 'bg-gray-800 text-gray-500'
-}
-
-function statusLabel(by: BudgetYear) {
-  if (by.status === 'SIMULATION') return by.simulationName ?? 'Simulation'
-  return by.status.charAt(0) + by.status.slice(1).toLowerCase()
-}
+import { FormError } from '../components/FormError'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -245,7 +235,7 @@ export function BudgetYearsPage() {
               {isAdmin && (
                 <button
                   onClick={() => { setShowCreate(true); setCreateError('') }}
-                  className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                  className={primaryBtnSm}
                 >
                   + New year
                 </button>
@@ -283,9 +273,9 @@ export function BudgetYearsPage() {
                         <tr key={by.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/40">
                           <td className="px-4 py-3 font-medium text-white">{by.year}</td>
                           <td className="px-4 py-3">
-                            <span className={`text-xs font-medium px-2 py-0.5 rounded ${statusBadge(by)}`}>
-                              {statusLabel(by)}
-                            </span>
+                            <StatusBadge status={by.status} retiredClass={RETIRED_STATUS_CLASS_MUTED}>
+                              {by.status === 'SIMULATION' ? by.simulationName ?? 'Simulation' : statusLabel(by.status)}
+                            </StatusBadge>
                           </td>
                           <td className="px-4 py-3 text-right text-gray-300">{by._count.expenses}</td>
                           <td className="px-4 py-3 text-right text-gray-300">{by._count.savingsEntries}</td>
@@ -448,21 +438,19 @@ export function BudgetYearsPage() {
                 className={inputClass}
               />
             </div>
-            {createError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-            )}
+            <FormError message={createError} />
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -486,7 +474,7 @@ export function BudgetYearsPage() {
               >
                 {regularYears.map((by) => (
                   <option key={by.id} value={by.id}>
-                    {by.year} ({by.status.charAt(0) + by.status.slice(1).toLowerCase()})
+                    {by.year} ({statusLabel(by.status)})
                   </option>
                 ))}
               </select>
@@ -503,9 +491,7 @@ export function BudgetYearsPage() {
                 className={inputClass}
               />
             </div>
-            {newSimError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{newSimError}</div>
-            )}
+            <FormError message={newSimError} />
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
@@ -517,7 +503,7 @@ export function BudgetYearsPage() {
               <button
                 type="button"
                 onClick={() => setShowNewSim(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -581,21 +567,19 @@ export function BudgetYearsPage() {
               </div>
             )}
 
-            {copyError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{copyError}</div>
-            )}
+            <FormError message={copyError} />
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
                 disabled={copyMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {copyMutation.isPending ? 'Copying…' : 'Copy'}
               </button>
               <button
                 type="button"
                 onClick={() => setCopySource(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -619,21 +603,19 @@ export function BudgetYearsPage() {
                 className={inputClass}
               />
             </div>
-            {renameError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{renameError}</div>
-            )}
+            <FormError message={renameError} />
             <div className="flex gap-3 pt-1">
               <button
                 type="submit"
                 disabled={renameMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {renameMutation.isPending ? 'Saving…' : 'Save'}
               </button>
               <button
                 type="button"
                 onClick={() => setRenameTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -644,30 +626,29 @@ export function BudgetYearsPage() {
 
       {/* ── Retire confirm modal ──────────────────────────────────────────────── */}
       {retireTarget && (
-        <Modal title={`Retire ${retireTarget.year}?`} onClose={() => setRetireTarget(null)} size="sm">
+        <ConfirmDialog
+          title={`Retire ${retireTarget.year}?`}
+          onClose={() => setRetireTarget(null)}
+          onConfirm={() => retireMutation.mutate(retireTarget.id)}
+          pending={retireMutation.isPending}
+          confirmClassName="bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+          confirmLabel={retireMutation.isPending ? 'Retiring…' : 'Retire'}
+        >
           <p className="text-gray-300 text-sm mb-1">This budget year will become read-only.</p>
           <p className="text-gray-500 text-xs mb-6">Expenses and savings data is preserved.</p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => retireMutation.mutate(retireTarget.id)}
-              disabled={retireMutation.isPending}
-              className="flex-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {retireMutation.isPending ? 'Retiring…' : 'Retire'}
-            </button>
-            <button
-              onClick={() => setRetireTarget(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* ── Promote confirm modal ─────────────────────────────────────────────── */}
       {promoteTarget && (
-        <Modal title={promoteTarget.status === 'SIMULATION' ? 'Promote to active?' : `Restore ${promoteTarget.year}?`} onClose={() => setPromoteTarget(null)} size="sm">
+        <ConfirmDialog
+          title={promoteTarget.status === 'SIMULATION' ? 'Promote to active?' : `Restore ${promoteTarget.year}?`}
+          onClose={() => setPromoteTarget(null)}
+          onConfirm={() => promoteMutation.mutate(promoteTarget.id)}
+          pending={promoteMutation.isPending}
+          confirmClassName="bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+          confirmLabel={promoteMutation.isPending ? 'Saving…' : promoteTarget.status === 'SIMULATION' ? 'Promote' : 'Restore'}
+        >
           {promoteTarget.status === 'SIMULATION' ? (
             <>
               <p className="text-gray-300 text-sm mb-1">
@@ -687,27 +668,18 @@ export function BudgetYearsPage() {
               </p>
             </>
           )}
-          <div className="flex gap-3">
-            <button
-              onClick={() => promoteMutation.mutate(promoteTarget.id)}
-              disabled={promoteMutation.isPending}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {promoteMutation.isPending ? 'Saving…' : promoteTarget.status === 'SIMULATION' ? 'Promote' : 'Restore'}
-            </button>
-            <button
-              onClick={() => setPromoteTarget(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
 
       {/* ── Delete budget year confirm modal ─────────────────────────────────── */}
       {deleteTarget && (
-        <Modal title={deleteTarget.status === 'SIMULATION' ? 'Delete simulation?' : `Delete ${deleteTarget.year}?`} onClose={() => setDeleteTarget(null)} size="sm">
+        <ConfirmDialog
+          title={deleteTarget.status === 'SIMULATION' ? 'Delete simulation?' : `Delete ${deleteTarget.year}?`}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+          pending={deleteMutation.isPending}
+          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+        >
           {deleteTarget.status === 'SIMULATION' ? (
             <p className="text-gray-300 text-sm mb-1">
               <span className="text-purple-300 font-medium">"{deleteTarget.simulationName}"</span> and all its expenses and savings will be permanently deleted.
@@ -718,22 +690,7 @@ export function BudgetYearsPage() {
             </p>
           )}
           <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => deleteMutation.mutate(deleteTarget.id)}
-              disabled={deleteMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
     </>
   )

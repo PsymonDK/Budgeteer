@@ -8,11 +8,16 @@ import { CategoryIcon } from '../components/CategoryIcon'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { BudgetYearSelector } from '../components/BudgetYearSelector'
+import { AccountSelect } from '../components/AccountSelect'
+import { OwnershipFields, customSplitTotal } from '../components/OwnershipFields'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { FormError } from '../components/FormError'
+import { inputClass, primaryBtn, secondaryBtn, primaryBtnSm } from '../lib/styles'
 import { FREQUENCIES, type Frequency, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
-import type { AccountInfo, BudgetYear, Category, CustomSplitInput, Ownership } from '../api/types'
+import type { AccountInfo, Category, CustomSplitInput, Ownership } from '../api/types'
 import { qk } from '../api/queryKeys'
 import {
   useBudgetYearAccounts, useBudgetYears, useCategories, useConfig, useCurrencies, useHouseholdDetail,
@@ -59,11 +64,6 @@ const emptyForm = (baseCurrency: string): EntryForm => ({
   label: '', amount: '', frequency: 'MONTHLY', notes: '', currencyCode: baseCurrency,
   ownership: 'SHARED', ownedByUserId: null, categoryId: '', customSplits: [], accountId: null,
 })
-
-function yearLabel(y: BudgetYear) {
-  if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`
-  return `${y.year} (${y.status.charAt(0) + y.status.slice(1).toLowerCase()})`
-}
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -306,7 +306,7 @@ export function SavingsPage() {
     e.preventDefault()
     setFormError('')
     if (form.ownership === 'CUSTOM') {
-      const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
+      const total = customSplitTotal(form.customSplits)
       if (Math.abs(total - 100) > 0.01) {
         setFormError('Custom split percentages must sum to 100%')
         return
@@ -326,33 +326,12 @@ export function SavingsPage() {
     <>
       <main className="max-w-4xl mx-auto px-6 py-8">
         {/* Budget year selector */}
-        {budgetYears.length > 0 && (
-          <div className="mb-6 flex items-center gap-3">
-            {budgetYears.length === 1 ? (
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                activeBudgetYear?.status === 'ACTIVE' ? 'bg-green-900/50 text-green-300' :
-                activeBudgetYear?.status === 'FUTURE' ? 'bg-blue-900/50 text-blue-300' :
-                activeBudgetYear?.status === 'SIMULATION' ? 'bg-purple-900/50 text-purple-300' :
-                'bg-gray-800 text-gray-400'
-              }`}>
-                {activeBudgetYear ? yearLabel(activeBudgetYear) : ''}
-              </span>
-            ) : (
-              <select
-                value={activeBudgetYear?.id ?? ''}
-                onChange={(e) => setSelectedYearId(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
-              >
-                {budgetYears.map((y) => (
-                  <option key={y.id} value={y.id}>{yearLabel(y)}</option>
-                ))}
-              </select>
-            )}
-            {isReadOnly && (
-              <span className="text-xs text-gray-600 italic">Read-only (retired)</span>
-            )}
-          </div>
-        )}
+        <BudgetYearSelector
+          budgetYears={budgetYears}
+          activeBudgetYear={activeBudgetYear}
+          onSelect={setSelectedYearId}
+          isReadOnly={isReadOnly}
+        />
 
         <PageHeader
           title="Savings"
@@ -360,7 +339,7 @@ export function SavingsPage() {
           action={!isReadOnly && activeBudgetYear ? (
             <button
               onClick={openAdd}
-              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+              className={primaryBtnSm}
             >
               + Add savings
             </button>
@@ -646,100 +625,22 @@ export function SavingsPage() {
                   <label className="block text-xs font-medium text-gray-400 mb-1">
                     Account <span className="text-gray-600">(optional)</span>
                   </label>
-                  <select
+                  <AccountSelect
                     value={form.accountId ?? ''}
-                    onChange={(e) => setForm({ ...form, accountId: e.target.value || null })}
-                    className={inputClass}
+                    onChange={(v) => setForm({ ...form, accountId: v || null })}
+                    personal={personalAccounts}
+                    household={householdAccountOptions}
                   >
                     <option value="">— None —</option>
-                    {personalAccounts.length > 0 && (
-                      <optgroup label="My accounts">
-                        {personalAccounts.map((a) => (
-                          <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
-                        ))}
-                      </optgroup>
-                    )}
-                    {householdAccountOptions.length > 0 && (
-                      <optgroup label="Household accounts">
-                        {householdAccountOptions.map((a) => (
-                          <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                  </AccountSelect>
                 </div>
               )}
 
-              {members.length > 0 && (
-                <>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Ownership</label>
-                    <select
-                      value={form.ownership}
-                      onChange={(e) => setForm({ ...form, ownership: e.target.value as Ownership, ownedByUserId: null, customSplits: [] })}
-                      className={inputClass}
-                    >
-                      <option value="SHARED">Shared (split by income %)</option>
-                      <option value="INDIVIDUAL">Individual (one member)</option>
-                      <option value="CUSTOM">Custom split</option>
-                    </select>
-                  </div>
-                  {form.ownership === 'INDIVIDUAL' && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Assigned to</label>
-                      <select
-                        value={form.ownedByUserId ?? ''}
-                        onChange={(e) => setForm({ ...form, ownedByUserId: e.target.value || null })}
-                        required
-                        className={inputClass}
-                      >
-                        <option value="">Select member…</option>
-                        {members.map((m) => (
-                          <option key={m.userId} value={m.userId}>{m.user.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {form.ownership === 'CUSTOM' && (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-2">Custom split %</label>
-                      <div className="space-y-2">
-                        {members.map((m) => {
-                          const split = form.customSplits.find((s) => s.userId === m.userId)
-                          return (
-                            <div key={m.userId} className="flex items-center gap-3">
-                              <span className="text-sm text-gray-300 flex-1">{m.user.name}</span>
-                              <input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                value={split?.pct ?? ''}
-                                onChange={(ev) => {
-                                  const next = form.customSplits.filter((s) => s.userId !== m.userId)
-                                  if (ev.target.value) next.push({ userId: m.userId, pct: ev.target.value })
-                                  setForm({ ...form, customSplits: next })
-                                }}
-                                placeholder="0"
-                                className={inputClass + ' w-24 text-right'}
-                              />
-                              <span className="text-xs text-gray-500 w-4">%</span>
-                            </div>
-                          )
-                        })}
-                        {(() => {
-                          const total = form.customSplits.reduce((s, c) => s + (parseFloat(c.pct) || 0), 0)
-                          return (
-                            <p className={`text-xs text-right ${Math.abs(total - 100) < 0.01 ? 'text-green-400' : 'text-amber-400'}`}>
-                              Total: {total.toFixed(1)}%{Math.abs(total - 100) < 0.01 ? '' : ' (must equal 100%)'}
-                            </p>
-                          )
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+              <OwnershipFields
+                members={members}
+                value={form}
+                onChange={(next) => setForm({ ...form, ...next })}
+              />
 
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">
@@ -754,21 +655,19 @@ export function SavingsPage() {
                 />
               </div>
 
-              {formError && (
-                <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{formError}</div>
-              )}
+              <FormError message={formError} />
               <div className="flex gap-3 pt-2">
                 <button
                   type="submit"
                   disabled={isMutating}
-                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                  className={`flex-1 ${primaryBtn}`}
                 >
                   {isMutating ? 'Saving…' : editingEntry ? 'Save changes' : 'Add savings'}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setShowAdd(false); setEditingEntry(null) }}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                  className={`flex-1 ${secondaryBtn}`}
                 >
                   Cancel
                 </button>
@@ -806,45 +705,30 @@ export function SavingsPage() {
             {hasAccounts && (
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Account</label>
-                <select
+                <AccountSelect
                   value={bulkForm.accountId}
-                  onChange={(e) => setBulkForm({ ...bulkForm, accountId: e.target.value })}
-                  className={inputClass}
+                  onChange={(v) => setBulkForm({ ...bulkForm, accountId: v })}
+                  personal={personalAccounts}
+                  household={householdAccountOptions}
                 >
                   <option value="">— unchanged —</option>
                   <option value="__none__">None (clear account)</option>
-                  {personalAccounts.length > 0 && (
-                    <optgroup label="My accounts">
-                      {personalAccounts.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {householdAccountOptions.length > 0 && (
-                    <optgroup label="Household accounts">
-                      {householdAccountOptions.map((a) => (
-                        <option key={a.id} value={a.id}>{a.name} ({ACCOUNT_TYPE_LABELS[a.type]})</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
+                </AccountSelect>
               </div>
             )}
-            {bulkError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{bulkError}</div>
-            )}
+            <FormError message={bulkError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={bulkUpdateMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {bulkUpdateMutation.isPending ? 'Saving…' : 'Apply changes'}
               </button>
               <button
                 type="button"
                 onClick={() => setBulkEditOpen(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -855,27 +739,18 @@ export function SavingsPage() {
 
       {/* Delete confirm */}
       {deleteTarget && (
-        <Modal title="Delete savings entry" onClose={() => setDeleteTarget(null)} size="sm">
+        <ConfirmDialog
+          title="Delete savings entry"
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
+          pending={deleteMutation.isPending}
+          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+        >
           <p className="text-gray-300 text-sm mb-1">
             Delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
           </p>
           <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
-          <div className="flex gap-3">
-            <button
-              onClick={() => deleteMutation.mutate(deleteTarget.id)}
-              disabled={deleteMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
-            </button>
-            <button
-              onClick={() => setDeleteTarget(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </Modal>
+        </ConfirmDialog>
       )}
     </>
   )

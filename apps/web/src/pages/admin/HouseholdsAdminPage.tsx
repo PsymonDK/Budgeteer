@@ -5,7 +5,8 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
-import { Modal } from '../../components/Modal'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { FormError } from '../../components/FormError'
 import type { Household } from '../../api/types'
 
 export function HouseholdsAdminPage() {
@@ -100,28 +101,19 @@ export function HouseholdsAdminPage() {
       </main>
 
       {confirmDelete && (
-        <Modal title="Delete household" onClose={() => setConfirmDelete(null)} size="sm">
+        <ConfirmDialog
+          title="Delete household"
+          onClose={() => setConfirmDelete(null)}
+          onConfirm={() => deleteMutation.mutate(confirmDelete.id)}
+          pending={deleteMutation.isPending}
+          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete permanently'}
+        >
           <p className="text-gray-300 text-sm mb-2">
             Permanently delete <span className="font-semibold text-white">{confirmDelete.name}</span>? This cannot be undone.
           </p>
           <p className="text-gray-500 text-xs mb-6">All members, budget years, expenses, and income data will be lost.</p>
-          {deleteError && (
-            <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm mb-4">{deleteError}</div>
-          )}
-          <div className="flex gap-3">
-            <button
-              onClick={() => deleteMutation.mutate(confirmDelete.id)}
-              disabled={deleteMutation.isPending}
-              className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
-            >
-              {deleteMutation.isPending ? 'Deleting…' : 'Delete permanently'}
-            </button>
-            <button onClick={() => setConfirmDelete(null)}
-              className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors">
-              Cancel
-            </button>
-          </div>
-        </Modal>
+          <FormError message={deleteError} className="mb-4" />
+        </ConfirmDialog>
       )}
     </div>
   )

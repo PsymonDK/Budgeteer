@@ -8,9 +8,10 @@ import { useHouseholds } from '../api/queries'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn, primaryBtnSm } from '../lib/styles'
 import { AppFooter } from '../components/AppFooter'
 import type { Household } from '../api/types'
+import { FormError } from '../components/FormError'
 
 export function HouseholdsPage() {
   const navigate = useNavigate()
@@ -50,7 +51,7 @@ export function HouseholdsPage() {
           action={
             <button
               onClick={() => { setShowCreate(true); setError('') }}
-              className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+              className={primaryBtnSm}
             >
               + New household
             </button>
@@ -108,21 +109,19 @@ export function HouseholdsPage() {
                 placeholder="e.g. Family Budget"
               />
             </div>
-            {error && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{error}</div>
-            )}
+            <FormError message={error} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>

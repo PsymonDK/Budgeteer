@@ -7,8 +7,10 @@ import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { FREQ_LABELS } from '../lib/constants'
 import { useBaseCurrency } from '../hooks/useFmt'
+import { yearLabel } from '../lib/budgetYear'
 import { qk } from '../api/queryKeys'
 import { useBudgetYears } from '../api/queries'
+import { segmentGroup, segmentBtn } from '../lib/styles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,11 +66,6 @@ function makeFmt(currency: string) {
     })
     return currency ? `${n} ${currency}` : n
   }
-}
-
-function yearLabel(y: { year: number; status: string; simulationName: string | null }) {
-  if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`
-  return `${y.year} (${y.status.charAt(0) + y.status.slice(1).toLowerCase()})`
 }
 
 function deltaClass(delta: number, invert = false) {
@@ -222,12 +219,12 @@ export function ComparePage() {
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-500 uppercase tracking-wide">View as</span>
-              <div className="flex rounded-lg overflow-hidden border border-gray-700 text-xs font-medium">
+              <div className={segmentGroup}>
                 {(['monthly', 'quarterly', 'annual'] as Period[]).map((p) => (
                   <button
                     key={p}
                     onClick={() => setPeriod(p)}
-                    className={`px-3 py-1.5 capitalize transition-colors ${period === p ? 'bg-amber-400 text-gray-950' : 'text-gray-400 hover:text-white'}`}
+                    className={`${segmentBtn(period === p)} capitalize`}
                   >
                     {p}
                   </button>
