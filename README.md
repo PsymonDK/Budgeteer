@@ -125,7 +125,7 @@ If the key is not set, the AI import tab is hidden and the endpoint returns `503
 
 ### Requirements
 
-- Node.js 20+
+- Node.js 22+
 - PostgreSQL (or use the Docker Compose dev setup: `docker-compose.dev.yml`)
 
 ### Setup

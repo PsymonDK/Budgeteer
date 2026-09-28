@@ -68,7 +68,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     const typeFilter = type === 'EXPENSE' || type === 'SAVINGS' ? { categoryType: type as 'EXPENSE' | 'SAVINGS' } : {}
     const activeFilter = isAdmin ? {} : { isActive: true }
 
-    let where: Record<string, unknown> = { ...typeFilter, ...activeFilter }
+    let where: Record<string, unknown>
 
     if (householdId) {
       // Verify requester is a member of this household (or system admin)

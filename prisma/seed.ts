@@ -5,6 +5,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { parseCsvRows } from '../apps/api/src/lib/csv'
 
+// Local runs read the repo-root .env; existing env vars (Docker) win.
+if (fs.existsSync('.env')) process.loadEnvFile('.env')
+
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }) })
 
 const DEFAULT_CATEGORIES: { name: string; icon: string }[] = [

@@ -1,7 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import { parseCsvRows, stringifyCsv } from './csv'
-import { loadReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel, type ReceiptClassifierConfig } from './receiptClassifier'
+import { loadReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel } from './receiptClassifier'
 
 export const RECEIPT_MAPPING_CSV_HEADERS = [
   'merchantName',

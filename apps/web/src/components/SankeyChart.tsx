@@ -96,7 +96,7 @@ export function SankeyChart({ data, currency = '', height: heightProp }: { data:
     } catch {
       setSvgContent(null)
     }
-  }, [data])
+  }, [data, heightProp])
 
   useEffect(() => {
     compute()

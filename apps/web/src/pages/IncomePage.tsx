@@ -1599,7 +1599,7 @@ export function IncomePage() {
           queryClient.invalidateQueries({ queryKey: ['overrides', jobId] })
           queryClient.invalidateQueries({ queryKey: ['jobs'] })
           toast.success('Payslip imported and tax card updated')
-        } catch (taxErr) {
+        } catch {
           toast.warning('Payslip saved, but tax card update failed')
         }
       } else {
@@ -1936,9 +1936,8 @@ export function IncomePage() {
                           onFormChange={setTaxCardForm}
                           onSubmit={(e) => {
                             e.preventDefault()
-                            editingTaxCardId
-                              ? updateTaxCardMutation.mutate(taxCardForm)
-                              : createTaxCardMutation.mutate(taxCardForm)
+                            if (editingTaxCardId) updateTaxCardMutation.mutate(taxCardForm)
+                            else createTaxCardMutation.mutate(taxCardForm)
                           }}
                           isPending={createTaxCardMutation.isPending || updateTaxCardMutation.isPending}
                           error={taxCardError}
@@ -2257,7 +2256,7 @@ export function IncomePage() {
 
           {/* Add / Edit record */}
           <h3 className="text-sm font-medium text-gray-400 mb-3">{editingSalary ? 'Edit salary record' : 'Add salary record'}</h3>
-          <form onSubmit={(e) => { e.preventDefault(); const payload = { form: salaryForm, deductionOverrides: salaryDeductionOverrides, liveCalc: salaryLiveCalc }; editingSalary ? updateSalaryMutation.mutate(payload) : addSalaryMutation.mutate(payload) }} className="space-y-3">
+          <form onSubmit={(e) => { e.preventDefault(); const payload = { form: salaryForm, deductionOverrides: salaryDeductionOverrides, liveCalc: salaryLiveCalc }; if (editingSalary) updateSalaryMutation.mutate(payload); else addSalaryMutation.mutate(payload) }} className="space-y-3">
             <div className={`grid gap-3 ${salaryJob?.country === 'DK' ? 'grid-cols-3' : 'grid-cols-4'}`}>
               <div>
                 <label className="block text-xs font-medium text-gray-400 mb-1">Effective from</label>

@@ -12,7 +12,11 @@ env:
   OWNER: psymondk
 
 jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   build-and-push:
+    needs: ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -26,7 +30,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies

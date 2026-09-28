@@ -36,8 +36,9 @@ npm run db:migrate
 npm run db:generate
 npm run db:seed
 npm run db:studio
-npm run test --workspace=apps/api
-npm run lint --workspace=apps/web
+npm run typecheck        # both apps, including API tests
+npm run lint             # ESLint for the whole repo (eslint.config.mjs)
+npm run test             # Vitest (API)
 ```
 
 The local development API runs on `http://localhost:3001`; the Vite web app runs on `http://localhost:5173`. The full Docker dev stack uses `docker-compose.dev.yml` and serves the app on `http://localhost:7272`.

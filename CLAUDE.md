@@ -12,6 +12,9 @@ npm run db:migrate       # run prisma migrations
 npm run db:generate      # regenerate prisma client
 npm run db:studio        # open prisma studio
 npm run db:seed          # seed development data
+npm run typecheck        # typecheck both apps (incl. API tests)
+npm run lint             # ESLint, whole repo
+npm run test             # API unit tests
 ```
 
 ## Calculation rules

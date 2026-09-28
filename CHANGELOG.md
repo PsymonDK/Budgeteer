@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **CI workflow** (`.github/workflows/ci.yml`) — pull requests, and every push to `main`/version tag before images are published, now run `npm ci`, migrations against a fresh Postgres plus a schema drift check, typecheck (both apps, including API tests), ESLint, Vitest, and full API/web/seed builds. Previously CI only built and pushed images.
+- **ESLint** — root flat config (`eslint.config.mjs`) covering API, web, and seed code with TypeScript and React Hooks rules. The web `lint` script referenced ESLint without it being installed. Root scripts `npm run lint`, `npm run typecheck`, and `npm run test`.
+- **Global API error handler** — Prisma not-found/unique/foreign-key errors now return 404/409 in the `{ error, code }` shape, and unexpected errors return a generic 500 instead of leaking Prisma queries and file paths.
+- **`.dockerignore`** — host `node_modules`, build output, and `.env` files no longer leak into image build contexts.
+- **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
+
+### Changed
+- **Prisma migrations squashed into a baseline** — the old migration chain started with `ALTER TABLE` on tables no migration created, so `npm run db:migrate` and `SCHEMA_SYNC_MODE=migrate` failed on a fresh database. `prisma/migrations` is now a single baseline generated from the current schema and is shipped in the API image. Existing `push`-managed databases are unaffected; see `docs/architecture.md` to switch them to `migrate`.
+- **Local development loads `.env`** — the API, Prisma CLI, and seed script now read the repo-root `.env` (existing environment variables win), and the Vite dev proxy strips `/api` like nginx does, so `npm run dev` works without Docker. `VITE_API_URL` was removed from `.env.example` because Vite never read it from the root.
+- **Web image** — Node 22 (matching the API) and `npm ci` for reproducible builds.
+- **Image publishing** is gated on the CI workflow passing.
+
+### Fixed
+- **Lint findings** — removed unused imports/variables, replaced statement-position ternaries, and added the missing `height` dependency so the Sankey chart re-lays out when its height prop changes.
+
+---
+
 ## [0.58.1] - 2026-05-24 — Receipt parser and API Docker rebuild fix
 
 ### Changed

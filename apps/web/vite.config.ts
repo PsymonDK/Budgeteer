@@ -8,7 +8,9 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
-        changeOrigin: true
+        changeOrigin: true,
+        // API routes have no /api prefix; strip it like nginx does in Docker.
+        rewrite: (path) => path.replace(/^\/api/, ''),
       }
     }
   }

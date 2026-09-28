@@ -1,3 +1,4 @@
+import './env'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
@@ -29,10 +30,18 @@ import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { prisma } from './lib/prisma'
+import { toErrorResponse } from './lib/errors'
 
 const VERSION = process.env.npm_package_version ?? '0.14.1'
 
 const app = Fastify({ logger: true })
+
+app.setErrorHandler((error, request, reply) => {
+  const { statusCode, body } = toErrorResponse(error)
+  if (statusCode >= 500) request.log.error({ err: error }, 'Unhandled error')
+  return reply.status(statusCode).send(body)
+})
+
 const rateLimitEnabled = process.env.API_RATE_LIMIT_ENABLED !== 'false'
 const rateLimitMax = Number(process.env.API_RATE_LIMIT_MAX ?? 200)
 const rateLimitWindow = process.env.API_RATE_LIMIT_WINDOW ?? '15 minutes'

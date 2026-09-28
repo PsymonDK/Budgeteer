@@ -37,7 +37,9 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 
 ### Runtime Configuration
 - **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
-- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations, `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
+- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations (the image ships `prisma/migrations`), `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
+- **Migration history** — `prisma/migrations/` starts from a single `20260928000000_baseline` migration generated from the full schema (earlier incremental migrations could not build a fresh database). CI applies all migrations to an empty Postgres and fails if they drift from `schema.prisma`. An existing database that was kept in sync with `push` can switch to `migrate` by marking the baseline as applied once: `npx prisma migrate resolve --applied 20260928000000_baseline`.
+- **API error responses** — a global Fastify error handler (`apps/api/src/lib/errors.ts`) maps Prisma not-found/unique/foreign-key errors to 404/409, keeps 4xx framework errors (validation, rate limit, body parsing), and returns a generic `{ error, code: "INTERNAL_ERROR" }` for anything else so internals never reach the client.
 
 ---
 

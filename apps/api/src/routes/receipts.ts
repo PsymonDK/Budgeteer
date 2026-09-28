@@ -209,7 +209,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const { receiptDir, relativePath, storagePath } = buildReceiptStoragePath(receipt.id, ext)
     fs.mkdirSync(receiptDir, { recursive: true })
 
-    let fileSize = 0
+    let fileSize: number
     try {
       fs.writeFileSync(storagePath, buffer)
       const stat = fs.statSync(storagePath)
@@ -217,7 +217,9 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     } catch (err) {
       try {
         if (fs.existsSync(storagePath)) fs.unlinkSync(storagePath)
-      } catch {}
+      } catch {
+        // best-effort cleanup; the failure is recorded below
+      }
       await prisma.receipt.update({
         where: { id: receipt.id },
         data: { status: 'FAILED', notes: [err instanceof Error ? err.message : 'Receipt upload failed'] },

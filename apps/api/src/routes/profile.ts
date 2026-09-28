@@ -354,7 +354,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const aggAmBidrag = jobIncomes.reduce((s, { deductions }) => s + (deductions?.amBidrag ?? 0), 0)
       const aggASkat = jobIncomes.reduce((s, { deductions }) => s + (deductions?.aSkat ?? 0), 0)
       const aggPensionEmployee = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployee ?? 0), 0)
-      const aggPensionEmployer = jobIncomes.reduce((s, { pensionEmployer }) => s + pensionEmployer, 0)
       const aggAtp = jobIncomes.reduce((s, { deductions }) => s + (deductions?.atp ?? 0), 0)
       const aggBrutto = jobIncomes.reduce((s, { deductions }) => s + (deductions?.bruttoDeduction ?? 0), 0)
       const aggOther = jobIncomes.reduce((s, { deductions }) => s + (deductions?.otherDeductions ?? 0), 0)

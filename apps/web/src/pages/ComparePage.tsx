@@ -159,7 +159,8 @@ export function ComparePage() {
   function toggleFrequency(f: string) {
     setFilterFrequencies((prev) => {
       const next = new Set(prev)
-      next.has(f) ? next.delete(f) : next.add(f)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
       return next
     })
   }

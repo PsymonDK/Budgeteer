@@ -7,7 +7,7 @@ Thank you for your interest in contributing! This document covers how to get the
 ## Prerequisites
 
 - **Docker** and **Docker Compose** (recommended — runs everything with one command)
-- Or: Node.js 20+, PostgreSQL 15+
+- Or: Node.js 22+, PostgreSQL 15+
 
 ---
 
@@ -48,8 +48,8 @@ npm install
 # Generate Prisma client
 npm run db:generate
 
-# Push schema to your local PostgreSQL instance
-npx prisma db push --schema=prisma/schema.prisma
+# Apply migrations to your local PostgreSQL instance (reads the root .env)
+npm run db:migrate
 
 # Seed
 npm run db:seed
@@ -98,7 +98,7 @@ Tests use [Vitest](https://vitest.dev/). API tests live in `apps/api/src/**/*.te
 |---|---|---|
 | ORM | Prisma | Type-safe queries, great DX, easy schema evolution |
 | Auth | JWT (access 15min + refresh 7d) | Stateless, works well for SPA; refresh rotation adds security |
-| Schema migration | `prisma db push` | No migration files required in early development |
+| Schema migration | Prisma migrations (`prisma/migrations/`) | Reproducible fresh installs; CI checks migrations match `schema.prisma` |
 | Monorepo | npm workspaces | Keeps web/api/shared together without extra tooling |
 | Amounts | `Decimal` + stored `monthlyEquivalent` | Avoids floating-point errors; pre-computed monthly avoids repeated calculation |
 
@@ -109,7 +109,7 @@ Tests use [Vitest](https://vitest.dev/). API tests live in `apps/api/src/**/*.te
 - Branch off `main` using `feature/your-description` or `fix/your-description`
 - Keep PRs focused — one feature or fix per PR
 - Update `CHANGELOG.md` under `[Unreleased]`
-- Run tests before opening a PR: `cd apps/api && npm test`
+- Before opening a PR run `npm run typecheck`, `npm run lint` and `npm run test` from the repo root (CI runs the same checks)
 - PR title format: `feat: short description` / `fix: short description`
 
 ---

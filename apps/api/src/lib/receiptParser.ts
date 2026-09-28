@@ -1,10 +1,8 @@
 import { BASE_CURRENCY } from './currency'
 import {
   applyCategorySuggestions,
-  correctReceiptOcrText,
   fallbackReceiptClassifierConfig,
   isAllowedLocalAiHost,
-  learnReceiptMappings,
   loadReceiptClassifierConfig,
   normalizeReceiptLabel,
   type ReceiptClassifierConfig,

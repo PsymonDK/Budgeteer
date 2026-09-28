@@ -44,6 +44,7 @@ RUN NPM_CONFIG_STRICT_SSL=false npm ci --omit=dev --omit=optional --workspace=ap
 
 COPY prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY prisma/migrations ./prisma/migrations
 COPY prisma/receipt-training-seed.csv ./prisma/receipt-training-seed.csv
 COPY apps/api/scripts ./apps/api/scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
