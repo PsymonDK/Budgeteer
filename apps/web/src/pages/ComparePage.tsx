@@ -7,15 +7,9 @@ import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { FREQ_LABELS } from '../lib/constants'
 import { useBaseCurrency } from '../hooks/useFmt'
+import type { BudgetYear } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface BudgetYearOption {
-  id: string
-  year: number
-  status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
-  simulationName: string | null
-}
 
 interface SummaryLine {
   a: string
@@ -71,7 +65,7 @@ function makeFmt(currency: string) {
   }
 }
 
-function yearLabel(y: BudgetYearOption | { year: number; status: string; simulationName: string | null }) {
+function yearLabel(y: BudgetYear | { year: number; status: string; simulationName: string | null }) {
   if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`
   return `${y.year} (${y.status.charAt(0) + y.status.slice(1).toLowerCase()})`
 }
@@ -108,9 +102,9 @@ export function ComparePage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: allYears = [] } = useQuery<BudgetYearOption[]>({
+  const { data: allYears = [] } = useQuery<BudgetYear[]>({
     queryKey: ['budget-years', householdId],
-    queryFn: async () => (await api.get<BudgetYearOption[]>(`/households/${householdId}/budget-years`)).data,
+    queryFn: async () => (await api.get<BudgetYear[]>(`/households/${householdId}/budget-years`)).data,
     enabled: !!householdId,
   })
 

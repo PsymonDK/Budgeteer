@@ -5,17 +5,7 @@ import { toast } from 'sonner'
 import axios from 'axios'
 import { api } from '../../api/client'
 import { Modal } from '../../components/Modal'
-
-interface Household {
-  id: string
-  name: string
-  isActive: boolean
-  _count: { members: number }
-  members: Array<{
-    role: 'ADMIN' | 'MEMBER'
-    user: { id: string; name: string; email: string }
-  }>
-}
+import type { Household } from '../../api/types'
 
 export function HouseholdsAdminPage() {
   const queryClient = useQueryClient()

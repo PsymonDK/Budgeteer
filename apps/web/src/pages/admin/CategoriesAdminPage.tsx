@@ -5,18 +5,7 @@ import { Plus, Pencil } from 'lucide-react'
 import { api } from '../../api/client'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
-
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-  categoryType: 'EXPENSE' | 'SAVINGS'
-  isSystemWide: boolean
-  isActive: boolean
-  householdId: string | null
-  createdBy: { id: string; name: string }
-  _count: { expenses: number; savingsEntries: number }
-}
+import type { Category } from '../../api/types'
 
 type TabType = 'system' | 'custom'
 

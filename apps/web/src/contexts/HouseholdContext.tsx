@@ -3,8 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from './AuthContext'
 import { ACTIVE_HOUSEHOLD_KEY as LS_KEY } from '../lib/storageKeys'
-
-interface Household { id: string; name: string }
+import type { Household } from '../api/types'
 
 interface HouseholdCtx {
   activeHouseholdId: string | null

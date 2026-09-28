@@ -3,12 +3,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { api } from '../api/client'
 import { ACTIVE_HOUSEHOLD_KEY } from '../lib/storageKeys'
+import type { UserRole } from '../api/types'
 
 export interface AuthUser {
   id: string
   email: string
   name: string
-  role: 'SYSTEM_ADMIN' | 'BOOKKEEPER' | 'USER'
+  role: UserRole
   isProxy: boolean
   avatarUrl?: string | null
   mustChangePassword: boolean

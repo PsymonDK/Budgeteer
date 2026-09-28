@@ -11,26 +11,9 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { inputClass } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
 import { getApiError } from '../lib/apiError'
-
-interface Member {
-  id: string
-  userId: string
-  role: 'ADMIN' | 'MEMBER'
-  joinedAt: string
-  user: { id: string; name: string; email: string; isActive: boolean; isProxy?: boolean }
-}
-
-type BudgetModel = 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
-
-interface Household {
-  id: string
-  name: string
-  isActive: boolean
-  autoMarkTransferPaid: boolean
-  budgetModel: BudgetModel
-  myRole: 'ADMIN' | 'MEMBER' | null
-  members: Member[]
-}
+import type {
+  Account, AccountForm, BudgetModel, Household, HouseholdMember,
+} from '../api/types'
 
 interface UserOption {
   id: string
@@ -39,21 +22,6 @@ interface UserOption {
   isActive: boolean
   isProxy?: boolean
 }
-
-interface HouseholdAccount {
-  id: string
-  name: string
-  type: AccountType
-  isActive: boolean
-  _count: { expenses: number; savingsEntries: number }
-}
-
-interface AccountForm {
-  name: string
-  type: AccountType
-}
-
-
 
 export function HouseholdPage() {
   const { id } = useParams<{ id: string }>()
@@ -68,8 +36,8 @@ export function HouseholdPage() {
 
   // Account state
   const [showAddAccount, setShowAddAccount] = useState(false)
-  const [editingAccount, setEditingAccount] = useState<HouseholdAccount | null>(null)
-  const [deleteAccountTarget, setDeleteAccountTarget] = useState<HouseholdAccount | null>(null)
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null)
+  const [deleteAccountTarget, setDeleteAccountTarget] = useState<Account | null>(null)
   const [accountForm, setAccountForm] = useState<AccountForm>({ name: '', type: 'BANK' })
   const [accountFormError, setAccountFormError] = useState('')
   const [accountDeleteError, setAccountDeleteError] = useState('')
@@ -79,8 +47,8 @@ export function HouseholdPage() {
   const [nameError, setNameError] = useState('')
 
   // Confirmation dialogs
-  const [confirmRemove, setConfirmRemove] = useState<Member | null>(null)
-  const [confirmRoleChange, setConfirmRoleChange] = useState<{ member: Member; newRole: 'ADMIN' | 'MEMBER' } | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<HouseholdMember | null>(null)
+  const [confirmRoleChange, setConfirmRoleChange] = useState<{ member: HouseholdMember; newRole: 'ADMIN' | 'MEMBER' } | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
   const { data: household, isLoading } = useQuery<Household>({
@@ -98,9 +66,9 @@ export function HouseholdPage() {
 
   const isAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
 
-  const { data: householdAccounts = [] } = useQuery<HouseholdAccount[]>({
+  const { data: householdAccounts = [] } = useQuery<Account[]>({
     queryKey: ['accounts', 'household', id],
-    queryFn: async () => (await api.get<HouseholdAccount[]>(`/households/${id}/accounts`)).data,
+    queryFn: async () => (await api.get<Account[]>(`/households/${id}/accounts`)).data,
     enabled: !!id,
   })
 
@@ -167,7 +135,7 @@ export function HouseholdPage() {
     else createAccountMutation.mutate(accountForm)
   }
 
-  function openEditAccount(account: HouseholdAccount) {
+  function openEditAccount(account: Account) {
     setAccountForm({ name: account.name, type: account.type })
     setAccountFormError('')
     setEditingAccount(account)

@@ -15,14 +15,9 @@ import { MonthItemsPanel } from '../components/MonthItemsPanel'
 import { toast } from 'sonner'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
+import type { BudgetYearRef, Category, Household } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-interface BudgetYear {
-  id: string
-  year: number
-  status: string
-}
 
 interface IncomeMember {
   userId: string
@@ -34,12 +29,6 @@ interface IncomeMember {
   sharePct: string
 }
 
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-}
-
 interface ExpenseItem {
   id: string
   label: string
@@ -48,7 +37,7 @@ interface ExpenseItem {
   frequencyPeriod: string | null
   monthlyEquivalent: string
   notes: string | null
-  category: Category
+  category: Pick<Category, 'id' | 'name' | 'icon'>
 }
 
 interface ExpenseByCategory {
@@ -84,7 +73,7 @@ interface Warnings {
 }
 
 interface DashboardSummary {
-  budgetYear: BudgetYear | null
+  budgetYear: BudgetYearRef | null
   income: { totalMonthly: string; members: IncomeMember[] }
   expenses: { totalMonthly: string; items: ExpenseItem[]; byCategory: ExpenseByCategory[]; byAccount: ExpenseByAccount[] }
   savings: { totalMonthly: string }
@@ -105,12 +94,6 @@ interface ReceiptConsumptionSummary {
   warnings: string[]
   byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
   bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
-}
-
-interface Household {
-  id: string
-  name: string
-  myRole: 'ADMIN' | 'MEMBER' | null
 }
 
 interface SavingsHistoryRow {

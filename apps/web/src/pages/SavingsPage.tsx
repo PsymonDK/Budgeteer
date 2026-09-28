@@ -9,44 +9,15 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
-import { FREQUENCIES, type Frequency, type AccountType, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
+import { FREQUENCIES, type Frequency, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
+import type {
+  AccountGroups, AccountInfo, AppConfig, BudgetYear, Category, Currency, CustomSplitInput, Household,
+  Ownership,
+} from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type SavingsOwnership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
-
-interface CustomSplitInput {
-  userId: string
-  pct: string
-}
-
-interface SavingsCategory {
-  id: string
-  name: string
-  icon: string | null
-  isSystemWide: boolean
-  categoryType: 'EXPENSE' | 'SAVINGS'
-}
-
-interface HouseholdMember {
-  userId: string
-  user: { id: string; name: string }
-}
-
-interface AccountInfo {
-  id: string
-  name: string
-  type: AccountType
-}
-
-interface AccountGroups {
-  personal: AccountInfo[]
-  household: AccountInfo[]
-}
-
-
 
 interface SavingsEntry {
   id: string
@@ -58,27 +29,14 @@ interface SavingsEntry {
   currencyCode: string | null
   originalAmount: string | null
   rateUsed: string | null
-  ownership: SavingsOwnership
+  ownership: Ownership
   ownedByUserId: string | null
   ownedBy: { id: string; name: string } | null
   categoryId: string | null
-  category: SavingsCategory | null
+  category: Pick<Category, 'id' | 'name' | 'icon' | 'isSystemWide' | 'categoryType'> | null
   customSplits: { userId: string; user: { id: string; name: string }; pct: string }[]
   accountId: string | null
   account: AccountInfo | null
-}
-
-interface Currency {
-  code: string
-  rate: number
-  baseCurrency: string
-}
-
-interface BudgetYear {
-  id: string
-  year: number
-  status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
-  simulationName: string | null
 }
 
 interface EntryForm {
@@ -87,7 +45,7 @@ interface EntryForm {
   frequency: Frequency
   notes: string
   currencyCode: string
-  ownership: SavingsOwnership
+  ownership: Ownership
   ownedByUserId: string | null
   categoryId: string
   customSplits: CustomSplitInput[]
@@ -152,9 +110,9 @@ export function SavingsPage() {
     enabled: !!activeBudgetYear,
   })
 
-  const { data: config } = useQuery<{ baseCurrency: string }>({
+  const { data: config } = useQuery<AppConfig>({
     queryKey: ['config'],
-    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
+    queryFn: async () => (await api.get<AppConfig>('/config')).data,
   })
 
   const { data: currencies = [] } = useQuery<Currency[]>({
@@ -162,17 +120,17 @@ export function SavingsPage() {
     queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
   })
 
-  const { data: householdData } = useQuery<{ members: HouseholdMember[] }>({
+  const { data: householdData } = useQuery<Household>({
     queryKey: ['household', householdId],
     queryFn: async () => (await api.get(`/households/${householdId}`)).data,
     enabled: !!householdId,
   })
   const members = householdData?.members ?? []
 
-  const { data: savingsCategories = [] } = useQuery<SavingsCategory[]>({
+  const { data: savingsCategories = [] } = useQuery<Category[]>({
     queryKey: ['categories', householdId, 'SAVINGS'],
     queryFn: async () =>
-      (await api.get<SavingsCategory[]>(`/categories?householdId=${householdId}&type=SAVINGS`)).data,
+      (await api.get<Category[]>(`/categories?householdId=${householdId}&type=SAVINGS`)).data,
     enabled: !!householdId,
   })
 
@@ -740,7 +698,7 @@ export function SavingsPage() {
                     <label className="block text-xs font-medium text-gray-400 mb-1">Ownership</label>
                     <select
                       value={form.ownership}
-                      onChange={(e) => setForm({ ...form, ownership: e.target.value as SavingsOwnership, ownedByUserId: null, customSplits: [] })}
+                      onChange={(e) => setForm({ ...form, ownership: e.target.value as Ownership, ownedByUserId: null, customSplits: [] })}
                       className={inputClass}
                     >
                       <option value="SHARED">Shared (split by income %)</option>

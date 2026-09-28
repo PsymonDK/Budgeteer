@@ -12,53 +12,9 @@ import { PageHeader } from '../components/PageHeader'
 import { Modal } from '../components/Modal'
 import { inputClass } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
+import type { Account, AccountForm, Currency, Household, UserIncomeSummary, UserMe } from '../api/types'
 
 const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
-
-// ── Types ────────────────────────────────────────────────────────────────────
-
-interface UserMe {
-  id: string
-  email: string
-  name: string
-  role: string
-  avatarUrl?: string | null
-  preferences: {
-    preferredCurrency: string
-    defaultHouseholdId: string | null
-    notifyOverAllocation: boolean
-    notifyExpensesExceedIncome: boolean
-    notifyNoSavings: boolean
-    notifyUncategorised: boolean
-    showDashboardSparklines: boolean
-  } | null
-}
-
-interface Currency {
-  code: string
-  name?: string
-}
-
-interface Household {
-  id: string
-  name: string
-  myRole: string | null
-  members?: unknown[]
-}
-
-interface IncomeSummary {
-  allocationPct: string
-  overAllocated: boolean
-  overAllocatedJobs: { jobId: string; jobName: string; year: number; allocationPct: string }[]
-}
-
-interface Account {
-  id: string
-  name: string
-  type: AccountType
-  isActive: boolean
-  _count: { expenses: number; savingsEntries: number }
-}
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
 
@@ -365,9 +321,9 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
 // ── Tab 2: Households ────────────────────────────────────────────────────────
 
 function HouseholdsTab() {
-  const { data: summary } = useQuery<IncomeSummary>({
+  const { data: summary } = useQuery<UserIncomeSummary>({
     queryKey: ['income-summary-me'],
-    queryFn: async () => (await api.get<IncomeSummary>('/users/me/income/summary')).data,
+    queryFn: async () => (await api.get<UserIncomeSummary>('/users/me/income/summary')).data,
   })
 
   const { data: households = [], isLoading } = useQuery<Household[]>({
@@ -442,11 +398,6 @@ function HouseholdsTab() {
 }
 
 // ── Tab 3: Accounts ──────────────────────────────────────────────────────────
-
-interface AccountForm {
-  name: string
-  type: AccountType
-}
 
 function emptyAccountForm(): AccountForm {
   return { name: '', type: 'BANK' }

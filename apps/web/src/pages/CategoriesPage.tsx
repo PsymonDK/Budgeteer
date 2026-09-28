@@ -12,24 +12,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
-
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-  isSystemWide: boolean
-  householdId: string | null
-  createdAt: string
-  categoryType: 'EXPENSE' | 'SAVINGS'
-  createdBy: { id: string; name: string }
-  _count: { expenses: number; savingsEntries: number }
-}
-
-interface Household {
-  id: string
-  name: string
-  myRole: 'ADMIN' | 'MEMBER' | null
-}
+import type { Category, Household } from '../api/types'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()

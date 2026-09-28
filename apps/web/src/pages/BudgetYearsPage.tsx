@@ -10,23 +10,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
-
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface BudgetYear {
-  id: string
-  year: number
-  status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
-  simulationName: string | null
-  copiedFromId: string | null
-  _count: { expenses: number; savingsEntries: number }
-}
-
-interface Household {
-  id: string
-  name: string
-  myRole: 'ADMIN' | 'MEMBER' | null
-}
+import type { BudgetYear, Household } from '../api/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

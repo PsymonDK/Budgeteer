@@ -14,6 +14,7 @@ import { SankeyChart } from '../components/SankeyChart'
 import { Sparkline } from '../components/Sparkline'
 import { inputClass } from '../lib/styles'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
+import type { UserMe } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,11 +68,6 @@ interface UserSummary {
   previousTotals: { monthlyGrossIncome: string } | null
   householdCount: number
   households: HouseholdSummary[]
-}
-
-interface UserMe {
-  role: string
-  preferences: { showDashboardSparklines: boolean } | null
 }
 
 interface NewHousehold { id: string; name: string }

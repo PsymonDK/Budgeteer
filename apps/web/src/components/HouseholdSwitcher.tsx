@@ -7,8 +7,7 @@ import { useHousehold } from '../contexts/HouseholdContext'
 import { useAuth } from '../contexts/AuthContext'
 import { toast } from 'sonner'
 import { getApiError } from '../lib/apiError'
-
-interface Household { id: string; name: string; myRole: 'ADMIN' | 'MEMBER' | null }
+import type { Household } from '../api/types'
 
 interface Props { currentHouseholdId: string }
 

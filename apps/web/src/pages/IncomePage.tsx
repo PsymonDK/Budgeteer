@@ -18,6 +18,7 @@ import { inputClass } from '../lib/styles'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, toLocalISOMonth } from '../lib/dates'
+import type { Currency, Household } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,12 +88,6 @@ interface Bonus {
   createdAt: string
 }
 
-interface Currency {
-  code: string
-  rate: number
-  baseCurrency: string
-}
-
 interface JobAllocation {
   budgetYearId: string
   allocationPct: string
@@ -117,11 +112,6 @@ interface Job {
   latestSalary: SalaryRecord | null
   upcomingBonusCount: number
   allocations: JobAllocation[]
-}
-
-interface Household {
-  id: string
-  name: string
 }
 
 interface HistoryBucket {

@@ -8,13 +8,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { AppFooter } from '../components/AppFooter'
-
-interface Household {
-  id: string
-  name: string
-  myRole: 'ADMIN' | 'MEMBER' | null
-  _count: { members: number }
-}
+import type { Household } from '../api/types'
 
 export function HouseholdsPage() {
   const navigate = useNavigate()

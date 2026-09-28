@@ -11,42 +11,15 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { inputClass } from '../lib/styles'
-import { FREQUENCIES, type Frequency, type AccountType, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
+import { FREQUENCIES, type Frequency, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
+import type {
+  AccountGroups, AccountInfo, BudgetYear, Category, Currency, CustomSplitInput, Household,
+  Ownership,
+} from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-type ExpenseOwnership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
-
-interface CustomSplitInput {
-  userId: string
-  pct: string
-}
-
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-  isSystemWide: boolean
-}
-
-interface HouseholdMember {
-  userId: string
-  user: { id: string; name: string }
-}
-
-interface AccountInfo {
-  id: string
-  name: string
-  type: AccountType
-}
-
-interface AccountGroups {
-  personal: AccountInfo[]
-  household: AccountInfo[]
-}
-
 
 interface Expense {
   id: string
@@ -60,29 +33,16 @@ interface Expense {
   monthlyWhenActive: string
   amountInBase: string
   notes: string | null
-  category: Category
+  category: Pick<Category, 'id' | 'name' | 'icon' | 'isSystemWide' | 'categoryType'>
   currencyCode: string | null
   originalAmount: string | null
   rateUsed: string | null
-  ownership: ExpenseOwnership
+  ownership: Ownership
   ownedByUserId: string | null
   ownedBy: { id: string; name: string } | null
   customSplits: { userId: string; user: { id: string; name: string }; pct: string }[]
   accountId: string | null
   account: AccountInfo | null
-}
-
-interface Currency {
-  code: string
-  rate: number
-  baseCurrency: string
-}
-
-interface BudgetYear {
-  id: string
-  year: number
-  status: 'ACTIVE' | 'FUTURE' | 'RETIRED' | 'SIMULATION'
-  simulationName: string | null
 }
 
 type SortKey = 'label' | 'category' | 'amount' | 'frequency' | 'monthly'
@@ -105,7 +65,7 @@ interface ExpenseForm {
   endMonth: string
   notes: string
   currencyCode: string
-  ownership: ExpenseOwnership
+  ownership: Ownership
   ownedByUserId: string | null
   customSplits: CustomSplitInput[]
   accountId: string | null
@@ -209,7 +169,7 @@ export function ExpensesPage() {
     queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
   })
 
-  const { data: householdData } = useQuery<{ members: HouseholdMember[] }>({
+  const { data: householdData } = useQuery<Household>({
     queryKey: ['household', householdId],
     queryFn: async () => (await api.get(`/households/${householdId}`)).data,
     enabled: !!householdId,
@@ -888,7 +848,7 @@ export function ExpensesPage() {
                     <label className="block text-xs font-medium text-gray-400 mb-1">Ownership</label>
                     <select
                       value={form.ownership}
-                      onChange={(e) => setForm({ ...form, ownership: e.target.value as ExpenseOwnership, ownedByUserId: null, customSplits: [] })}
+                      onChange={(e) => setForm({ ...form, ownership: e.target.value as Ownership, ownedByUserId: null, customSplits: [] })}
                       className={inputClass}
                     >
                       <option value="SHARED">Shared (split by income %)</option>
