@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess } from '../lib/ownership'
 import { effectiveCurrentMonth, recalculateTransfer } from '../lib/budgetTransfer'
@@ -35,11 +35,11 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
   async function listItems(budgetYearId: string, year: number, month: number): Promise<OccurrenceItem[]> {
     const [expenseOccs, savingsOccs] = await Promise.all([
       prisma.expenseOccurrence.findMany({
-        where: { expense: { budgetYearId }, year, month },
+        where: { expense: { budgetYearId, ...notDeleted }, year, month },
         include: { expense: { select: { id: true, label: true, category: { select: { name: true } } } } },
       }),
       prisma.savingsOccurrence.findMany({
-        where: { savingsEntry: { budgetYearId }, year, month },
+        where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month },
         include: { savingsEntry: { select: { id: true, label: true, category: { select: { name: true } } } } },
       }),
     ])
@@ -86,8 +86,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return
 
     const occ = kind === 'expense'
-      ? await prisma.expenseOccurrence.findFirst({ where: { id: occurrenceId, expense: { budgetYearId: id } } })
-      : await prisma.savingsOccurrence.findFirst({ where: { id: occurrenceId, savingsEntry: { budgetYearId: id } } })
+      ? await prisma.expenseOccurrence.findFirst({ where: { id: occurrenceId, expense: { budgetYearId: id, ...notDeleted } } })
+      : await prisma.savingsOccurrence.findFirst({ where: { id: occurrenceId, savingsEntry: { budgetYearId: id, ...notDeleted } } })
     if (!occ) return reply.status(404).send({ error: 'Occurrence not found' })
     if (occ.status === 'SKIPPED') {
       return reply.status(409).send({ error: 'This month is closed; its unpaid amount was carried to the next month', code: 'OCCURRENCE_CLOSED' })
@@ -121,8 +121,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
 
     await prisma.$transaction(async (tx) => {
       const [expenseOccs, savingsOccs] = await Promise.all([
-        tx.expenseOccurrence.findMany({ where: { expense: { budgetYearId: id }, year, month, status: 'PENDING' } }),
-        tx.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId: id }, year, month, status: 'PENDING' } }),
+        tx.expenseOccurrence.findMany({ where: { expense: { budgetYearId: id, ...notDeleted }, year, month, status: 'PENDING' } }),
+        tx.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId: id, ...notDeleted }, year, month, status: 'PENDING' } }),
       ])
       for (const o of expenseOccs) {
         await tx.expenseOccurrence.update({ where: { id: o.id }, data: { status: 'PAID', paidAt, actualAmount: dueAmount(o) } })

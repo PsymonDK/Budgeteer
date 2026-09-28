@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { BudgetStatus, Prisma } from '@prisma/client'
-import { prisma } from '../lib/prisma'
+import { prisma, type PrismaTx, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyInBase, deriveBudgetStatus } from '../lib/calculations'
 import { BASE_CURRENCY, getLatestRate } from '../lib/currency'
@@ -109,7 +109,7 @@ export function copiedCurrencyFields(
 }
 
 async function copyBudgetYearContent(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   source: SourceBudgetYear,
   targetId: string,
   memberIds: Set<string>,
@@ -166,7 +166,7 @@ async function copyBudgetYearContent(
 }
 
 export async function deleteBudgetYearWithDependencies(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   yearId: string,
 ) {
   const expenses = await tx.expense.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
@@ -204,7 +204,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const years = await prisma.budgetYear.findMany({
       where: { householdId },
       include: {
-        _count: { select: { expenses: true, savingsEntries: true } },
+        _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } },
       },
       orderBy: [{ year: 'desc' }, { createdAt: 'asc' }],
     })
@@ -238,7 +238,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await prisma.budgetYear.create({
       data: { householdId, year, status },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     if (status === 'ACTIVE') {
@@ -265,8 +265,8 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       prisma.budgetYear.findFirst({
         where: { id: yearId, householdId },
         include: {
-          expenses: { include: { customSplits: true } },
-          savingsEntries: { include: { customSplits: true } },
+          expenses: { where: notDeleted, include: { customSplits: true } },
+          savingsEntries: { where: notDeleted, include: { customSplits: true } },
         },
       }),
       prisma.householdMember.findMany({ where: { householdId }, select: { userId: true } }),
@@ -292,7 +292,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         await copyBudgetYearContent(tx, source, created.id, memberIds, rates)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
 
@@ -313,7 +313,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         await copyBudgetYearContent(tx, source, created.id, memberIds, rates)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
 
@@ -341,7 +341,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const updated = await prisma.budgetYear.update({
       where: { id: yearId },
       data: { simulationName: result.data.simulationName },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     return reply.send(updated)
@@ -364,7 +364,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const updated = await prisma.budgetYear.update({
       where: { id: yearId },
       data: { status: 'RETIRED' },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     return reply.send(updated)
@@ -401,7 +401,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         return tx.budgetYear.update({
           where: { id: yearId },
           data: { status: promotedStatus, simulationName: null },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
 
@@ -429,7 +429,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       return tx.budgetYear.update({
         where: { id: yearId },
         data: { status: restoredStatus },
-        include: { _count: { select: { expenses: true, savingsEntries: true } } },
+        include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
       })
     })
 

@@ -51,7 +51,8 @@ The local development API runs on `http://localhost:3001`; the Vite web app runs
 - Use Prisma for database access and migrations. Do not hand-edit generated Prisma client code.
 - Use `Decimal`/Prisma decimal handling for money, rates, and percentages. Avoid JavaScript floating point math for persisted financial values.
 - Use `cuid()` IDs, `Decimal(10,2)` monetary amounts, and `Decimal(5,2)` allocation percentages.
-- Preserve financial history. Use `isActive` or `endDate` for soft deletion, and do not hard-delete user or financial data unless an existing admin-only route explicitly does that.
+- Preserve financial history. Use `isActive`, `endDate`, or `deletedAt` (trash) for soft deletion, and do not hard-delete user or financial data unless an existing admin-only route explicitly does that.
+- Expenses, savings entries, salary records, monthly overrides, bonuses and tax cards are trashed via `deletedAt`. The extended Prisma client (`apps/api/src/lib/prisma.ts`) adds `deletedAt: null` to top-level reads and `updateMany` on those models; nested `include`/`select`, `_count`, and relation filters (e.g. `expense: { budgetYearId }` on occurrences) are not covered and must spread `notDeleted`. Use `includingTrashed` or an explicit `deletedAt` condition when a query must see trashed rows.
 - Retired budget years are read-only. Simulations are editable.
 
 ## Currency And Income

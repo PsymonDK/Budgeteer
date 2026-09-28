@@ -215,6 +215,12 @@ budgeteer/
 - `authenticate` reads the user on every request: role comes from the database (demotions apply immediately), deactivated users are rejected, and `mustChangePassword` blocks everything except `GET /users/me` and `POST /users/me/change-password` (403 `PASSWORD_CHANGE_REQUIRED`)
 - Login answers unknown, inactive and proxy accounts exactly like a wrong password (including timing)
 
+**Trash (soft delete)**
+- Expenses, savings entries, salary records, monthly overrides, bonuses and tax cards have `deletedAt` / `deletedByUserId`. Their DELETE routes set these instead of removing the row; the item then appears in the household trash (expenses, savings) or the user's income trash, and can be restored. There is no "empty trash" — financial data is never hard-deleted by users
+- Trashed rows are invisible to every calculation: the Prisma client extension filters top-level reads/`updateMany`, and nested includes, `_count` and occurrence relation filters use `notDeleted`
+- Items in RETIRED years can't be restored (read-only). A new override for a month whose override is in the trash replaces it (one override per job and month)
+- Hard deletes remain only for admin/system cascades: deleting a budget year (simulations, current/future retired years) or a household
+
 **Household access**
 - `getActiveMembership` (`lib/ownership.ts`) is the membership check for household data: deactivated households are closed to members (system admins excepted). The household settings routes keep working so an admin can reactivate
 - Expense/savings categories must be system-wide or the household's own, active, and of the right type (`findUsableCategory`); an entry may keep a category deactivated after it was assigned
@@ -374,6 +380,8 @@ GET    /jobs/:id/bonuses
 POST   /jobs/:id/bonuses
 PUT    /jobs/:id/bonuses/:bonusId
 DELETE /jobs/:id/bonuses/:bonusId
+GET    /users/:id/income/trash                          # trashed salary records, overrides, bonuses, tax cards
+POST   /users/:id/income/trash/:kind/:itemId/restore    # kind = salary | override | bonus | taxcard
 POST   /jobs/:id/payslips/parse
 
 PUT    /income/:id/allocations/:householdId
@@ -395,6 +403,8 @@ DELETE /households/:id/members/:memberId
 GET    /households/:id/budget-years
 POST   /households/:id/budget-years
 GET    /households/:id/summary
+GET    /households/:id/trash                            # trashed expenses and savings entries
+POST   /households/:id/trash/:kind/:itemId/restore      # kind = expense | savings (not in RETIRED years)
 GET    /households/:id/income-summary
 GET    /households/:id/savings-history
 GET    /households/:id/trends

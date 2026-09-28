@@ -1,4 +1,4 @@
-import { prisma } from './prisma'
+import { prisma, notDeleted } from './prisma'
 import { BudgetStatus, Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/client'
 import {
@@ -14,10 +14,10 @@ import {
  * jobIncome.ts need for a job, in one query.
  */
 export const JOB_INCOME_INCLUDE = {
-  salaryRecords: true,
-  overrides: true,
-  bonuses: true,
-  taxCardSettings: true,
+  salaryRecords: { where: notDeleted },
+  overrides: { where: notDeleted },
+  bonuses: { where: notDeleted },
+  taxCardSettings: { where: notDeleted },
 } satisfies Prisma.JobInclude
 
 export type JobWithIncomeData = Prisma.JobGetPayload<{ include: typeof JOB_INCOME_INCLUDE }>

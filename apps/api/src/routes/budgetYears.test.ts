@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('../lib/prisma', () => ({ prisma: {} }))
+vi.mock('../lib/prisma', () => ({ prisma: {}, notDeleted: { deletedAt: null }, includingTrashed: { deletedAt: undefined } }))
 vi.mock('../plugins/authenticate', () => ({ authenticate: vi.fn() }))
 vi.mock('../lib/budgetTransfer', () => ({ recalculateTransfer: vi.fn() }))
 

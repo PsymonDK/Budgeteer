@@ -42,7 +42,8 @@ npm run test             # API unit tests
 - All IDs use `cuid()`
 - All monetary amounts stored as `Decimal(10,2)`
 - Allocation percentages stored as `Decimal(5,2)`
-- Soft deletes via `isActive` or `endDate` — never hard delete user or financial data
+- Soft deletes via `isActive`, `endDate`, or `deletedAt` (trash, restorable) — never hard delete user or financial data
+- Expenses, savings, salary records, overrides, bonuses and tax cards use `deletedAt`: the Prisma client in `apps/api/src/lib/prisma.ts` hides trashed rows from reads automatically, but nested includes, `_count` and relation filters must add `notDeleted` explicitly
 - Retired budget years are read-only — never modify historical data
 
 ## API conventions

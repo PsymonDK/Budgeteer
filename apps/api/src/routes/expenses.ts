@@ -311,7 +311,8 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Expense not found' })
     }
 
-    await prisma.expense.delete({ where: { id: expenseId } })
+    // Moves to the household trash (restorable); never hard-deleted
+    await prisma.expense.update({ where: { id: expenseId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
 
     await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()

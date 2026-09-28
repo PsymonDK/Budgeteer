@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcIncomeForYearDetailed, getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
@@ -224,7 +224,7 @@ async function resolveDeductions(
  * effectiveFrom ≤ the record date.  Records with no applicable card are
  * skipped (deductionsSource stays null until a card is added for that period).
  */
-async function recalculateSalaryDeductions(jobId: string, jobCountry: string): Promise<void> {
+export async function recalculateSalaryDeductions(jobId: string, jobCountry: string): Promise<void> {
   if (jobCountry !== 'DK') return
 
   const taxCards = await prisma.taxCardSettings.findMany({ where: { jobId } })
@@ -293,8 +293,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const jobs = await prisma.job.findMany({
       where: { userId: targetUserId },
       include: {
-        salaryRecords: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
-        bonuses: { where: { paymentDate: { gte: new Date() } }, select: { id: true } },
+        salaryRecords: { where: notDeleted, orderBy: { effectiveFrom: 'desc' }, take: 1 },
+        bonuses: { where: { ...notDeleted, paymentDate: { gte: new Date() } }, select: { id: true } },
         allocations: {
           include: {
             budgetYear: { select: { id: true, year: true, status: true, household: { select: { id: true, name: true } } } },
@@ -534,7 +534,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
 
-    await prisma.salaryRecord.delete({ where: { id: salaryId } })
+    // Moves to the income trash (restorable); never hard-deleted
+    await prisma.salaryRecord.update({ where: { id: salaryId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
 
     return reply.status(204).send()
   })
@@ -589,7 +590,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const override = await prisma.monthlyIncomeOverride.upsert({
       where: { jobId_year_month: { jobId, year, month } },
       create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
-      update: { grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
+      // A trashed override for the same month is replaced (the month is unique per job)
+      update: { grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData, deletedAt: null, deletedByUserId: null },
     })
 
     return reply.status(201).send(override)
@@ -606,7 +608,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.monthlyIncomeOverride.findFirst({ where: { id: overrideId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Override not found' })
 
-    await prisma.monthlyIncomeOverride.delete({ where: { id: overrideId } })
+    await prisma.monthlyIncomeOverride.update({ where: { id: overrideId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
     return reply.status(204).send()
   })
 
@@ -712,7 +714,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.taxCardSettings.findFirst({ where: { id: settingsId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Tax card settings not found' })
 
-    await prisma.taxCardSettings.delete({ where: { id: settingsId } })
+    await prisma.taxCardSettings.update({ where: { id: settingsId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
+    // Deductions calculated from this card fall back to the remaining cards
+    await recalculateSalaryDeductions(jobId, job.country)
     return reply.status(204).send()
   })
 
@@ -830,7 +834,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.bonus.findFirst({ where: { id: bonusId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Bonus not found' })
 
-    await prisma.bonus.delete({ where: { id: bonusId } })
+    await prisma.bonus.update({ where: { id: bonusId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
     return reply.status(204).send()
   })
 

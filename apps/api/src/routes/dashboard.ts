@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { Decimal } from '@prisma/client/runtime/client'
 import { calcIncomeForYear, calcIncomeForYearDetailed, getIncomeReferenceDate } from '../lib/incomeCalc'
@@ -271,11 +271,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     if (budgetModel === 'PAY_NO_PAY') {
       const [expOccs, savOccs] = await Promise.all([
         prisma.expenseOccurrence.findMany({
-          where: { expense: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          where: { expense: { budgetYearId: activeBudgetYear.id, ...notDeleted }, year: currentYear, month: currentMonth, status: 'PENDING' },
           select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
         }),
         prisma.savingsOccurrence.findMany({
-          where: { savingsEntry: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          where: { savingsEntry: { budgetYearId: activeBudgetYear.id, ...notDeleted }, year: currentYear, month: currentMonth, status: 'PENDING' },
           select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
         }),
       ])
@@ -375,8 +375,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
       include: {
-        expenses: { include: { category: { select: { id: true, name: true, icon: true } } } },
-        savingsEntries: true,
+        expenses: { where: notDeleted, include: { category: { select: { id: true, name: true, icon: true } } } },
+        savingsEntries: { where: notDeleted },
       },
       orderBy: { year: 'asc' },
     })

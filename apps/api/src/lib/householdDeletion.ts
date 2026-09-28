@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client'
+import type { PrismaTx } from './prisma'
 import { deleteBudgetYearWithDependencies } from '../routes/budgetYears'
 
 /**
@@ -6,7 +6,7 @@ import { deleteBudgetYearWithDependencies } from '../routes/budgetYears'
  * Budget years, members and automations have no cascading foreign keys, so they are
  * removed explicitly; receipts, accounts and receipt classifier data cascade.
  */
-export async function deleteHouseholdWithDependencies(tx: Prisma.TransactionClient, householdId: string): Promise<void> {
+export async function deleteHouseholdWithDependencies(tx: PrismaTx, householdId: string): Promise<void> {
   const budgetYears = await tx.budgetYear.findMany({ where: { householdId }, select: { id: true } })
   // Copies reference their source year; clear those links first so deletion order doesn't matter
   await tx.budgetYear.updateMany({ where: { householdId }, data: { copiedFromId: null } })

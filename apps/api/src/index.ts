@@ -28,6 +28,7 @@ import { payslipRoutes } from './routes/payslips'
 import { receiptRoutes } from './routes/receipts'
 import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { occurrenceRoutes } from './routes/occurrences'
+import { trashRoutes } from './routes/trash'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
@@ -104,6 +105,7 @@ app.register(currencyRoutes)
 app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(occurrenceRoutes)
+app.register(trashRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
 app.register(receiptRoutes)

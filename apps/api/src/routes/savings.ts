@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { calcMonthlyInBase } from '../lib/calculations'
 import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
@@ -290,7 +290,8 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const existing = await prisma.savingsEntry.findFirst({ where: { id: entryId, budgetYearId: id } })
     if (!existing) return reply.status(404).send({ error: 'Savings entry not found' })
 
-    await prisma.savingsEntry.delete({ where: { id: entryId } })
+    // Moves to the household trash (restorable); never hard-deleted
+    await prisma.savingsEntry.update({ where: { id: entryId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
 
     await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()
@@ -305,7 +306,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
-      include: { savingsEntries: true },
+      include: { savingsEntries: { where: notDeleted } },
       orderBy: { year: 'asc' },
     })
 

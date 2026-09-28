@@ -1,6 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
+import { includingTrashed, notDeleted, prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 import { getActiveMembership } from '../lib/ownership'
 
@@ -42,7 +42,7 @@ const categorySelect = {
   householdId: true,
   createdAt: true,
   createdBy: { select: { id: true, name: true } },
-  _count: { select: { expenses: true, savingsEntries: true } },
+  _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } },
 } as const
 
 const subcategorySelect = {
@@ -378,10 +378,11 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 
       // Retired budget years are read-only history: reassign only editable years, and
       // keep the category (deactivated) if retired entries still reference it.
-      const editable = { budgetYear: { status: { not: 'RETIRED' as const } } }
+      // Trashed entries are included so a later restore lands on a valid category
+      const editable = { ...includingTrashed, budgetYear: { status: { not: 'RETIRED' as const } } }
       const retiredInUse =
-        (await prisma.expense.count({ where: { categoryId: id, budgetYear: { status: 'RETIRED' } } })) +
-        (await prisma.savingsEntry.count({ where: { categoryId: id, budgetYear: { status: 'RETIRED' } } }))
+        (await prisma.expense.count({ where: { ...includingTrashed, categoryId: id, budgetYear: { status: 'RETIRED' } } })) +
+        (await prisma.savingsEntry.count({ where: { ...includingTrashed, categoryId: id, budgetYear: { status: 'RETIRED' } } }))
 
       await prisma.$transaction([
         prisma.expense.updateMany({ where: { categoryId: id, ...editable }, data: { categoryId: replacementId } }),
@@ -391,7 +392,12 @@ export async function categoryRoutes(fastify: FastifyInstance) {
           : prisma.category.delete({ where: { id } }),
       ])
     } else {
-      await prisma.category.delete({ where: { id } })
+      // Only trashed entries (not counted as "in use") may still reference it
+      const trashedRefs =
+        (await prisma.expense.count({ where: { categoryId: id, deletedAt: { not: null } } })) +
+        (await prisma.savingsEntry.count({ where: { categoryId: id, deletedAt: { not: null } } }))
+      if (trashedRefs > 0) await prisma.category.update({ where: { id }, data: { isActive: false } })
+      else await prisma.category.delete({ where: { id } })
     }
 
     return reply.status(204).send()

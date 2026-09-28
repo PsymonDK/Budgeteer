@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess, resolveEffectiveAmount } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
@@ -158,11 +158,11 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
     if (budgetModel === 'PAY_NO_PAY') {
       const [expOccs, savOccs] = await Promise.all([
         prisma.expenseOccurrence.findMany({
-          where: { expense: { budgetYearId: id }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
+          where: { expense: { budgetYearId: id, ...notDeleted }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
         }),
         prisma.savingsOccurrence.findMany({
-          where: { savingsEntry: { budgetYearId: id }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
+          where: { savingsEntry: { budgetYearId: id, ...notDeleted }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
         }),
       ])

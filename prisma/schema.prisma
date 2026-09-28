@@ -235,6 +235,9 @@ model SalaryRecord {
   payslipLines           Json?
   pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
   deductionsSource       String?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt      DateTime @default(now())
 
   @@index([jobId, effectiveFrom])
@@ -253,6 +256,9 @@ model MonthlyIncomeOverride {
   payslipLines           Json?
   pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
   deductionsSource       String?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -271,8 +277,13 @@ model Bonus {
   budgetMode       BudgetMode?
   currencyCode     String?
   rateUsed         Decimal?    @db.Decimal(18, 6)
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  @@index([jobId])
 }
 
 model HouseholdIncomeAllocation {
@@ -298,6 +309,9 @@ model TaxCardSettings {
   pensionEmployerPct   Decimal? @db.Decimal(5, 2)
   atpAmount            Decimal? @db.Decimal(10, 2)
   bruttoItems          Json?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt            DateTime @default(now())
 
   @@index([jobId, effectiveFrom])
@@ -487,8 +501,13 @@ model Expense {
   account           Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
   customSplits      ExpenseCustomSplit[]
   occurrences       ExpenseOccurrence[]
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@index([budgetYearId])
 }
 
 model ExpenseCustomSplit {
@@ -526,8 +545,13 @@ model SavingsEntry {
   category          Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   customSplits      SavingsCustomSplit[]
   occurrences       SavingsOccurrence[]
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@index([budgetYearId])
 }
 
 model SavingsCustomSplit {

@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Trash for financial records** — deleting an expense, savings entry, salary record, monthly override, bonus or tax card now moves it to a trash instead of erasing it (the project rule is never to hard-delete financial data). New endpoints list and restore trashed items per household (`/households/:id/trash`) and per user (`/users/:id/income/trash`). Trashed items are excluded from all totals, transfers and income until restored.
 - **Server-side session revocation** — password changes, admin password resets, role changes, deactivation and conversion to a proxy user now end all of the user's sessions immediately (refresh tokens deleted, older access tokens rejected). Changing your own password returns fresh tokens so the current tab stays signed in.
 - **Refresh token theft detection** — refresh tokens are stored hashed, rotated tokens are kept as revoked, and presenting a rotated token again revokes every session of that user. Expired tokens are purged daily.
 - **`TRUST_PROXY`** and optional **`EXTRA_CA_FILE`** build secret (see README).

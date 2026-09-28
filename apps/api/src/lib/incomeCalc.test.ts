@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 
-vi.mock('./prisma', () => ({ prisma: {} }))
+vi.mock('./prisma', () => ({ prisma: {}, notDeleted: { deletedAt: null }, includingTrashed: { deletedAt: undefined } }))
 
 import { Decimal } from '@prisma/client/runtime/client'
 import { aggregateAllocatedIncome } from './incomeCalc'

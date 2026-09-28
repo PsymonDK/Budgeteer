@@ -1,5 +1,5 @@
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from './prisma'
+import { prisma, notDeleted } from './prisma'
 import { calcForwardMonthlyNeed, calcOccurrenceScheduledAmount, activeMonthCount } from './calculations'
 
 type ScheduleSource = { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }
@@ -189,11 +189,11 @@ async function recalculatePayNoPay(
 
   const [expOccs, savOccs] = await Promise.all([
     prisma.expenseOccurrence.findMany({
-      where: { expense: { budgetYearId }, year },
+      where: { expense: { budgetYearId, ...notDeleted }, year },
       select: { month: true, status: true, scheduledAmount: true, carriedAmount: true },
     }),
     prisma.savingsOccurrence.findMany({
-      where: { savingsEntry: { budgetYearId }, year },
+      where: { savingsEntry: { budgetYearId, ...notDeleted }, year },
       select: { month: true, status: true, scheduledAmount: true, carriedAmount: true },
     }),
   ])
@@ -231,12 +231,12 @@ async function syncPayNoPayOccurrences(
 
   const [existingExpOccs, savingsEntries, existingSavOccs] = await Promise.all([
     prisma.expenseOccurrence.findMany({
-      where: { expense: { budgetYearId }, year, month: { in: months } },
+      where: { expense: { budgetYearId, ...notDeleted }, year, month: { in: months } },
       select: { id: true, expenseId: true, month: true, status: true, scheduledAmount: true },
     }),
     prisma.savingsEntry.findMany({ where: { budgetYearId }, select: { id: true, monthlyEquivalent: true } }),
     prisma.savingsOccurrence.findMany({
-      where: { savingsEntry: { budgetYearId }, year, month: { in: months } },
+      where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month: { in: months } },
       select: { id: true, savingsEntryId: true, month: true, status: true, scheduledAmount: true },
     }),
   ])
@@ -279,11 +279,11 @@ async function syncPayNoPayOccurrences(
 export async function closePayNoPayMonth(budgetYearId: string, year: number, month: number): Promise<void> {
   await Promise.all([
     prisma.expenseOccurrence.updateMany({
-      where: { expense: { budgetYearId }, year, month, status: 'PENDING' },
+      where: { expense: { budgetYearId, ...notDeleted }, year, month, status: 'PENDING' },
       data: { status: 'SKIPPED' },
     }),
     prisma.savingsOccurrence.updateMany({
-      where: { savingsEntry: { budgetYearId }, year, month, status: 'PENDING' },
+      where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month, status: 'PENDING' },
       data: { status: 'SKIPPED' },
     }),
   ])
@@ -318,8 +318,8 @@ export async function rolloverPayNoPayOccurrences(
   await closePayNoPayMonth(budgetYearId, year, closingMonth)
 
   const [closedExpOccs, closedSavOccs, expenses, savingsEntries] = await Promise.all([
-    prisma.expenseOccurrence.findMany({ where: { expense: { budgetYearId }, year, month: closingMonth, status: 'SKIPPED' } }),
-    prisma.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId }, year, month: closingMonth, status: 'SKIPPED' } }),
+    prisma.expenseOccurrence.findMany({ where: { expense: { budgetYearId, ...notDeleted }, year, month: closingMonth, status: 'SKIPPED' } }),
+    prisma.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month: closingMonth, status: 'SKIPPED' } }),
     prisma.expense.findMany({
       where: { budgetYearId },
       select: { id: true, monthlyEquivalent: true, startMonth: true, endMonth: true },
