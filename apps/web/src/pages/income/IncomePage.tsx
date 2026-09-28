@@ -20,6 +20,7 @@ import {
   useTaxCardEditor,
 } from './useIncomeEditors'
 import type { Tab } from './types'
+import { IncomeTrashTab } from './IncomeTrashTab'
 
 /** Personal income: jobs & salary history, monthly overrides, bonuses and household allocations. */
 export function IncomePage() {
@@ -32,9 +33,9 @@ export function IncomePage() {
   } = useIncomeData(activeTab)
 
   const jobEditor = useJobEditor(targetUserId)
-  const salaryEditor = useSalaryEditor(jobs, taxCards, baseCurrency)
-  const overrideEditor = useOverrideEditor(jobs, taxCards)
-  const bonusEditor = useBonusEditor(baseCurrency)
+  const salaryEditor = useSalaryEditor(jobs, taxCards, baseCurrency, targetUserId)
+  const overrideEditor = useOverrideEditor(jobs, taxCards, targetUserId)
+  const bonusEditor = useBonusEditor(baseCurrency, targetUserId)
   const allocations = useAllocationEditor()
   const taxCardEditor = useTaxCardEditor()
   const payslipImport = usePayslipImport()
@@ -69,7 +70,7 @@ export function IncomePage() {
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
         <div>
           <div className="flex border-b border-gray-800 mb-6">
-            {([['jobs', 'Jobs & Salary'], ['overrides', 'Monthly Overrides'], ['bonuses', 'Bonuses']] as [Tab, string][]).map(([t, label]) => (
+            {([['jobs', 'Jobs & Salary'], ['overrides', 'Monthly Overrides'], ['bonuses', 'Bonuses'], ['trash', 'Trash']] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => setActiveTab(t)}
                 className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? 'border-amber-400 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'}`}>
                 {label}
@@ -104,6 +105,8 @@ export function IncomePage() {
           {activeTab === 'bonuses' && (
             <BonusesTab jobs={jobs} allJobsBonuses={allJobsBonuses} fmt={fmt} bonusEditor={bonusEditor} />
           )}
+
+          {activeTab === 'trash' && <IncomeTrashTab targetUserId={targetUserId ?? undefined} fmt={fmt} />}
         </div>
       </main>
 

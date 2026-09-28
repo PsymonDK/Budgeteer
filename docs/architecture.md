@@ -286,7 +286,7 @@ Optional AI enhancement may call only a local/self-hosted HTTP model endpoint co
 3. A-skat: bottom tax + top-skat (both truncated to whole DKK)
 4. Net = gross − preAmTotal − amBidrag − aSkat
 
-The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-implemented in the frontend (`apps/web/src/pages/IncomePage.tsx`) for live preview before submission.
+The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-implemented in the frontend (`apps/web/src/lib/danishTaxPreview.ts`) for live preview before submission.
 
 ---
 

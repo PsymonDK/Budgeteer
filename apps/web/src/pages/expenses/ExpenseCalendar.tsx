@@ -7,38 +7,9 @@ import type { Expense } from './types'
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const RECURRING_FREQS = new Set<Frequency>(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY'])
 
+// The schedule (which months each expense falls due in) comes from the API
 function getMonthValues(expense: Expense): (number | null)[] {
-  const start = expense.startMonth ?? 1
-  const end = expense.endMonth ?? 12
-  // For recurring frequencies show the per-active-month equivalent (already server-computed).
-  // For lump-sum frequencies use the exact base-currency occurrence amount to avoid precision
-  // loss from reconstructing via the rounded monthlyEquivalent field (e.g. 1000/3=333.33*3=999.99).
-  const perMonth = parseFloat(expense.monthlyWhenActive)
-  const perOccurrence = parseFloat(expense.amountInBase)
-  const vals: (number | null)[] = Array(12).fill(null)
-  switch (expense.frequency) {
-    case 'WEEKLY':
-    case 'FORTNIGHTLY':
-    case 'MONTHLY':
-      for (let m = start; m <= end; m++) vals[m - 1] = perMonth
-      return vals
-    case 'QUARTERLY':
-      for (const m of [3, 6, 9, 12]) {
-        if (m >= start && m <= end) vals[m - 1] = perOccurrence
-      }
-      return vals
-    case 'BIANNUAL':
-      for (const m of [6, 12]) {
-        if (m >= start && m <= end) vals[m - 1] = perOccurrence
-      }
-      return vals
-    case 'ANNUAL':
-      vals[end - 1] = perOccurrence
-      return vals
-    default:
-      for (let m = start; m <= end; m++) vals[m - 1] = perMonth
-      return vals
-  }
+  return expense.monthSchedule.map((v) => (v === null ? null : parseFloat(v)))
 }
 
 export function ExpenseCalendar({ expenses, fmt }: { expenses: Expense[]; fmt: (v: number | string) => string }) {

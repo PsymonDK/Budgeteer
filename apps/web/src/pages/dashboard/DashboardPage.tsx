@@ -137,14 +137,14 @@ export function DashboardPage() {
   const surplus = parseFloat(summary?.surplus ?? '0')
 
   // SAV-002: savings rate
-  const savingsRate = income > 0 ? (savings / income) * 100 : null
+  const savingsRate = summary?.savingsRate != null ? parseFloat(summary.savingsRate) : null
 
   // SAV-003: adjusted surplus after extra savings slider
   const adjustedSurplus = useMemo(() => surplus - extraSavings, [surplus, extraSavings])
   const sliderMax = useMemo(() => Math.max(Math.ceil(surplus / 100) * 100, 500), [surplus])
 
   // VIZ-001: income flow Sankey data
-  const sankeyData = useMemo(() => buildIncomeSankey(summary, income, savings, surplus), [summary, income, savings, surplus])
+  const sankeyData = useMemo(() => buildIncomeSankey(summary), [summary])
 
   const receiptSankeyData = useMemo(
     () => buildReceiptSankey(receiptSummary, receiptCustomRangeValid),

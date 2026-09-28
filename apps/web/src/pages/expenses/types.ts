@@ -13,6 +13,8 @@ export interface Expense {
   monthlyEquivalent: string
   monthlyWhenActive: string
   amountInBase: string
+  /** Amount due per month, Jan..Dec (null = nothing due), computed by the API */
+  monthSchedule: (string | null)[]
   notes: string | null
   category: Pick<Category, 'id' | 'name' | 'icon' | 'isSystemWide' | 'categoryType'>
   currencyCode: string | null

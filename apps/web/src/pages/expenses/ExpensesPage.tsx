@@ -27,6 +27,7 @@ import { ExpensesTable } from './ExpensesTable'
 import { ExpenseCalendar } from './ExpenseCalendar'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
+import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -167,14 +168,15 @@ export function ExpensesPage() {
     },
   })
 
+  const trashedToast = useTrashedToast()
   const deleteMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to delete expense')),
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/expenses/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: qk.expenses(activeBudgetYear?.id) })
       setDeleteTarget(null)
-      toast.success('Expense deleted')
+      if (householdId) trashedToast('Expense deleted', restoreUrl({ householdId }, 'expense', id))
     },
   })
 

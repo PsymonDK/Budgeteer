@@ -19,6 +19,7 @@ import type {
   Bonus, BonusForm, DeductionOverrides, Job, JobForm, OverrideForm, SalaryForm, SalaryRecord, TaxCardDraft,
   TaxCardForm, TaxCardSettings,
 } from './types'
+import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 
 type TargetUserId = string | null | undefined
 
@@ -88,7 +89,8 @@ export type JobEditor = ReturnType<typeof useJobEditor>
 
 // ── Salary history ────────────────────────────────────────────────────────────
 
-export function useSalaryEditor(jobs: Job[], taxCards: Record<string, TaxCardSettings[]>, baseCurrency: string) {
+export function useSalaryEditor(jobs: Job[], taxCards: Record<string, TaxCardSettings[]>, baseCurrency: string, targetUserId?: TargetUserId) {
+  const trashedToast = useTrashedToast()
   const queryClient = useQueryClient()
   const [salaryJobId, setSalaryJobId] = useState<string | null>(null)
   const [salaryForm, setSalaryForm] = useState<SalaryForm>(emptySalary(''))
@@ -143,11 +145,12 @@ export function useSalaryEditor(jobs: Job[], taxCards: Record<string, TaxCardSet
   const deleteSalaryMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to delete salary record')),
     mutationFn: (salaryId: string) => api.delete(`/jobs/${salaryJobId}/salary/${salaryId}`),
-    onSuccess: () => {
+    onSuccess: (_data, salaryId) => {
       queryClient.invalidateQueries({ queryKey: qk.salary(salaryJobId) })
       queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
       queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
-      toast.success('Salary record deleted')
+      if (targetUserId) trashedToast('Salary record deleted', restoreUrl({ userId: targetUserId }, 'salary', salaryId))
+      else toast.success('Salary record deleted')
     },
   })
 
@@ -201,7 +204,8 @@ export type SalaryEditor = ReturnType<typeof useSalaryEditor>
 
 // ── Monthly overrides ─────────────────────────────────────────────────────────
 
-export function useOverrideEditor(jobs: Job[], taxCards: Record<string, TaxCardSettings[]>) {
+export function useOverrideEditor(jobs: Job[], taxCards: Record<string, TaxCardSettings[]>, targetUserId?: TargetUserId) {
+  const trashedToast = useTrashedToast()
   const queryClient = useQueryClient()
   const [overrideJobId, setOverrideJobId] = useState<string | null>(null)
   const [overrideForm, setOverrideForm] = useState<OverrideForm>(emptyOverride)
@@ -233,10 +237,11 @@ export function useOverrideEditor(jobs: Job[], taxCards: Record<string, TaxCardS
     onError: (err) => toast.error(getApiError(err, 'Failed to delete override')),
     mutationFn: ({ jobId, overrideId }: { jobId: string; overrideId: string }) =>
       api.delete(`/jobs/${jobId}/overrides/${overrideId}`),
-    onSuccess: () => {
+    onSuccess: (_data, { overrideId }) => {
       queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
       queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
-      toast.success('Override deleted')
+      if (targetUserId) trashedToast('Override deleted', restoreUrl({ userId: targetUserId }, 'override', overrideId))
+      else toast.success('Override deleted')
     },
   })
 
@@ -279,7 +284,8 @@ export type OverrideEditor = ReturnType<typeof useOverrideEditor>
 
 // ── Bonuses ───────────────────────────────────────────────────────────────────
 
-export function useBonusEditor(baseCurrency: string) {
+export function useBonusEditor(baseCurrency: string, targetUserId?: TargetUserId) {
+  const trashedToast = useTrashedToast()
   const queryClient = useQueryClient()
   const [bonusJobId, setBonusJobId] = useState<string | null>(null)
   const [editingBonus, setEditingBonus] = useState<Bonus | null>(null)
@@ -325,7 +331,12 @@ export function useBonusEditor(baseCurrency: string) {
     onError: (err) => toast.error(getApiError(err, 'Failed to delete bonus')),
     mutationFn: ({ jobId, bonusId }: { jobId: string; bonusId: string }) =>
       api.delete(`/jobs/${jobId}/bonuses/${bonusId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk.allBonusesAll() }); queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() }); toast.success('Bonus deleted') },
+    onSuccess: (_data, { bonusId }) => {
+      queryClient.invalidateQueries({ queryKey: qk.allBonusesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      if (targetUserId) trashedToast('Bonus deleted', restoreUrl({ userId: targetUserId }, 'bonus', bonusId))
+      else toast.success('Bonus deleted')
+    },
   })
 
   function openAddBonus(jobId: string) {

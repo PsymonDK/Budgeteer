@@ -23,6 +23,7 @@ import { getApiError } from '../../lib/apiError'
 import { SavingsTable } from './SavingsTable'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
+import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 
 export function SavingsPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -159,14 +160,15 @@ export function SavingsPage() {
     },
   })
 
+  const trashedToast = useTrashedToast()
   const deleteMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to delete savings entry')),
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/savings/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       invalidate()
       setDeleteTarget(null)
-      toast.success('Savings entry deleted')
+      if (householdId) trashedToast('Savings entry deleted', restoreUrl({ householdId }, 'savings', id))
     },
   })
 

@@ -61,8 +61,22 @@ export interface DashboardSummary {
   expenses: { totalMonthly: string; items: ExpenseItem[]; byCategory: ExpenseByCategory[]; byAccount: ExpenseByAccount[] }
   savings: { totalMonthly: string }
   surplus: string
+  /** Savings as % of net income, one decimal; null without income */
+  savingsRate: string | null
+  incomeFlow: IncomeFlow | null
   memberSplits: MemberSplit[]
   warnings: Warnings
+}
+
+export type IncomeFlowTarget =
+  | { kind: 'category'; categoryId: string; categoryName: string }
+  | { kind: 'savings' }
+  | { kind: 'surplus' }
+
+/** Per-member split of each destination, in cents that add up (server-computed) */
+export interface IncomeFlow {
+  members: { userId: string; name: string }[]
+  links: { userId: string; target: IncomeFlowTarget; amount: string }[]
 }
 
 // GET /households/:id/receipts/summary

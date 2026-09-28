@@ -13,11 +13,12 @@ import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { getApiError } from '../../lib/apiError'
 
+// GET /users returns full records to admins/bookkeepers and only { id, name } to others
 interface UserOption {
   id: string
   name: string
-  email: string
-  isActive: boolean
+  email?: string
+  isActive?: boolean
   isProxy?: boolean
 }
 
@@ -50,7 +51,9 @@ export function MembersSection({ householdId: id, household, isAdmin, me }: Memb
 
   // Users not already in this household
   const memberUserIds = new Set(household?.members.map((m) => m.userId) ?? [])
-  const availableUsers = allUsers.filter((u) => u.isActive && !memberUserIds.has(u.id))
+  // Non-admin callers get a minimal { id, name } list of active users (no email/isActive),
+  // so only an explicit isActive: false excludes a user
+  const availableUsers = allUsers.filter((u) => u.isActive !== false && !memberUserIds.has(u.id))
 
   const addMemberMutation = useMutation({
     mutationFn: () => api.post(`/households/${id}/members`, { userId: addUserId, role: addRole }),
@@ -201,7 +204,7 @@ export function MembersSection({ householdId: id, household, isAdmin, me }: Memb
                 <option value="">Select a user…</option>
                 {availableUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} — {u.email}{u.isProxy ? ' (proxy)' : ''}
+                    {u.name}{u.email ? ` — ${u.email}` : ''}{u.isProxy ? ' (proxy)' : ''}
                   </option>
                 ))}
               </select>

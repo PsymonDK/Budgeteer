@@ -30,6 +30,8 @@ export const qk = {
   households: () => ['households'] as const,
   householdsAdmin: () => ['households', 'admin'] as const,
   household: (householdId: Id) => ['household', householdId] as const,
+  householdTrash: (householdId: Id) => ['trash', 'household', householdId] as const,
+  incomeTrash: (userId: Id) => ['trash', 'income', userId] as const,
   budgetYears: (householdId: Id) => ['budget-years', householdId] as const,
   categories: (householdId: Id, type?: CategoryType) =>
     (type ? ['categories', householdId, type] : ['categories', householdId]) as readonly unknown[],

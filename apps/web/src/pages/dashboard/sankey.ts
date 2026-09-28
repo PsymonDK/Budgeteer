@@ -2,32 +2,31 @@
 // server's pre-aggregated totals for display.
 
 import type { SankeyLinkDef, SankeyNodeDef } from '../../components/SankeyChart'
-import type { DashboardSummary, ReceiptConsumptionSummary } from './types'
+import type { DashboardSummary, IncomeFlowTarget, ReceiptConsumptionSummary } from './types'
 
 const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', '#f43f5e', '#22d3ee', '#fbbf24']
 
 /** VIZ-001: income flow from each member to expense categories, savings and surplus. */
-export function buildIncomeSankey(summary: DashboardSummary | undefined, income: number, savings: number, surplus: number) {
-  if (!summary?.budgetYear || income <= 0) return null
-  const activeMembers = summary.income.members.filter((m) => parseFloat(m.monthlyAllocated) > 0)
-  if (activeMembers.length === 0) return null
+export function buildIncomeSankey(summary: DashboardSummary | undefined) {
+  const flow = summary?.budgetYear ? summary.incomeFlow : null
+  if (!flow || flow.members.length === 0) return null
+  const targetId = (t: IncomeFlowTarget) => (t.kind === 'category' ? `cat_${t.categoryId}` : t.kind)
+  const categories = [...new Map(
+    flow.links.flatMap((l) => (l.target.kind === 'category' ? [[l.target.categoryId, l.target.categoryName] as const] : [])),
+  )]
+  const hasTarget = (kind: 'savings' | 'surplus') => flow.links.some((l) => l.target.kind === kind)
   const nodes: SankeyNodeDef[] = [
-    ...activeMembers.map((m, i) => ({ id: `member_${m.userId}`, name: m.name, color: MEMBER_COLORS[i % MEMBER_COLORS.length] })),
-    ...summary.expenses.byCategory.map((c, i) => ({ id: `cat_${c.categoryId}`, name: c.categoryName, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] })),
-    ...(savings > 0 ? [{ id: 'savings', name: 'Savings', color: '#3b82f6' }] : []),
-    ...(surplus > 0 ? [{ id: 'surplus', name: 'Surplus', color: '#10b981' }] : []),
+    ...flow.members.map((m, i) => ({ id: `member_${m.userId}`, name: m.name, color: MEMBER_COLORS[i % MEMBER_COLORS.length] })),
+    ...categories.map(([id, name], i) => ({ id: `cat_${id}`, name, color: CATEGORY_COLORS[i % CATEGORY_COLORS.length] })),
+    ...(hasTarget('savings') ? [{ id: 'savings', name: 'Savings', color: '#3b82f6' }] : []),
+    ...(hasTarget('surplus') ? [{ id: 'surplus', name: 'Surplus', color: '#10b981' }] : []),
   ]
-  const links: SankeyLinkDef[] = []
-  for (const m of activeMembers) {
-    const netShare = income > 0 ? parseFloat(m.monthlyAllocatedNet) / income : 0
-    for (const c of summary.expenses.byCategory) {
-      const val = parseFloat(c.totalMonthly) * netShare
-      if (val > 0) links.push({ source: `member_${m.userId}`, target: `cat_${c.categoryId}`, value: val })
-    }
-    if (savings > 0) links.push({ source: `member_${m.userId}`, target: 'savings', value: savings * netShare })
-    if (surplus > 0) links.push({ source: `member_${m.userId}`, target: 'surplus', value: surplus * netShare })
-  }
+  const links: SankeyLinkDef[] = flow.links.map((l) => ({
+    source: `member_${l.userId}`,
+    target: targetId(l.target),
+    value: parseFloat(l.amount),
+  }))
   return { nodes, links }
 }
 

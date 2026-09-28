@@ -21,6 +21,7 @@ function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
 
 const UserDashboardPage = lazyNamed(() => import('./pages/user-dashboard/UserDashboardPage'), 'UserDashboardPage')
 const HouseholdPage = lazyNamed(() => import('./pages/household/HouseholdPage'), 'HouseholdPage')
+const TrashPage = lazyNamed(() => import('./pages/trash/TrashPage'), 'TrashPage')
 const DashboardPage = lazyNamed(() => import('./pages/dashboard/DashboardPage'), 'DashboardPage')
 const AdminUsersPage = lazyNamed(() => import('./pages/admin/UsersPage'), 'AdminUsersPage')
 const HouseholdsAdminPage = lazyNamed(() => import('./pages/admin/HouseholdsAdminPage'), 'HouseholdsAdminPage')
@@ -76,6 +77,7 @@ function App() {
               <Route path="history" element={page(<HistoryPage />)} />
               <Route path="compare" element={page(<ComparePage />)} />
               <Route path="settings" element={page(<HouseholdPage />)} />
+              <Route path="trash" element={page(<TrashPage />)} />
             </Route>
             {/* Admin routes — shared AdminLayout */}
             <Route

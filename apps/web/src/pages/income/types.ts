@@ -101,7 +101,7 @@ export interface HistoryBucket {
   bonuses: { jobId: string; label: string; gross: number; net: number }[]
 }
 
-export type Tab = 'jobs' | 'overrides' | 'bonuses'
+export type Tab = 'jobs' | 'overrides' | 'bonuses' | 'trash'
 export type Granularity = 'monthly' | 'quarterly' | 'yearly'
 
 // ── Forms ─────────────────────────────────────────────────────────────────────

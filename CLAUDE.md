@@ -21,7 +21,7 @@ npm run test             # API unit tests
 - ALL business logic calculations are done server-side, never in React components
 - `monthlyEquivalent` is always calculated on save and stored in the database — never recalculated at render time
 - Currency conversion is calculated server-side using stored rates
-- The helpers in `apps/web/src/lib/constants.ts` (`calcMonthly`) and `apps/web/src/pages/IncomePage.tsx` (`calcDanishDeductions`) may be used on the frontend ONLY for live previews in forms before submission
+- The helpers in `apps/web/src/lib/constants.ts` (`calcMonthly`) and `apps/web/src/lib/danishTaxPreview.ts` (`calcDanishDeductions`) may be used on the frontend ONLY for live previews in forms before submission
 - Dashboard totals come from pre-aggregated API responses, not client-side math
 - Income history chart data is aggregated server-side — the endpoint returns ready-to-display time series data
 
