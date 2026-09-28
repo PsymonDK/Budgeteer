@@ -4,7 +4,7 @@ import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { Decimal } from '@prisma/client/runtime/client'
 import { calcIncomeForYear, calcIncomeForYearDetailed, getIncomeReferenceDate } from '../lib/incomeCalc'
-import { assertHouseholdAccess, partitionByEffectiveAmount, resolveEffectiveAmount } from '../lib/ownership'
+import { assertHouseholdAccess, partitionByOwnership, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 import { computeIncomeShares, formatSharePct, splitByShares } from '../lib/incomeShare'
@@ -292,8 +292,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       effectiveAmount: resolveEffectiveAmount(s, budgetModel, savOccMap.get(s.id)),
     }))
 
-    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByEffectiveAmount(expensesWithEffective)
-    const { shared: sharedSavingsPoolEff, individual: individualSavingsMapEff, custom: customSavingsMapEff } = partitionByEffectiveAmount(savingsWithEffective)
+    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByOwnership(expensesWithEffective, (e) => e.effectiveAmount)
+    const { shared: sharedSavingsPoolEff, individual: individualSavingsMapEff, custom: customSavingsMapEff } = partitionByOwnership(savingsWithEffective, (s) => s.effectiveAmount)
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertBudgetYearAccess, resolveEffectiveAmount } from '../lib/ownership'
+import { assertBudgetYearAccess, ownershipTarget, resolveEffectiveAmount } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { computeIncomeShares } from '../lib/incomeShare'
@@ -223,9 +223,10 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
       addToAccount(accountKey, accountId, accountName, accountType, me)
 
-      if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) {
-        addToMember(item.ownedByUserId, accountKey, me)
-      } else if (item.customSplits.length > 0) {
+      const target = ownershipTarget(item)
+      if (target === 'individual') {
+        addToMember(item.ownedByUserId!, accountKey, me)
+      } else if (target === 'custom') {
         for (const split of item.customSplits) {
           addToMember(split.userId, accountKey, me * parseFloat(split.pct.toString()) / 100)
         }

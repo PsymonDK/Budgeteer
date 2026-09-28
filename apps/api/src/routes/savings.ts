@@ -199,8 +199,10 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const monthlyEquivalent = calcMonthlyInBase(newAmount, rate, newFrequency)
 
     const updated = await prisma.$transaction(async (tx) => {
-      // Always replace custom splits when ownership fields are touched
-      await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: entryId } })
+      // Replace custom splits only when the request touches ownership; a label-only
+      // edit must not wipe an existing custom split
+      const touchesOwnership = ownership !== undefined || customSplits !== undefined
+      if (touchesOwnership) await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: entryId } })
 
       const savedEntry = await tx.savingsEntry.update({
         where: { id: entryId },
@@ -222,7 +224,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
         include: savingsInclude,
       })
 
-      if (newOwnership === 'CUSTOM' && customSplits?.length) {
+      if (touchesOwnership && newOwnership === 'CUSTOM' && customSplits?.length) {
         await tx.savingsCustomSplit.createMany({
           data: customSplits.map((s) => ({
             savingsEntryId: entryId,

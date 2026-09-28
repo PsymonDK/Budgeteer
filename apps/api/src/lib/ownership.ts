@@ -120,10 +120,26 @@ interface OwnershipItem {
 }
 
 /**
- * Splits a list of expenses or savings entries into shared total, per-user
- * individual totals, and per-user custom-split totals (all in monthly equivalents).
+ * Who carries an item: its owner (INDIVIDUAL with an owner), its custom splits
+ * (CUSTOM with splits), or the household's shared pool. Anything else — e.g. an
+ * INDIVIDUAL item whose owner was removed — falls back to shared so its amount is
+ * never silently dropped from totals.
  */
-export function partitionByOwnership(items: OwnershipItem[]): {
+export function ownershipTarget(item: Pick<OwnershipItem, 'ownership' | 'ownedByUserId' | 'customSplits'>): 'shared' | 'individual' | 'custom' {
+  if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) return 'individual'
+  if (item.ownership === 'CUSTOM' && item.customSplits.length > 0) return 'custom'
+  return 'shared'
+}
+
+/**
+ * Splits expenses or savings entries into the shared total, per-user individual
+ * totals, and per-user custom-split totals. `amountOf` picks the amount to split
+ * (monthlyEquivalent by default, or a budget-model-resolved effective amount).
+ */
+export function partitionByOwnership<T extends OwnershipItem>(
+  items: T[],
+  amountOf: (item: T) => number = (item) => parseFloat(item.monthlyEquivalent.toString()),
+): {
   shared: number
   individual: Map<string, number>
   custom: Map<string, number>
@@ -133,16 +149,17 @@ export function partitionByOwnership(items: OwnershipItem[]): {
   const custom = new Map<string, number>()
 
   for (const item of items) {
-    const monthly = parseFloat(item.monthlyEquivalent.toString())
-    if (item.ownership === 'SHARED') {
-      shared += monthly
-    } else if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) {
-      individual.set(item.ownedByUserId, (individual.get(item.ownedByUserId) ?? 0) + monthly)
-    } else if (item.ownership === 'CUSTOM') {
+    const amount = amountOf(item)
+    const target = ownershipTarget(item)
+    if (target === 'individual') {
+      individual.set(item.ownedByUserId!, (individual.get(item.ownedByUserId!) ?? 0) + amount)
+    } else if (target === 'custom') {
       for (const split of item.customSplits) {
         const pct = parseFloat(split.pct.toString()) / 100
-        custom.set(split.userId, (custom.get(split.userId) ?? 0) + monthly * pct)
+        custom.set(split.userId, (custom.get(split.userId) ?? 0) + amount * pct)
       }
+    } else {
+      shared += amount
     }
   }
 
@@ -186,37 +203,4 @@ export function resolveEffectiveAmount(
     )
   }
   return parseFloat(item.monthlyEquivalent.toString())
-}
-
-/**
- * Same partitioning logic as partitionByOwnership, but reads a pre-resolved
- * effectiveAmount field instead of monthlyEquivalent. Use after calling
- * resolveEffectiveAmount on each item.
- */
-export function partitionByEffectiveAmount(
-  items: Array<OwnershipItem & { effectiveAmount: number }>,
-): {
-  shared: number
-  individual: Map<string, number>
-  custom: Map<string, number>
-} {
-  let shared = 0
-  const individual = new Map<string, number>()
-  const custom = new Map<string, number>()
-
-  for (const item of items) {
-    const monthly = item.effectiveAmount
-    if (item.ownership === 'SHARED') {
-      shared += monthly
-    } else if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) {
-      individual.set(item.ownedByUserId, (individual.get(item.ownedByUserId) ?? 0) + monthly)
-    } else if (item.ownership === 'CUSTOM') {
-      for (const split of item.customSplits) {
-        const pct = parseFloat(split.pct.toString()) / 100
-        custom.set(split.userId, (custom.get(split.userId) ?? 0) + monthly * pct)
-      }
-    }
-  }
-
-  return { shared, individual, custom }
 }
