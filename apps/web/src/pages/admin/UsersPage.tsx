@@ -3,9 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
+import { FormError } from '../../components/FormError'
 import { PageLoader } from '../../components/LoadingSpinner'
-import { inputClass } from '../../lib/styles'
+import { inputClass, primaryBtnSm } from '../../lib/styles'
 
 interface User {
   id: string
@@ -72,7 +74,7 @@ export function AdminUsersPage() {
   const [resetPassword, setResetPassword] = useState('')
 
   const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['users'],
+    queryKey: qk.users(),
     queryFn: async () => {
       const res = await api.get<User[]>('/users')
       return res.data
@@ -82,7 +84,7 @@ export function AdminUsersPage() {
   const createMutation = useMutation({
     mutationFn: (data: UserFormData) => api.post<User>('/users', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setShowCreate(false)
       setCreateForm({ email: '', name: '', password: '', isProxy: false })
       setFormError('')
@@ -99,7 +101,7 @@ export function AdminUsersPage() {
     mutationFn: ({ id, data }: { id: string; data: Partial<EditFormData> }) =>
       api.put<User>(`/users/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setEditingUser(null)
       setFormError('')
       toast.success('User updated')
@@ -115,7 +117,7 @@ export function AdminUsersPage() {
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       api.post<User>(`/users/${id}/reset-password`, { password }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setResetUser(null)
       setResetPassword('')
       setFormError('')
@@ -170,7 +172,7 @@ export function AdminUsersPage() {
           <h1 className="text-2xl font-semibold">Users</h1>
           <button
             onClick={() => { setShowCreate(true); setFormError('') }}
-            className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+            className={primaryBtnSm}
           >
             + New user
           </button>
@@ -287,7 +289,7 @@ export function AdminUsersPage() {
                 Proxy users cannot log in directly. A bookkeeper or admin can enter income on their behalf.
               </p>
             )}
-            {formError && <ErrorMsg>{formError}</ErrorMsg>}
+            <FormError message={formError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={createMutation.isPending} className={submitClass}>
                 {createMutation.isPending ? 'Creating…' : 'Create user'}
@@ -319,7 +321,7 @@ export function AdminUsersPage() {
                 placeholder="Min. 8 characters"
               />
             </Field>
-            {formError && <ErrorMsg>{formError}</ErrorMsg>}
+            <FormError message={formError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={resetMutation.isPending} className={submitClass}>
                 {resetMutation.isPending ? 'Saving…' : 'Reset password'}
@@ -394,7 +396,7 @@ export function AdminUsersPage() {
                 <span className="text-gray-300 text-sm">Cannot log in directly</span>
               </label>
             </Field>
-            {formError && <ErrorMsg>{formError}</ErrorMsg>}
+            <FormError message={formError} />
             <div className="flex gap-3 pt-2">
               <button type="submit" disabled={updateMutation.isPending} className={submitClass}>
                 {updateMutation.isPending ? 'Saving…' : 'Save changes'}
@@ -416,14 +418,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
-      {children}
-    </div>
-  )
-}
-
-function ErrorMsg({ children }: { children: ReactNode }) {
-  return (
-    <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
       {children}
     </div>
   )

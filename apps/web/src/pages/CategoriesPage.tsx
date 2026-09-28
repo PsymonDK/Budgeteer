@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
@@ -10,26 +10,12 @@ import { IconPicker } from '../components/IconPicker'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn, dangerBtn, primaryBtnSm } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
-
-interface Category {
-  id: string
-  name: string
-  icon: string | null
-  isSystemWide: boolean
-  householdId: string | null
-  createdAt: string
-  categoryType: 'EXPENSE' | 'SAVINGS'
-  createdBy: { id: string; name: string }
-  _count: { expenses: number; savingsEntries: number }
-}
-
-interface Household {
-  id: string
-  name: string
-  myRole: 'ADMIN' | 'MEMBER' | null
-}
+import type { Category } from '../api/types'
+import { qk } from '../api/queryKeys'
+import { useCategories, useHouseholdDetail } from '../api/queries'
+import { FormError } from '../components/FormError'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -48,18 +34,9 @@ export function CategoriesPage() {
   const [replacementId, setReplacementId] = useState('')
   const [deleteError, setDeleteError] = useState('')
 
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: household } = useHouseholdDetail(householdId)
 
-  const { data: categories = [], isLoading } = useQuery<Category[]>({
-    queryKey: ['categories', householdId],
-    queryFn: async () =>
-      (await api.get<Category[]>(`/categories?householdId=${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: categories = [], isLoading } = useCategories(householdId)
 
   const isHouseholdAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
   const isSystemAdmin = me?.role === 'SYSTEM_ADMIN'
@@ -77,7 +54,7 @@ export function CategoriesPage() {
     mutationFn: ({ name, icon, categoryType }: { name: string; icon: string | null; categoryType: 'EXPENSE' | 'SAVINGS' }) =>
       api.post<Category & { warning?: string }>('/categories', { name, householdId, categoryType, ...(icon ? { icon } : {}) }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['categories', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.categories(householdId) })
       setShowCreate(false)
       setNewName('')
       setNewIcon(null)
@@ -99,7 +76,7 @@ export function CategoriesPage() {
       return api.delete(`/categories/${id}`, totalInUse > 0 && repId ? { data: { replacementId: repId } } : undefined)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.categories(householdId) })
       setDeleteTarget(null)
       setReplacementId('')
       setDeleteError('')
@@ -115,7 +92,7 @@ export function CategoriesPage() {
   const promoteMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to promote category')),
     mutationFn: (id: string) => api.post(`/categories/${id}/promote`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories', householdId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.categories(householdId) }),
   })
 
   function handleCreate(e: FormEvent) {
@@ -164,7 +141,7 @@ export function CategoriesPage() {
             {isHouseholdAdmin && (
               <button
                 onClick={() => openCreate('EXPENSE')}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className={primaryBtnSm}
               >
                 + New category
               </button>
@@ -235,7 +212,7 @@ export function CategoriesPage() {
             {isHouseholdAdmin && (
               <button
                 onClick={() => openCreate('SAVINGS')}
-                className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors"
+                className={primaryBtnSm}
               >
                 + New category
               </button>
@@ -398,21 +375,19 @@ export function CategoriesPage() {
                 />
               )}
             </div>
-            {createError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{createError}</div>
-            )}
+            <FormError message={createError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={createMutation.isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {createMutation.isPending ? 'Creating…' : 'Create'}
               </button>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
@@ -459,21 +434,19 @@ export function CategoriesPage() {
                 </p>
               )
             })()}
-            {deleteError && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">{deleteError}</div>
-            )}
+            <FormError message={deleteError} />
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={deleteMutation.isPending || ((deleteTarget._count.expenses + deleteTarget._count.savingsEntries) > 0 && !replacementId)}
-                className="flex-1 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${dangerBtn}`}
               >
                 {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
               </button>
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${secondaryBtn}`}
               >
                 Cancel
               </button>
