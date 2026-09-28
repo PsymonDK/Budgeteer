@@ -11,6 +11,7 @@ import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency, type AccountType, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
+import { getApiError } from '../lib/apiError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -278,6 +279,7 @@ export function SavingsPage() {
   })
 
   const deleteMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete savings entry')),
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/savings/${id}`),
     onSuccess: () => {
@@ -573,11 +575,11 @@ export function SavingsPage() {
                       {FREQUENCIES.find((f) => f.value === e.frequency)?.label}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-200 tabular-nums">
-                      {fmt(parseFloat(e.originalAmount ?? e.amount))}
+                      {fmt(parseFloat(e.originalAmount ?? e.amount), e.currencyCode ? '' : undefined)}
                       {e.currencyCode && <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
-                      {fmt(parseFloat(e.monthlyEquivalent))}
+                      {fmt(parseFloat(e.monthlyEquivalent), '')}
                       <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
                     </td>
                     {!isReadOnly && (
@@ -593,7 +595,8 @@ export function SavingsPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-gray-700 bg-gray-800/50">
-                  <td colSpan={colSpan - 1} className="px-4 py-3 text-sm text-gray-400 font-medium">
+                  {/* Spans every column before "/ month"; the actions column (edit mode) gets its own empty cell */}
+                  <td colSpan={isReadOnly ? colSpan - 1 : colSpan - 2} className="px-4 py-3 text-sm text-gray-400 font-medium">
                     Total{filterAccounts.size > 0 ? ' (filtered)' : ''} — {filteredEntries.length} {filteredEntries.length === 1 ? 'entry' : 'entries'}
                   </td>
                   <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">{fmt(totalMonthly)}</td>
@@ -675,10 +678,10 @@ export function SavingsPage() {
               {previewMonthly !== null && (
                 <p className="text-xs text-gray-500">
                   Monthly equivalent:{' '}
-                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)} {baseCurrency}</span>
+                  <span className="text-amber-400 font-medium">{fmt(previewMonthly)}</span>
                   {isForeignCurrency && form.amount && (
                     <span className="ml-2 text-gray-600">
-                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                      ({fmt(parseFloat(form.amount), form.currencyCode)} × {selectedCurrencyRate.toFixed(4)})
                     </span>
                   )}
                 </p>

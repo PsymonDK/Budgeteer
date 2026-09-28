@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Switching household kept the previous household's page state** — household pages are now remounted on switch. Previously an open rename form could rename the newly selected household to the old name, Expenses offered to create a duplicate budget year, and bulk-edit selections from one household could be sent to another.
+- **Logout left the previous user's data cached** — logout now clears the query cache and the remembered active household, so the next user in the same tab never sees it.
+- **Transient API errors logged users out** — only a 401/403 from `/users/me` ends the session; network errors and API restarts no longer wipe it. Failed logins are no longer routed through the token-refresh flow.
+- **Profile preferred-currency dropdown was empty** — it read `currencyCode` while the API returns `code`.
+- **Header name/avatar stayed stale after profile edits**, and pinning a default household didn't refresh the profile page (and vice versa).
+- **Income allocations** — saving now sends one job's edits sequentially and only clears that job's pending edits (it used to discard every job's unsaved edits after the first response). The over-allocation check counts saved allocations too, and is a soft warning again instead of blocking Save.
+- **Deduction overrides of 0 were ignored** — an explicit 0 (e.g. no pension or ATP) is now kept instead of falling back to the calculated amount.
+- **Income history chart didn't update** after salary, override, bonus, or tax card changes on the same page.
+- **Doubled currency labels** such as "1,000.00 DKK DKK" and "100.00 DKK EUR" on Savings, Expenses, and salary history.
+- **Savings totals row** had one cell too many in edit mode, pushing the total under the Actions column.
+- **Date defaults off by one day in Denmark** — form defaults and dashboard/receipt period filters used UTC dates; they now use the local calendar date.
+- **Silent failures** — deletes, role changes, member removal, budget-year retire/promote/delete, job close, transfer mark-paid/revert, and admin automation actions now show the API error instead of doing nothing.
+- **Ended expenses were dimmed based on today's month even when viewing another budget year.**
+- **Stale default household** after leaving every household is now cleared.
 - **Lint findings** — removed unused imports/variables, replaced statement-position ternaries, and added the missing `height` dependency so the Sankey chart re-lays out when its height prop changes.
 
 ---

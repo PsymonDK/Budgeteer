@@ -2,8 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useAuth } from './AuthContext'
-
-const LS_KEY = 'budgeteer_active_household'
+import { ACTIVE_HOUSEHOLD_KEY as LS_KEY } from '../lib/storageKeys'
 
 interface Household { id: string; name: string }
 
@@ -39,6 +38,10 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
       const fallback = households[0].id
       setActiveHouseholdId(fallback)
       localStorage.setItem(LS_KEY, fallback)
+    } else {
+      // No memberships (left or removed from every household): forget the stale ID
+      setActiveHouseholdId(null)
+      localStorage.removeItem(LS_KEY)
     }
   }, [households])
 

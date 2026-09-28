@@ -9,6 +9,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
+import { getApiError } from '../lib/apiError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -149,6 +150,7 @@ export function BudgetYearsPage() {
   })
 
   const retireMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to retire budget year')),
     mutationFn: (id: string) =>
       api.patch(`/households/${householdId}/budget-years/${id}/retire`),
     onSuccess: () => {
@@ -159,6 +161,7 @@ export function BudgetYearsPage() {
   })
 
   const promoteMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to promote simulation')),
     mutationFn: (id: string) =>
       api.patch(`/households/${householdId}/budget-years/${id}/promote`),
     onSuccess: () => {
@@ -169,6 +172,7 @@ export function BudgetYearsPage() {
   })
 
   const deleteMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete budget year')),
     mutationFn: (id: string) =>
       api.delete(`/households/${householdId}/budget-years/${id}`),
     onSuccess: () => {

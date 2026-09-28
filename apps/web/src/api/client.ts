@@ -37,7 +37,10 @@ api.interceptors.response.use(
 
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    // /auth/* calls (login, refresh, logout) report their own 401s; retrying
+    // them through the refresh flow would bounce a failed login to /login.
+    const isAuthCall = originalRequest?.url?.startsWith('/auth/') ?? false
+    if (error.response?.status !== 401 || originalRequest._retry || isAuthCall) {
       return Promise.reject(error)
     }
 

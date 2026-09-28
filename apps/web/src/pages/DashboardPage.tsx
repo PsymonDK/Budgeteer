@@ -11,6 +11,9 @@ import { FREQ_LABELS } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 import { useTransfers, type BudgetTransfer } from '../hooks/useTransfers'
 import { useTransferBreakdown } from '../hooks/useTransferBreakdown'
+import { toast } from 'sonner'
+import { getApiError } from '../lib/apiError'
+import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -140,8 +143,8 @@ export function DashboardPage() {
   // SAV-003: affordability slider (extra monthly savings)
   const [extraSavings, setExtraSavings] = useState(0)
   const [receiptPeriod, setReceiptPeriod] = useState<ReceiptSummaryPeriod>('currentMonth')
-  const [receiptStartDate, setReceiptStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
-  const [receiptEndDate, setReceiptEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [receiptStartDate, setReceiptStartDate] = useState(() => startOfLocalMonthISO())
+  const [receiptEndDate, setReceiptEndDate] = useState(() => toLocalISODate())
 
   // Budget transfer state
   const [markPaidTransfer, setMarkPaidTransfer] = useState<BudgetTransfer | null>(null)
@@ -209,6 +212,8 @@ export function DashboardPage() {
       )
       queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
       setMarkPaidTransfer(null)
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to mark transfer as paid'))
     } finally {
       setMarkPaidLoading(false)
     }
@@ -216,10 +221,14 @@ export function DashboardPage() {
 
   async function handleRevert(transfer: BudgetTransfer) {
     if (!summary?.budgetYear) return
-    await api.patch(
-      `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
-    )
-    queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+    try {
+      await api.patch(
+        `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
+      )
+      queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to revert transfer'))
+    }
   }
 
   function dismiss(key: string) {

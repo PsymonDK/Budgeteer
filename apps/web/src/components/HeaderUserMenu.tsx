@@ -59,7 +59,7 @@ export default function HeaderUserMenu() {
           </div>
           <div className="border-t border-gray-800 py-1">
             <button
-              onClick={() => { setOpen(false); logout() }}
+              onClick={() => { setOpen(false); logout().catch(() => { /* session is cleared locally regardless */ }) }}
               className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
             >
               Sign out

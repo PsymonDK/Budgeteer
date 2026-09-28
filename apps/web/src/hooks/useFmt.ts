@@ -4,6 +4,7 @@ import { api } from '../api/client'
 /**
  * Returns a fmt() function pre-loaded with the base currency code.
  * Formats a number as "1,234.56 DKK" (or just "1,234.56" while loading).
+ * Pass `currency` to label a foreign-currency amount, or '' for no suffix.
  */
 export function useFmt() {
   const { data } = useQuery({
@@ -12,9 +13,9 @@ export function useFmt() {
     staleTime: Infinity,
   })
   const currency = data?.baseCurrency ?? ''
-  return (v: number | string) => {
+  return (v: number | string, suffix: string = currency) => {
     const n = Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-    return currency ? `${n} ${currency}` : n
+    return suffix ? `${n} ${suffix}` : n
   }
 }
 

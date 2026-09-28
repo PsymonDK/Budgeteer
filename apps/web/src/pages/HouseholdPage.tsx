@@ -10,6 +10,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { inputClass } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
+import { getApiError } from '../lib/apiError'
 
 interface Member {
   id: string
@@ -201,6 +202,7 @@ export function HouseholdPage() {
   })
 
   const removeMemberMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to remove member')),
     mutationFn: (memberId: string) => api.delete(`/households/${id}/members/${memberId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['household', id] })
@@ -209,6 +211,7 @@ export function HouseholdPage() {
   })
 
   const updateRoleMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to change role')),
     mutationFn: ({ memberId, role }: { memberId: string; role: 'ADMIN' | 'MEMBER' }) =>
       api.put(`/households/${id}/members/${memberId}`, { role }),
     onSuccess: () => {

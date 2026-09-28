@@ -16,6 +16,8 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { useFmt } from '../hooks/useFmt'
+import { getApiError } from '../lib/apiError'
+import { toLocalISODate, toLocalISOMonth } from '../lib/dates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -170,11 +172,11 @@ interface DeductionOverrides {
   atpAmount: string
 }
 
-const emptyJob: JobForm = { name: '', employer: '', country: 'DK', startDate: new Date().toISOString().slice(0, 10), endDate: '' }
-const emptySalary = (baseCurrency: string): SalaryForm => ({ grossAmount: '', netAmount: '', effectiveFrom: new Date().toISOString().slice(0, 10), currencyCode: baseCurrency })
+const emptyJob = (): JobForm => ({ name: '', employer: '', country: 'DK', startDate: toLocalISODate(), endDate: '' })
+const emptySalary = (baseCurrency: string): SalaryForm => ({ grossAmount: '', netAmount: '', effectiveFrom: toLocalISODate(), currencyCode: baseCurrency })
 const emptyOverride: OverrideForm = { year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1), grossAmount: '', netAmount: '', note: '' }
-const emptyBonus = (baseCurrency: string): BonusForm => ({ label: '', grossAmount: '', netAmount: '', paymentDate: new Date().toISOString().slice(0, 10), includeInBudget: true, budgetMode: 'ONE_OFF', currencyCode: baseCurrency })
-const emptyTaxCard = (): TaxCardForm => ({ effectiveFrom: new Date().toISOString().slice(0, 10), traekprocent: '', personfradragMonthly: '3875', municipality: '', pensionEmployeePct: '', pensionEmployerPct: '', atpAmount: '', bruttoItems: [] })
+const emptyBonus = (baseCurrency: string): BonusForm => ({ label: '', grossAmount: '', netAmount: '', paymentDate: toLocalISODate(), includeInBudget: true, budgetMode: 'ONE_OFF', currencyCode: baseCurrency })
+const emptyTaxCard = (): TaxCardForm => ({ effectiveFrom: toLocalISODate(), traekprocent: '', personfradragMonthly: '3875', municipality: '', pensionEmployeePct: '', pensionEmployerPct: '', atpAmount: '', bruttoItems: [] })
 const emptyDeductionOverrides = (): DeductionOverrides => ({ amBidragAmount: '', aSkattAmount: '', pensionEmployeeAmount: '', atpAmount: '' })
 
 // ── Inline DK tax calculation (mirrors packages/shared/src/index.ts) ──────────
@@ -648,7 +650,7 @@ function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: PayslipImp
       } else {
         setAiError('Please upload a file or paste payslip text'); setAiLoading(false); return
       }
-      const response = await import('../api/client').then((m) => m.api.post<PayslipExtraction>(`/jobs/${jobId}/payslips/parse`, body))
+      const response = await api.post<PayslipExtraction>(`/jobs/${jobId}/payslips/parse`, body)
       onExtracted(response.data)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Parsing failed'
@@ -1295,9 +1297,9 @@ export function IncomePage() {
 
   // History chart
   const [histFrom, setHistFrom] = useState(() => {
-    const d = new Date(); d.setFullYear(d.getFullYear() - 1); return d.toISOString().slice(0, 7)
+    const d = new Date(); d.setFullYear(d.getFullYear() - 1); return toLocalISOMonth(d)
   })
-  const [histTo, setHistTo] = useState(() => new Date().toISOString().slice(0, 7))
+  const [histTo, setHistTo] = useState(() => toLocalISOMonth())
   const [granularity, setGranularity] = useState<Granularity>('monthly')
   const [showGross, setShowGross] = useState(true)
 
@@ -1399,7 +1401,7 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
@@ -1409,11 +1411,12 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob); setJobFormError(''); toast.success('Job saved') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
   const closeJobMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to close job')),
     mutationFn: (jobId: string) => api.delete(`/users/${targetUserId}/jobs/${jobId}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); toast.success('Job closed') },
   })
@@ -1435,6 +1438,7 @@ export function IncomePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record added')
@@ -1459,6 +1463,7 @@ export function IncomePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record updated')
@@ -1467,9 +1472,11 @@ export function IncomePage() {
   })
 
   const deleteSalaryMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete salary record')),
     mutationFn: (salaryId: string) => api.delete(`/jobs/${salaryJobId}/salary/${salaryId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       toast.success('Salary record deleted')
     },
@@ -1492,8 +1499,8 @@ export function IncomePage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['overrides', overrideJobId] })
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       setOverrideForm(emptyOverride); setOverrideDeductionOverrides(emptyDeductionOverrides()); setOverrideDeductionOpen(false); setOverrideError('')
       toast.success('Monthly override saved')
     },
@@ -1516,8 +1523,9 @@ export function IncomePage() {
   function invalidateAfterTaxCardChange() {
     queryClient.invalidateQueries({ queryKey: ['taxcards'] })
     queryClient.invalidateQueries({ queryKey: ['salary', taxCardJobId] })
-    queryClient.invalidateQueries({ queryKey: ['overrides', taxCardJobId] })
+    queryClient.invalidateQueries({ queryKey: ['income-history'] })
     queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+    queryClient.invalidateQueries({ queryKey: ['income-history'] })
     queryClient.invalidateQueries({ queryKey: ['jobs'] })
   }
 
@@ -1547,8 +1555,9 @@ export function IncomePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['taxcards'] })
       queryClient.invalidateQueries({ queryKey: ['salary', taxCardPayslipJobId] })
-      queryClient.invalidateQueries({ queryKey: ['overrides', taxCardPayslipJobId] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       queryClient.invalidateQueries({ queryKey: ['jobs'] })
       setTaxCardPayslipData(null)
       setTaxCardPayslipJobId(null)
@@ -1560,10 +1569,12 @@ export function IncomePage() {
   })
 
   const deleteOverrideMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete override')),
     mutationFn: ({ jobId, overrideId }: { jobId: string; overrideId: string }) =>
       api.delete(`/jobs/${jobId}/overrides/${overrideId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       toast.success('Override deleted')
     },
   })
@@ -1590,13 +1601,14 @@ export function IncomePage() {
     try {
       await payslipConfirmMutation.mutateAsync({ jobId, extraction })
       queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
 
       if (taxCard) {
         try {
           await api.post(`/jobs/${jobId}/taxcard`, taxCard)
           queryClient.invalidateQueries({ queryKey: ['taxcards'] })
           queryClient.invalidateQueries({ queryKey: ['salary', jobId] })
-          queryClient.invalidateQueries({ queryKey: ['overrides', jobId] })
+          queryClient.invalidateQueries({ queryKey: ['income-history'] })
           queryClient.invalidateQueries({ queryKey: ['jobs'] })
           toast.success('Payslip imported and tax card updated')
         } catch {
@@ -1623,6 +1635,7 @@ export function IncomePage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       setBonusJobId(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
@@ -1639,6 +1652,7 @@ export function IncomePage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
+      queryClient.invalidateQueries({ queryKey: ['income-history'] })
       setEditingBonus(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
@@ -1646,27 +1660,49 @@ export function IncomePage() {
   })
 
   const deleteBonusMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete bonus')),
     mutationFn: ({ jobId, bonusId }: { jobId: string; bonusId: string }) =>
       api.delete(`/jobs/${jobId}/bonuses/${bonusId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['all-bonuses'] }); toast.success('Bonus deleted') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['all-bonuses'] }); queryClient.invalidateQueries({ queryKey: ['income-history'] }); toast.success('Bonus deleted') },
   })
 
+  // Saves every edited allocation for one job, one request at a time. Only that
+  // job's pending edits are cleared, so unsaved edits on other jobs survive.
   const allocMutation = useMutation({
-    mutationFn: ({ jobId, householdId, pct }: { jobId: string; householdId: string; pct: number }) =>
-      pct === 0
-        ? api.delete(`/income/${jobId}/allocations/${householdId}`)
-        : api.put(`/income/${jobId}/allocations/${householdId}`, { allocationPct: pct }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setPendingAllocations({}); setAllocationsDirty(false); setAllocError(''); toast.success('Allocations saved') },
-    onError: (err) => { if (axios.isAxiosError(err)) setAllocError((err.response?.data as { error?: string })?.error ?? 'Failed to save allocation') },
+    mutationFn: async ({ jobId, changes }: { jobId: string; changes: { householdId: string; pct: number }[] }) => {
+      for (const { householdId, pct } of changes) {
+        if (pct === 0) await api.delete(`/income/${jobId}/allocations/${householdId}`)
+        else await api.put(`/income/${jobId}/allocations/${householdId}`, { allocationPct: pct })
+      }
+    },
+    onSuccess: (_data, { jobId }) => {
+      setPendingAllocations((prev) => {
+        const next = Object.fromEntries(Object.entries(prev).filter(([key]) => !key.startsWith(`${jobId}:`)))
+        setAllocationsDirty(Object.keys(next).length > 0)
+        return next
+      })
+      setAllocError('')
+      toast.success('Allocations saved')
+    },
+    onError: (err) => setAllocError(getApiError(err, 'Failed to save allocation')),
+    // Refetch on failure too: earlier requests in the batch may have succeeded
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
   })
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
+  // An override field left blank uses the calculated amount; an explicit 0 is a real value.
+  function overrideOr(value: string, calculated: number): number {
+    if (value.trim() === '') return calculated
+    const parsed = parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : calculated
+  }
+
   function computeManualNet(gross: number, calc: LiveDeductions, overrides: DeductionOverrides): number {
-    const pension = parseFloat(overrides.pensionEmployeeAmount) || calc.pensionEmployee
-    const atp = parseFloat(overrides.atpAmount) || calc.atp
-    const amBidrag = parseFloat(overrides.amBidragAmount) || calc.amBidrag
-    const aSkat = parseFloat(overrides.aSkattAmount) || calc.aSkat
+    const pension = overrideOr(overrides.pensionEmployeeAmount, calc.pensionEmployee)
+    const atp = overrideOr(overrides.atpAmount, calc.atp)
+    const amBidrag = overrideOr(overrides.amBidragAmount, calc.amBidrag)
+    const aSkat = overrideOr(overrides.aSkattAmount, calc.aSkat)
     return r2(gross - calc.bruttoTotal - pension - atp - amBidrag - aSkat)
   }
 
@@ -1676,16 +1712,13 @@ export function IncomePage() {
     for (const item of calc.bruttoItems) {
       lines.push({ label: item.label, amount: item.monthlyAmount, type: 'pre_am', sankeyGroup: 'brutto_benefits', isCalculated: true })
     }
-    const pension = parseFloat(overrides.pensionEmployeeAmount) || 0
-    if (pension > 0 || calc.pensionEmployee > 0) {
-      lines.push({ label: 'Pension (employee)', amount: pension || calc.pensionEmployee, type: 'pre_am', sankeyGroup: 'pension_employee', isCalculated: !overrides.pensionEmployeeAmount })
+    const pension = overrideOr(overrides.pensionEmployeeAmount, calc.pensionEmployee)
+    if (pension > 0) {
+      lines.push({ label: 'Pension (employee)', amount: pension, type: 'pre_am', sankeyGroup: 'pension_employee', isCalculated: !overrides.pensionEmployeeAmount.trim() })
     }
-    const atpVal = parseFloat(overrides.atpAmount) || 0
-    lines.push({ label: 'ATP', amount: atpVal || calc.atp, type: 'pre_am', sankeyGroup: 'atp', isCalculated: !overrides.atpAmount })
-    const amBidragVal = parseFloat(overrides.amBidragAmount) || 0
-    lines.push({ label: 'AM-bidrag (8%)', amount: amBidragVal || calc.amBidrag, type: 'am_bidrag', sankeyGroup: 'am_bidrag', isCalculated: !overrides.amBidragAmount })
-    const aSkatVal = parseFloat(overrides.aSkattAmount) || 0
-    lines.push({ label: 'A-skat', amount: aSkatVal || calc.aSkat, type: 'a_skat', sankeyGroup: 'a_skat', isCalculated: !overrides.aSkattAmount })
+    lines.push({ label: 'ATP', amount: overrideOr(overrides.atpAmount, calc.atp), type: 'pre_am', sankeyGroup: 'atp', isCalculated: !overrides.atpAmount.trim() })
+    lines.push({ label: 'AM-bidrag (8%)', amount: overrideOr(overrides.amBidragAmount, calc.amBidrag), type: 'am_bidrag', sankeyGroup: 'am_bidrag', isCalculated: !overrides.amBidragAmount.trim() })
+    lines.push({ label: 'A-skat', amount: overrideOr(overrides.aSkattAmount, calc.aSkat), type: 'a_skat', sankeyGroup: 'a_skat', isCalculated: !overrides.aSkattAmount.trim() })
     return lines
   }
 
@@ -1700,10 +1733,10 @@ export function IncomePage() {
     setAllocError('')
     const dirty = Object.entries(pendingAllocations).filter(([key]) => key.startsWith(`${job.id}:`))
     if (dirty.length === 0) return
-    for (const [key, value] of dirty) {
-      const householdId = key.split(':')[1]
-      allocMutation.mutate({ jobId: job.id, householdId, pct: parseFloat(value) || 0 })
-    }
+    allocMutation.mutate({
+      jobId: job.id,
+      changes: dirty.map(([key, value]) => ({ householdId: key.split(':')[1], pct: parseFloat(value) || 0 })),
+    })
   }
 
   function openEditJob(job: Job) {
@@ -1854,7 +1887,7 @@ export function IncomePage() {
             <div>
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-lg font-semibold">Jobs & Salary</h2>
-                <button onClick={() => { setShowAddJob(true); setJobForm(emptyJob); setJobFormError('') }}
+                <button onClick={() => { setShowAddJob(true); setJobForm(emptyJob()); setJobFormError('') }}
                   className="bg-amber-400 hover:bg-amber-300 text-gray-950 font-semibold text-sm px-4 py-2 rounded-lg transition-colors">
                   + Add job
                 </button>
@@ -1972,13 +2005,12 @@ export function IncomePage() {
                             })}
                           </div>
                           {(() => {
-                            const totalPct = Object.entries(pendingAllocations)
-                              .filter(([k]) => k.startsWith(`${job.id}:`))
-                              .reduce((acc, [, v]) => acc + (Number(v) || 0), 0)
-                            const isOver = totalPct !== 100 && allocationsDirty && Object.keys(pendingAllocations).some((k) => k.startsWith(`${job.id}:`))
+                            // Whole-job total, counting saved allocations for households that weren't edited
+                            const totalPct = households.reduce((acc, h) => acc + (Number(getAllocationPct(job, h.id)) || 0), 0)
+                            const isOver = totalPct > 100
                             return allocationsDirty && Object.keys(pendingAllocations).some((k) => k.startsWith(`${job.id}:`)) ? (
                               <div className="mt-3 flex items-center gap-3 flex-wrap">
-                                <button onClick={() => saveAllocations(job)} disabled={allocMutation.isPending || isOver}
+                                <button onClick={() => saveAllocations(job)} disabled={allocMutation.isPending}
                                   className="bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold text-xs px-3 py-1.5 rounded transition-colors">
                                   {allocMutation.isPending ? 'Saving…' : 'Save allocations'}
                                 </button>
@@ -1987,7 +2019,7 @@ export function IncomePage() {
                                   Object.keys(next).filter((k) => k.startsWith(`${job.id}:`)).forEach((k) => delete next[k])
                                   return next
                                 }); setAllocationsDirty(false) }} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">Discard</button>
-                                {isOver && <span className="text-amber-400 text-xs">Total is {totalPct}% — must equal 100%</span>}
+                                {isOver && <span className="text-amber-400 text-xs">Total is {totalPct}% — more than 100% of this income is allocated</span>}
                                 {allocError && <span className="text-red-400 text-xs">{allocError}</span>}
                               </div>
                             ) : null
@@ -2233,8 +2265,8 @@ export function IncomePage() {
                 {salaryRecords.map((r) => (
                   <tr key={r.id} className="border-b border-gray-800/50 last:border-0">
                     <td className="py-2 pr-4 text-gray-300">{fmtDate(r.effectiveFrom)}</td>
-                    <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount)}</td>
-                    <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(r.netAmount)}</td>
+                    <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount, '')}</td>
+                    <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(r.netAmount, '')}</td>
                     <td className="py-2 pr-4 text-gray-500 text-xs">{r.currencyCode ?? baseCurrency}</td>
                     <td className="py-2 pl-4 text-right whitespace-nowrap">
                       <button

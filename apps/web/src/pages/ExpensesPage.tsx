@@ -13,6 +13,7 @@ import { CategoryFilter } from '../components/CategoryFilter'
 import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency, type AccountType, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
+import { getApiError } from '../lib/apiError'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -266,6 +267,7 @@ export function ExpensesPage() {
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const createYearMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to create budget year')),
     mutationFn: () =>
       api.post<BudgetYear>(`/households/${householdId}/budget-years`, {
         year: new Date().getFullYear(),
@@ -328,6 +330,7 @@ export function ExpensesPage() {
   })
 
   const deleteMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete expense')),
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/expenses/${id}`),
     onSuccess: () => {
@@ -651,8 +654,10 @@ export function ExpensesPage() {
                   </thead>
                   <tbody>
                     {filtered.map((e) => {
-                      const currentMonth = new Date().getMonth() + 1
-                      const isPast = e.endMonth != null && e.endMonth < currentMonth
+                      // An expense has ended if its end month is behind today *in the viewed budget year*
+                      const now = new Date()
+                      const viewedYear = activeBudgetYear?.year ?? now.getFullYear()
+                      const isPast = e.endMonth != null && (viewedYear < now.getFullYear() || (viewedYear === now.getFullYear() && e.endMonth < now.getMonth() + 1))
                       const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
                       return (
                       <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}${selectedIds.has(e.id) ? ' bg-amber-400/5' : ''}`}>
@@ -710,7 +715,7 @@ export function ExpensesPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right text-gray-200 tabular-nums">
-                          {fmt(parseFloat(e.originalAmount ?? e.amount))}
+                          {fmt(parseFloat(e.originalAmount ?? e.amount), e.currencyCode ? '' : undefined)}
                           {e.currencyCode && (
                             <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>
                           )}
@@ -829,7 +834,7 @@ export function ExpensesPage() {
                   <span className="text-amber-400 font-medium">{fmt(previewMonthly)}</span>
                   {isForeignCurrency && form.amount && (
                     <span className="ml-2 text-gray-600">
-                      ({fmt(parseFloat(form.amount))} {form.currencyCode} × {selectedCurrencyRate.toFixed(4)})
+                      ({fmt(parseFloat(form.amount), form.currencyCode)} × {selectedCurrencyRate.toFixed(4)})
                     </span>
                   )}
                 </p>

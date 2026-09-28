@@ -151,7 +151,8 @@ export function HouseholdLayout() {
         {/* Main content */}
         <div className="flex-1 overflow-auto flex flex-col">
           <div className="flex-1">
-            <Outlet />
+            {/* Keyed so switching household remounts the page and drops the previous household's form, filter and selection state */}
+            <Outlet key={householdId} />
           </div>
           <AppFooter />
         </div>

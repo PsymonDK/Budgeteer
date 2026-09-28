@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useAuth } from '../contexts/AuthContext'
+import { toast } from 'sonner'
+import { getApiError } from '../lib/apiError'
 
 interface Household { id: string; name: string; myRole: 'ADMIN' | 'MEMBER' | null }
 
@@ -34,11 +36,16 @@ export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
   })
 
   const pinMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to pin household')),
     mutationFn: (id: string) => api.put('/users/me/preferences', { defaultHouseholdId: id }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['preferences'] })
+      queryClient.invalidateQueries({ queryKey: ['users-me'] })
+    },
   })
 
   const createMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to create household')),
     mutationFn: (name: string) => api.post<Household>('/households', { name }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['households'] })

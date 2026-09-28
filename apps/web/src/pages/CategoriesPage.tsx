@@ -11,6 +11,7 @@ import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
+import { getApiError } from '../lib/apiError'
 
 interface Category {
   id: string
@@ -112,6 +113,7 @@ export function CategoriesPage() {
   })
 
   const promoteMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to promote category')),
     mutationFn: (id: string) => api.post(`/categories/${id}/promote`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories', householdId] }),
   })

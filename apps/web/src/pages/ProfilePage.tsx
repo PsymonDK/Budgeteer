@@ -35,7 +35,7 @@ interface UserMe {
 }
 
 interface Currency {
-  currencyCode: string
+  code: string
   name?: string
 }
 
@@ -64,6 +64,7 @@ interface Account {
 function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { updateUser } = useAuth()
 
   const { data: me, isLoading } = useQuery<UserMe>({
     queryKey: ['users-me'],
@@ -92,8 +93,10 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     if (me) {
       setName(me.name)
       setEmail(me.email)
+      // Keep the header name/avatar (AuthContext) in sync after profile edits
+      updateUser({ name: me.name, email: me.email, avatarUrl: me.avatarUrl ?? null })
     }
-  }, [me])
+  }, [me, updateUser])
 
   const emailChanged = me && email !== me.email
   const showPasswordConfirm = !!emailChanged
@@ -119,6 +122,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     onSuccess: () => {
       setPrefError('')
       queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      queryClient.invalidateQueries({ queryKey: ['preferences'] })
       toast.success('Preferences saved')
     },
     onError: (err) => {
@@ -286,14 +290,15 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
               onChange={(e) => handlePrefChange('preferredCurrency', e.target.value)}
               className={inputClass}
             >
-              {currencies.length === 0 && (
+              {/* Keep the saved preference selectable even if it has no synced rate (e.g. the base currency) */}
+              {!currencies.some((c) => c.code === (prefs?.preferredCurrency ?? 'DKK')) && (
                 <option value={prefs?.preferredCurrency ?? 'DKK'}>
                   {prefs?.preferredCurrency ?? 'DKK'}
                 </option>
               )}
               {currencies.map((c) => (
-                <option key={c.currencyCode} value={c.currencyCode}>
-                  {c.currencyCode}
+                <option key={c.code} value={c.code}>
+                  {c.code}
                 </option>
               ))}
             </select>

@@ -10,6 +10,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { Modal } from '../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn, dangerBtn } from '../lib/styles'
 import { useBaseCurrency, useFmt } from '../hooks/useFmt'
+import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
 
 type ReceiptStatus = 'DRAFT' | 'CONFIRMED' | 'FAILED'
 type ReceiptConfidence = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -212,8 +213,8 @@ export function ReceiptsPage() {
   const [mappingTab, setMappingTab] = useState<'export' | 'import'>('export')
   const [mappingCsvText, setMappingCsvText] = useState('')
   const [receiptPeriod, setReceiptPeriod] = useState<ReceiptSummaryPeriod>('currentMonth')
-  const [receiptStartDate, setReceiptStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
-  const [receiptEndDate, setReceiptEndDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [receiptStartDate, setReceiptStartDate] = useState(() => startOfLocalMonthISO())
+  const [receiptEndDate, setReceiptEndDate] = useState(() => toLocalISODate())
   const [headerDraft, setHeaderDraft] = useState({
     merchantName: '',
     purchaseDate: '',
