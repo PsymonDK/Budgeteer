@@ -1,8 +1,6 @@
 export const inputClass =
   'w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-transparent transition-colors'
 
-export const selectClass = inputClass
-
 // ── Buttons ───────────────────────────────────────────────────────────────────
 
 /** Full-size primary action (modal submit). Prefix with `flex-1` in a two-button row. */

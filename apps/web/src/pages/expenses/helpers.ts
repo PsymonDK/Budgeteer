@@ -1,7 +1,7 @@
 import type { Frequency } from '../../lib/constants'
 import type { Expense, ExpenseForm, SortKey } from './types'
 
-export const FREQ_ORDER: Record<Frequency, number> = {
+const FREQ_ORDER: Record<Frequency, number> = {
   WEEKLY: 0, FORTNIGHTLY: 1, MONTHLY: 2, QUARTERLY: 3, BIANNUAL: 4, ANNUAL: 5,
 }
 

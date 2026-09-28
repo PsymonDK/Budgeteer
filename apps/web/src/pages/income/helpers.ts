@@ -45,7 +45,7 @@ function overrideOr(value: string, calculated: number): number {
   return Number.isFinite(parsed) ? parsed : calculated
 }
 
-export function computeManualNet(gross: number, calc: LiveDeductions, overrides: DeductionOverrides): number {
+function computeManualNet(gross: number, calc: LiveDeductions, overrides: DeductionOverrides): number {
   const pension = overrideOr(overrides.pensionEmployeeAmount, calc.pensionEmployee)
   const atp = overrideOr(overrides.atpAmount, calc.atp)
   const amBidrag = overrideOr(overrides.amBidragAmount, calc.amBidrag)
@@ -53,7 +53,7 @@ export function computeManualNet(gross: number, calc: LiveDeductions, overrides:
   return r2(gross - calc.bruttoTotal - pension - atp - amBidrag - aSkat)
 }
 
-export function buildPayslipLines(calc: LiveDeductions, overrides: DeductionOverrides) {
+function buildPayslipLines(calc: LiveDeductions, overrides: DeductionOverrides) {
   type LineType = 'benefit_in_kind' | 'pre_am' | 'am_bidrag' | 'a_skat' | 'post_tax'
   const lines: { label: string; amount: number; type: LineType; sankeyGroup?: string; isCalculated: boolean }[] = []
   for (const item of calc.bruttoItems) {
