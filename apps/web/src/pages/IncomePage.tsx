@@ -10,6 +10,8 @@ import {
   Legend, ResponsiveContainer,
 } from 'recharts'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useConfig, useCurrencies, useHouseholds } from '../api/queries'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
@@ -18,7 +20,6 @@ import { inputClass } from '../lib/styles'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, toLocalISOMonth } from '../lib/dates'
-import type { Currency, Household } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1299,43 +1300,34 @@ export function IncomePage() {
 
   // Fetch users list to get proxy user name (only when acting as proxy)
   const { data: allUsers = [] } = useQuery<{ id: string; name: string }[]>({
-    queryKey: ['users'],
+    queryKey: qk.users(),
     queryFn: async () => (await api.get<{ id: string; name: string }[]>('/users')).data,
     enabled: isProxy,
   })
   const proxyUserName = isProxy ? allUsers.find((u) => u.id === proxyUserId)?.name : undefined
 
-  const { data: config } = useQuery<{ baseCurrency: string }>({
-    queryKey: ['config'],
-    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
-  })
+  const { data: config } = useConfig()
   const baseCurrency = config?.baseCurrency ?? 'DKK'
 
-  const { data: currencies = [] } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
-  })
+  const { data: currencies = [] } = useCurrencies()
 
   const { data: jobs = [], isLoading } = useQuery<Job[]>({
-    queryKey: ['jobs', targetUserId],
+    queryKey: qk.jobs(targetUserId),
     queryFn: async () => (await api.get<Job[]>(`/users/${targetUserId}/jobs`)).data,
     enabled: !!targetUserId,
   })
 
-  const { data: households = [] } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-  })
+  const { data: households = [] } = useHouseholds()
 
   const { data: salaryRecords = [] } = useQuery<SalaryRecord[]>({
-    queryKey: ['salary', salaryJobId],
+    queryKey: qk.salary(salaryJobId),
     queryFn: async () => (await api.get<SalaryRecord[]>(`/jobs/${salaryJobId}/salary`)).data,
     enabled: !!salaryJobId,
   })
 
   // Load overrides for all jobs on the overrides tab
   const { data: allJobsOverrides = {} } = useQuery<Record<string, MonthlyOverride[]>>({
-    queryKey: ['all-overrides', jobs.map((j) => j.id).join(',')],
+    queryKey: qk.allOverrides(jobs.map((j) => j.id).join(',')),
     queryFn: async () => {
       const results = await Promise.all(
         jobs.map(async (j) => {
@@ -1350,7 +1342,7 @@ export function IncomePage() {
 
   // Load bonuses for all jobs on the bonuses tab
   const { data: allJobsBonuses = {} } = useQuery<Record<string, Bonus[]>>({
-    queryKey: ['all-bonuses', jobs.map((j) => j.id).join(',')],
+    queryKey: qk.allBonuses(jobs.map((j) => j.id).join(',')),
     queryFn: async () => {
       const results = await Promise.all(
         jobs.map(async (j) => {
@@ -1364,7 +1356,7 @@ export function IncomePage() {
   })
 
   const { data: taxCards = {} } = useQuery<Record<string, TaxCardSettings[]>>({
-    queryKey: ['taxcards', jobs.map((j) => j.id).join(',')],
+    queryKey: qk.taxCards(jobs.map((j) => j.id).join(',')),
     queryFn: async () => {
       const dkJobs = jobs.filter((j) => j.country === 'DK')
       const results = await Promise.all(
@@ -1379,7 +1371,7 @@ export function IncomePage() {
   })
 
   const { data: historyData } = useQuery<{ buckets: HistoryBucket[] }>({
-    queryKey: ['income-history', targetUserId, histFrom, histTo, granularity],
+    queryKey: qk.incomeHistory(targetUserId, histFrom, histTo, granularity),
     queryFn: async () =>
       (await api.get(`/users/${targetUserId}/income/history`, { params: { from: histFrom, to: histTo, granularity } })).data,
     enabled: !!targetUserId,
@@ -1393,7 +1385,7 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setShowAddJob(false); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk.jobsAll() }); setShowAddJob(false); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
@@ -1403,14 +1395,14 @@ export function IncomePage() {
         name: data.name, employer: data.employer || undefined, country: data.country,
         startDate: data.startDate, endDate: data.endDate || undefined,
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); setEditingJob(null); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk.jobsAll() }); setEditingJob(null); setJobForm(emptyJob()); setJobFormError(''); toast.success('Job saved') },
     onError: (err) => { if (axios.isAxiosError(err)) setJobFormError((err.response?.data as { error?: string })?.error ?? 'Failed to save') },
   })
 
   const closeJobMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to close job')),
     mutationFn: (jobId: string) => api.delete(`/users/${targetUserId}/jobs/${jobId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['jobs'] }); toast.success('Job closed') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk.jobsAll() }); toast.success('Job closed') },
   })
 
   const addSalaryMutation = useMutation({
@@ -1429,9 +1421,9 @@ export function IncomePage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
-      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: qk.salary(salaryJobId) })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
       setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record added')
     },
@@ -1454,9 +1446,9 @@ export function IncomePage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
-      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: qk.salary(salaryJobId) })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
       setEditingSalary(null); setSalaryForm(emptySalary(baseCurrency)); setSalaryDeductionOverrides(emptyDeductionOverrides()); setSalaryError('')
       toast.success('Salary record updated')
     },
@@ -1467,9 +1459,9 @@ export function IncomePage() {
     onError: (err) => toast.error(getApiError(err, 'Failed to delete salary record')),
     mutationFn: (salaryId: string) => api.delete(`/jobs/${salaryJobId}/salary/${salaryId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['salary', salaryJobId] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
-      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: qk.salary(salaryJobId) })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
       toast.success('Salary record deleted')
     },
   })
@@ -1491,8 +1483,8 @@ export function IncomePage() {
       })
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
+      queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
       setOverrideForm(emptyOverride); setOverrideDeductionOverrides(emptyDeductionOverrides()); setOverrideDeductionOpen(false); setOverrideError('')
       toast.success('Monthly override saved')
     },
@@ -1513,12 +1505,12 @@ export function IncomePage() {
   }
 
   function invalidateAfterTaxCardChange() {
-    queryClient.invalidateQueries({ queryKey: ['taxcards'] })
-    queryClient.invalidateQueries({ queryKey: ['salary', taxCardJobId] })
-    queryClient.invalidateQueries({ queryKey: ['income-history'] })
-    queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-    queryClient.invalidateQueries({ queryKey: ['income-history'] })
-    queryClient.invalidateQueries({ queryKey: ['jobs'] })
+    queryClient.invalidateQueries({ queryKey: qk.taxCardsAll() })
+    queryClient.invalidateQueries({ queryKey: qk.salary(taxCardJobId) })
+    queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+    queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
+    queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+    queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
   }
 
   const createTaxCardMutation = useMutation({
@@ -1545,12 +1537,12 @@ export function IncomePage() {
     mutationFn: ({ jobId, taxCard }: { jobId: string; taxCard: TaxCardDraft }) =>
       api.post(`/jobs/${jobId}/taxcard`, taxCard),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['taxcards'] })
-      queryClient.invalidateQueries({ queryKey: ['salary', taxCardPayslipJobId] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
-      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
-      queryClient.invalidateQueries({ queryKey: ['jobs'] })
+      queryClient.invalidateQueries({ queryKey: qk.taxCardsAll() })
+      queryClient.invalidateQueries({ queryKey: qk.salary(taxCardPayslipJobId) })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+      queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
       setTaxCardPayslipData(null)
       setTaxCardPayslipJobId(null)
       toast.success('Tax card updated from payslip')
@@ -1565,8 +1557,8 @@ export function IncomePage() {
     mutationFn: ({ jobId, overrideId }: { jobId: string; overrideId: string }) =>
       api.delete(`/jobs/${jobId}/overrides/${overrideId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
+      queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
       toast.success('Override deleted')
     },
   })
@@ -1592,16 +1584,16 @@ export function IncomePage() {
     const jobId = payslipReviewJobId!
     try {
       await payslipConfirmMutation.mutateAsync({ jobId, extraction })
-      queryClient.invalidateQueries({ queryKey: ['all-overrides'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
+      queryClient.invalidateQueries({ queryKey: qk.allOverridesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
 
       if (taxCard) {
         try {
           await api.post(`/jobs/${jobId}/taxcard`, taxCard)
-          queryClient.invalidateQueries({ queryKey: ['taxcards'] })
-          queryClient.invalidateQueries({ queryKey: ['salary', jobId] })
-          queryClient.invalidateQueries({ queryKey: ['income-history'] })
-          queryClient.invalidateQueries({ queryKey: ['jobs'] })
+          queryClient.invalidateQueries({ queryKey: qk.taxCardsAll() })
+          queryClient.invalidateQueries({ queryKey: qk.salary(jobId) })
+          queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
+          queryClient.invalidateQueries({ queryKey: qk.jobsAll() })
           toast.success('Payslip imported and tax card updated')
         } catch {
           toast.warning('Payslip saved, but tax card update failed')
@@ -1626,8 +1618,8 @@ export function IncomePage() {
         ...(data.currencyCode && data.currencyCode !== baseCurrency ? { currencyCode: data.currencyCode } : {}),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
+      queryClient.invalidateQueries({ queryKey: qk.allBonusesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
       setBonusJobId(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
@@ -1643,8 +1635,8 @@ export function IncomePage() {
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['all-bonuses'] })
-      queryClient.invalidateQueries({ queryKey: ['income-history'] })
+      queryClient.invalidateQueries({ queryKey: qk.allBonusesAll() })
+      queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() })
       setEditingBonus(null); setBonusForm(emptyBonus(baseCurrency)); setBonusError('')
       toast.success('Bonus saved')
     },
@@ -1655,7 +1647,7 @@ export function IncomePage() {
     onError: (err) => toast.error(getApiError(err, 'Failed to delete bonus')),
     mutationFn: ({ jobId, bonusId }: { jobId: string; bonusId: string }) =>
       api.delete(`/jobs/${jobId}/bonuses/${bonusId}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['all-bonuses'] }); queryClient.invalidateQueries({ queryKey: ['income-history'] }); toast.success('Bonus deleted') },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: qk.allBonusesAll() }); queryClient.invalidateQueries({ queryKey: qk.incomeHistoryAll() }); toast.success('Bonus deleted') },
   })
 
   // Saves every edited allocation for one job, one request at a time. Only that
@@ -1678,7 +1670,7 @@ export function IncomePage() {
     },
     onError: (err) => setAllocError(getApiError(err, 'Failed to save allocation')),
     // Refetch on failure too: earlier requests in the batch may have succeeded
-    onSettled: () => queryClient.invalidateQueries({ queryKey: ['jobs'] }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: qk.jobsAll() }),
   })
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1867,7 +1859,7 @@ export function IncomePage() {
         {/* ── Tabs ─────────────────────────────────────────────────────────── */}
         <div>
           <div className="flex border-b border-gray-800 mb-6">
-            {([['jobs', 'Jobs & Salary'], ['overrides', 'Monthly Overrides'], ['bonuses', 'Bonuses']] as [Tab, string][]).map(([t, label]) => (
+            {([qk.jobs('Jobs & Salary'), ['overrides', 'Monthly Overrides'], ['bonuses', 'Bonuses']] as [Tab, string][]).map(([t, label]) => (
               <button key={t} onClick={() => setActiveTab(t)}
                 className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === t ? 'border-amber-400 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'}`}>
                 {label}

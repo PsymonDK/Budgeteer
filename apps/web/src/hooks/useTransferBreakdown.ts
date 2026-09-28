@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
 
 export interface AccountBreakdown {
   accountId: string | null
@@ -22,7 +23,7 @@ export interface TransferBreakdown {
 
 export function useTransferBreakdown(budgetYearId: string | undefined) {
   return useQuery<TransferBreakdown>({
-    queryKey: ['transfers', 'breakdown', budgetYearId],
+    queryKey: qk.transferBreakdown(budgetYearId),
     queryFn: async () => (await api.get<TransferBreakdown>(`/budget-years/${budgetYearId}/transfers/breakdown`)).data,
     enabled: !!budgetYearId,
   })

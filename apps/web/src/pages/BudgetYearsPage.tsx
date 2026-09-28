@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
@@ -10,7 +10,9 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
-import type { BudgetYear, Household } from '../api/types'
+import type { BudgetYear } from '../api/types'
+import { qk } from '../api/queryKeys'
+import { useBudgetYears, useHouseholdDetail } from '../api/queries'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,24 +65,16 @@ export function BudgetYearsPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: household } = useHouseholdDetail(householdId)
 
-  const { data: years = [], isLoading } = useQuery<BudgetYear[]>({
-    queryKey: ['budget-years', householdId],
-    queryFn: async () => (await api.get<BudgetYear[]>(`/households/${householdId}/budget-years`)).data,
-    enabled: !!householdId,
-  })
+  const { data: years = [], isLoading } = useBudgetYears(householdId)
 
   const isAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
   const currentYear = new Date().getFullYear()
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['budget-years', householdId] })
-    queryClient.invalidateQueries({ queryKey: ['dashboard', householdId] })
+    queryClient.invalidateQueries({ queryKey: qk.budgetYears(householdId) })
+    queryClient.invalidateQueries({ queryKey: qk.dashboard(householdId) })
   }
 
   // ── Mutations ─────────────────────────────────────────────────────────────────

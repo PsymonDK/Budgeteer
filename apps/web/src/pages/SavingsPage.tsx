@@ -12,10 +12,11 @@ import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
-import type {
-  AccountGroups, AccountInfo, AppConfig, BudgetYear, Category, Currency, CustomSplitInput, Household,
-  Ownership,
-} from '../api/types'
+import type { AccountInfo, BudgetYear, Category, CustomSplitInput, Ownership } from '../api/types'
+import { qk } from '../api/queryKeys'
+import {
+  useBudgetYearAccounts, useBudgetYears, useCategories, useConfig, useCurrencies, useHouseholdDetail,
+} from '../api/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -89,11 +90,7 @@ export function SavingsPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: budgetYears = [], isLoading: yearsLoading } = useQuery<BudgetYear[]>({
-    queryKey: ['budget-years', householdId],
-    queryFn: async () => (await api.get<BudgetYear[]>(`/households/${householdId}/budget-years`)).data,
-    enabled: !!householdId,
-  })
+  const { data: budgetYears = [], isLoading: yearsLoading } = useBudgetYears(householdId)
 
   const activeBudgetYear = (
     selectedYearId
@@ -104,41 +101,22 @@ export function SavingsPage() {
   const isReadOnly = activeBudgetYear?.status === 'RETIRED'
 
   const { data: entries = [], isLoading: entriesLoading } = useQuery<SavingsEntry[]>({
-    queryKey: ['savings', activeBudgetYear?.id],
+    queryKey: qk.savings(activeBudgetYear?.id),
     queryFn: async () =>
       (await api.get<SavingsEntry[]>(`/budget-years/${activeBudgetYear!.id}/savings`)).data,
     enabled: !!activeBudgetYear,
   })
 
-  const { data: config } = useQuery<AppConfig>({
-    queryKey: ['config'],
-    queryFn: async () => (await api.get<AppConfig>('/config')).data,
-  })
+  const { data: config } = useConfig()
 
-  const { data: currencies = [] } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
-  })
+  const { data: currencies = [] } = useCurrencies()
 
-  const { data: householdData } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: householdData } = useHouseholdDetail(householdId)
   const members = householdData?.members ?? []
 
-  const { data: savingsCategories = [] } = useQuery<Category[]>({
-    queryKey: ['categories', householdId, 'SAVINGS'],
-    queryFn: async () =>
-      (await api.get<Category[]>(`/categories?householdId=${householdId}&type=SAVINGS`)).data,
-    enabled: !!householdId,
-  })
+  const { data: savingsCategories = [] } = useCategories(householdId, 'SAVINGS')
 
-  const { data: accountGroups } = useQuery<AccountGroups>({
-    queryKey: ['accounts-for-budget-year', activeBudgetYear?.id],
-    queryFn: async () => (await api.get<AccountGroups>(`/budget-years/${activeBudgetYear!.id}/accounts`)).data,
-    enabled: !!activeBudgetYear,
-  })
+  const { data: accountGroups } = useBudgetYearAccounts(activeBudgetYear?.id)
   const personalAccounts = accountGroups?.personal ?? []
   const householdAccountOptions = accountGroups?.household ?? []
   const hasAccounts = personalAccounts.length > 0 || householdAccountOptions.length > 0
@@ -174,8 +152,8 @@ export function SavingsPage() {
   // ── Mutations ─────────────────────────────────────────────────────────────────
 
   const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ['savings', activeBudgetYear?.id] })
-    queryClient.invalidateQueries({ queryKey: ['dashboard', householdId] })
+    queryClient.invalidateQueries({ queryKey: qk.savings(activeBudgetYear?.id) })
+    queryClient.invalidateQueries({ queryKey: qk.dashboard(householdId) })
   }
 
   const createMutation = useMutation({

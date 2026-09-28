@@ -5,6 +5,8 @@ import axios from 'axios'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2 } from 'lucide-react'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useHouseholdDetail } from '../api/queries'
 import { useAuth } from '../contexts/AuthContext'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
@@ -12,7 +14,7 @@ import { inputClass } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
 import { getApiError } from '../lib/apiError'
 import type {
-  Account, AccountForm, BudgetModel, Household, HouseholdMember,
+  Account, AccountForm, BudgetModel, HouseholdMember,
 } from '../api/types'
 
 interface UserOption {
@@ -51,15 +53,11 @@ export function HouseholdPage() {
   const [confirmRoleChange, setConfirmRoleChange] = useState<{ member: HouseholdMember; newRole: 'ADMIN' | 'MEMBER' } | null>(null)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
-  const { data: household, isLoading } = useQuery<Household>({
-    queryKey: ['household', id],
-    queryFn: async () => (await api.get<Household>(`/households/${id}`)).data,
-    enabled: !!id,
-  })
+  const { data: household, isLoading } = useHouseholdDetail(id)
 
   // All system users — for the "add member" dropdown
   const { data: allUsers = [] } = useQuery<UserOption[]>({
-    queryKey: ['users'],
+    queryKey: qk.users(),
     queryFn: async () => (await api.get<UserOption[]>('/users')).data,
     enabled: household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN',
   })
@@ -67,7 +65,7 @@ export function HouseholdPage() {
   const isAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
 
   const { data: householdAccounts = [] } = useQuery<Account[]>({
-    queryKey: ['accounts', 'household', id],
+    queryKey: qk.accountsHousehold(id),
     queryFn: async () => (await api.get<Account[]>(`/households/${id}/accounts`)).data,
     enabled: !!id,
   })
@@ -75,7 +73,7 @@ export function HouseholdPage() {
   const createAccountMutation = useMutation({
     mutationFn: (data: AccountForm) => api.post(`/households/${id}/accounts`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsHousehold(id) })
       setShowAddAccount(false)
       setAccountForm({ name: '', type: 'BANK' })
       setAccountFormError('')
@@ -90,7 +88,7 @@ export function HouseholdPage() {
   const updateAccountMutation = useMutation({
     mutationFn: (data: AccountForm) => api.put(`/households/${id}/accounts/${editingAccount!.id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsHousehold(id) })
       setEditingAccount(null)
       setAccountFormError('')
       toast.success('Account updated')
@@ -105,7 +103,7 @@ export function HouseholdPage() {
     mutationFn: ({ accountId, isActive }: { accountId: string; isActive: boolean }) =>
       api.put(`/households/${id}/accounts/${accountId}`, { isActive }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsHousehold(id) })
     },
     onError: (err) => {
       if (axios.isAxiosError(err))
@@ -116,7 +114,7 @@ export function HouseholdPage() {
   const deleteAccountMutation = useMutation({
     mutationFn: (accountId: string) => api.delete(`/households/${id}/accounts/${accountId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsHousehold(id) })
       setDeleteAccountTarget(null)
       setAccountDeleteError('')
       toast.success('Account deleted')
@@ -155,7 +153,7 @@ export function HouseholdPage() {
   const addMemberMutation = useMutation({
     mutationFn: () => api.post(`/households/${id}/members`, { userId: addUserId, role: addRole }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
       setShowAddMember(false)
       setAddUserId('')
       setAddRole('MEMBER')
@@ -173,7 +171,7 @@ export function HouseholdPage() {
     onError: (err) => toast.error(getApiError(err, 'Failed to remove member')),
     mutationFn: (memberId: string) => api.delete(`/households/${id}/members/${memberId}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
       toast.success('Member removed')
     },
   })
@@ -183,7 +181,7 @@ export function HouseholdPage() {
     mutationFn: ({ memberId, role }: { memberId: string; role: 'ADMIN' | 'MEMBER' }) =>
       api.put(`/households/${id}/members/${memberId}`, { role }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['household', id] })
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
       toast.success('Role updated')
     },
   })
@@ -191,7 +189,7 @@ export function HouseholdPage() {
   const deactivateMutation = useMutation({
     mutationFn: () => api.put(`/households/${id}/deactivate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       toast.success('Household deactivated')
       navigate('/')
     },
@@ -201,8 +199,8 @@ export function HouseholdPage() {
   const reactivateMutation = useMutation({
     mutationFn: () => api.put(`/households/${id}/reactivate`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['household', id] })
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       toast.success('Household reactivated')
     },
     onError: () => toast.error('Failed to reactivate household'),
@@ -211,8 +209,8 @@ export function HouseholdPage() {
   const updateNameMutation = useMutation({
     mutationFn: (name: string) => api.put(`/households/${id}`, { name }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['household', id] })
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       setEditingName(false)
       setNameError('')
       toast.success('Household renamed')
@@ -227,7 +225,7 @@ export function HouseholdPage() {
   const updateSettingsMutation = useMutation({
     mutationFn: (settings: { autoMarkTransferPaid?: boolean; budgetModel?: BudgetModel }) =>
       api.put(`/households/${id}`, { name: household!.name, ...settings }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['household', id] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.household(id) }),
     onError: () => toast.error('Failed to update settings'),
   })
 

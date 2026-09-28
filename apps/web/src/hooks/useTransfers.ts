@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
 
 export interface BudgetTransfer {
   id: string
@@ -16,7 +17,7 @@ export interface BudgetTransfer {
 
 export function useTransfers(budgetYearId: string | undefined) {
   return useQuery<BudgetTransfer[]>({
-    queryKey: ['transfers', budgetYearId],
+    queryKey: qk.transfers(budgetYearId),
     queryFn: async () => (await api.get<BudgetTransfer[]>(`/budget-years/${budgetYearId}/transfers`)).data,
     enabled: !!budgetYearId,
   })

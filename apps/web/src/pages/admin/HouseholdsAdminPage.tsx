@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import axios from 'axios'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import type { Household } from '../../api/types'
 
@@ -13,14 +14,14 @@ export function HouseholdsAdminPage() {
   const [deleteError, setDeleteError] = useState('')
 
   const { data: households = [], isLoading } = useQuery<Household[]>({
-    queryKey: ['households', 'admin'],
+    queryKey: qk.householdsAdmin(),
     queryFn: async () => (await api.get<Household[]>('/households?all=true')).data,
   })
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/households/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       toast.success('Household deleted')
       setConfirmDelete(null)
       setDeleteError('')

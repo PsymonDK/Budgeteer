@@ -15,7 +15,9 @@ import { MonthItemsPanel } from '../components/MonthItemsPanel'
 import { toast } from 'sonner'
 import { getApiError } from '../lib/apiError'
 import { toLocalISODate, startOfLocalMonthISO } from '../lib/dates'
-import type { BudgetYearRef, Category, Household } from '../api/types'
+import type { BudgetYearRef, Category } from '../api/types'
+import { qk } from '../api/queryKeys'
+import { useHouseholdDetail } from '../api/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -136,20 +138,16 @@ export function DashboardPage() {
   const [markPaidLoading, setMarkPaidLoading] = useState(false)
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
 
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: household } = useHouseholdDetail(householdId)
 
   const { data: savingsHistory = [] } = useQuery<SavingsHistoryRow[]>({
-    queryKey: ['savings-history', householdId],
+    queryKey: qk.savingsHistory(householdId),
     queryFn: async () => (await api.get<SavingsHistoryRow[]>(`/households/${householdId}/savings-history`)).data,
     enabled: !!householdId,
   })
 
   const { data: summary, isLoading } = useQuery<DashboardSummary>({
-    queryKey: ['dashboard', householdId],
+    queryKey: qk.dashboard(householdId),
     queryFn: async () => (await api.get<DashboardSummary>(`/households/${householdId}/summary`)).data,
     enabled: !!householdId,
   })
@@ -165,7 +163,7 @@ export function DashboardPage() {
   const receiptCustomRangeValid = receiptPeriod !== 'custom' || Boolean(receiptStartDate && receiptEndDate && receiptStartDate <= receiptEndDate)
 
   const { data: receiptSummary } = useQuery<ReceiptConsumptionSummary>({
-    queryKey: ['receipt-summary', householdId, receiptPeriod, receiptStartDate, receiptEndDate],
+    queryKey: qk.receiptSummary(householdId, receiptPeriod, receiptStartDate, receiptEndDate),
     queryFn: async () => (await api.get<ReceiptConsumptionSummary>(`/households/${householdId}/receipts/summary?${receiptSummaryQuery}`)).data,
     enabled: !!householdId && receiptCustomRangeValid,
   })
@@ -194,7 +192,7 @@ export function DashboardPage() {
         `/budget-years/${summary.budgetYear.id}/transfers/${markPaidTransfer.id}/mark-paid`,
         { actualAmount: parseFloat(markPaidAmount) },
       )
-      queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+      queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
       setMarkPaidTransfer(null)
     } catch (err) {
       toast.error(getApiError(err, 'Failed to mark transfer as paid'))
@@ -209,7 +207,7 @@ export function DashboardPage() {
       await api.patch(
         `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
       )
-      queryClient.invalidateQueries({ queryKey: ['transfers', summary.budgetYear.id] })
+      queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
     } catch (err) {
       toast.error(getApiError(err, 'Failed to revert transfer'))
     }

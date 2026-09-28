@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useHouseholds } from '../api/queries'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
@@ -17,15 +19,12 @@ export function HouseholdsPage() {
   const [name, setName] = useState('')
   const [error, setError] = useState('')
 
-  const { data: households = [], isLoading } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-  })
+  const { data: households = [], isLoading } = useHouseholds()
 
   const createMutation = useMutation({
     mutationFn: (householdName: string) => api.post<Household>('/households', { name: householdName }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       setShowCreate(false)
       setName('')
       navigate(`/households/${res.data.id}`)

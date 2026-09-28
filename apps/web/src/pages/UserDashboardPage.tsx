@@ -8,13 +8,14 @@ import {
   Legend, ResponsiveContainer, Dot,
 } from 'recharts'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useUserMe } from '../api/queries'
 import { Modal } from '../components/Modal'
 import { PageLoader } from '../components/LoadingSpinner'
 import { SankeyChart } from '../components/SankeyChart'
 import { Sparkline } from '../components/Sparkline'
 import { inputClass } from '../lib/styles'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
-import type { UserMe } from '../api/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -126,27 +127,24 @@ export function UserDashboardPage() {
   function pfmt(v: number | string) { return fmt(parseFloat(String(v)) * scale) }
 
   const { data: dashboard, isLoading: dashLoading } = useQuery<PersonalDashboard>({
-    queryKey: ['me', 'dashboard'],
+    queryKey: qk.meDashboard(),
     queryFn: async () => (await api.get<PersonalDashboard>('/users/me/dashboard')).data,
   })
 
   const { data: summary, isLoading: summaryLoading } = useQuery<UserSummary>({
-    queryKey: ['me', 'summary'],
+    queryKey: qk.meSummary(),
     queryFn: async () => (await api.get<UserSummary>('/me/summary')).data,
   })
 
-  const { data: me } = useQuery<UserMe>({
-    queryKey: ['users-me'],
-    queryFn: async () => (await api.get<UserMe>('/users/me')).data,
-  })
+  const { data: me } = useUserMe()
 
   const { data: incomeTrend } = useQuery<IncomeTrend>({
-    queryKey: ['income-trend-me'],
+    queryKey: qk.incomeTrendMe(),
     queryFn: async () => (await api.get<IncomeTrend>('/users/me/income/trend')).data,
   })
 
   const { data: sankeyData } = useQuery<IncomeSankeyData>({
-    queryKey: ['income-sankey-me'],
+    queryKey: qk.incomeSankeyMe(),
     queryFn: async () => (await api.get<IncomeSankeyData>('/users/me/income/sankey')).data,
   })
 
@@ -176,7 +174,7 @@ export function UserDashboardPage() {
   const createMutation = useMutation({
     mutationFn: (householdName: string) => api.post<NewHousehold>('/households', { name: householdName }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['me', 'summary'] })
+      queryClient.invalidateQueries({ queryKey: qk.meSummary() })
       setShowCreate(false)
       setName('')
       navigate(`/households/${res.data.id}`)

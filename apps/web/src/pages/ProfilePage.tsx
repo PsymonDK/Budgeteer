@@ -4,6 +4,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useCurrencies, useHouseholds, useUserMe } from '../api/queries'
 import { useAuth } from '../contexts/AuthContext'
 import { AlertTriangle, User, Home, CreditCard, Plus, Pencil, Trash2 } from 'lucide-react'
 import Avatar from '../components/Avatar'
@@ -12,7 +14,7 @@ import { PageHeader } from '../components/PageHeader'
 import { Modal } from '../components/Modal'
 import { inputClass } from '../lib/styles'
 import { type AccountType, ACCOUNT_TYPE_LABELS } from '../lib/constants'
-import type { Account, AccountForm, Currency, Household, UserIncomeSummary, UserMe } from '../api/types'
+import type { Account, AccountForm, UserIncomeSummary } from '../api/types'
 
 const cardClass = 'bg-gray-900 border border-gray-800 rounded-xl p-6'
 
@@ -23,20 +25,11 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   const queryClient = useQueryClient()
   const { updateUser } = useAuth()
 
-  const { data: me, isLoading } = useQuery<UserMe>({
-    queryKey: ['users-me'],
-    queryFn: async () => (await api.get<UserMe>('/users/me')).data,
-  })
+  const { data: me, isLoading } = useUserMe()
 
-  const { data: currencies = [] } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
-  })
+  const { data: currencies = [] } = useCurrencies()
 
-  const { data: households = [] } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-  })
+  const { data: households = [] } = useHouseholds()
 
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
@@ -64,7 +57,7 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     onSuccess: () => {
       setProfileError('')
       setCurrentPassword('')
-      queryClient.invalidateQueries({ queryKey: ['users-me'] })
+      queryClient.invalidateQueries({ queryKey: qk.me() })
       toast.success('Profile updated')
     },
     onError: (err) => {
@@ -78,8 +71,8 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     mutationFn: (body: Record<string, unknown>) => api.put('/users/me/preferences', body),
     onSuccess: () => {
       setPrefError('')
-      queryClient.invalidateQueries({ queryKey: ['users-me'] })
-      queryClient.invalidateQueries({ queryKey: ['preferences'] })
+      queryClient.invalidateQueries({ queryKey: qk.me() })
+      queryClient.invalidateQueries({ queryKey: qk.preferences() })
       toast.success('Preferences saved')
     },
     onError: (err) => {
@@ -97,8 +90,8 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     form.append('avatar', file)
     try {
       await api.post('/users/me/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } })
-      queryClient.invalidateQueries({ queryKey: ['users-me'] })
-      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: qk.me() })
+      queryClient.invalidateQueries({ queryKey: qk.meAll() })
       toast.success('Avatar updated')
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -111,8 +104,8 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
     setAvatarError('')
     try {
       await api.delete('/users/me/avatar')
-      queryClient.invalidateQueries({ queryKey: ['users-me'] })
-      queryClient.invalidateQueries({ queryKey: ['me'] })
+      queryClient.invalidateQueries({ queryKey: qk.me() })
+      queryClient.invalidateQueries({ queryKey: qk.meAll() })
       toast.success('Avatar removed')
     } catch (err) {
       if (axios.isAxiosError(err)) {
@@ -322,14 +315,11 @@ function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
 
 function HouseholdsTab() {
   const { data: summary } = useQuery<UserIncomeSummary>({
-    queryKey: ['income-summary-me'],
+    queryKey: qk.incomeSummaryMe(),
     queryFn: async () => (await api.get<UserIncomeSummary>('/users/me/income/summary')).data,
   })
 
-  const { data: households = [], isLoading } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-  })
+  const { data: households = [], isLoading } = useHouseholds()
 
   return (
     <div className="space-y-6">
@@ -407,7 +397,7 @@ function AccountsTab() {
   const queryClient = useQueryClient()
 
   const { data: accounts = [], isLoading } = useQuery<Account[]>({
-    queryKey: ['accounts', 'personal'],
+    queryKey: qk.accountsPersonal(),
     queryFn: async () => (await api.get<Account[]>('/users/me/accounts')).data,
   })
 
@@ -440,7 +430,7 @@ function AccountsTab() {
   const createMutation = useMutation({
     mutationFn: (data: AccountForm) => api.post('/users/me/accounts', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsPersonal() })
       closeModal()
       toast.success('Account added')
     },
@@ -453,7 +443,7 @@ function AccountsTab() {
   const updateMutation = useMutation({
     mutationFn: (data: AccountForm) => api.put(`/users/me/accounts/${editingAccount!.id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsPersonal() })
       closeModal()
       toast.success('Account updated')
     },
@@ -467,7 +457,7 @@ function AccountsTab() {
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       api.put(`/users/me/accounts/${id}`, { isActive }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsPersonal() })
     },
     onError: (err) => {
       if (axios.isAxiosError(err))
@@ -478,7 +468,7 @@ function AccountsTab() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/users/me/accounts/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounts', 'personal'] })
+      queryClient.invalidateQueries({ queryKey: qk.accountsPersonal() })
       setDeleteTarget(null)
       setDeleteError('')
       toast.success('Account deleted')

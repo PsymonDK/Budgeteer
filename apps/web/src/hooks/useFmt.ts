@@ -1,5 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { useConfig } from '../api/queries'
 
 /**
  * Returns a fmt() function pre-loaded with the base currency code.
@@ -7,12 +6,7 @@ import { api } from '../api/client'
  * Pass `currency` to label a foreign-currency amount, or '' for no suffix.
  */
 export function useFmt() {
-  const { data } = useQuery({
-    queryKey: ['config'],
-    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
-    staleTime: Infinity,
-  })
-  const currency = data?.baseCurrency ?? ''
+  const currency = useBaseCurrency()
   return (v: number | string, suffix: string = currency) => {
     const n = Number(v).toLocaleString('en', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     return suffix ? `${n} ${suffix}` : n
@@ -21,10 +15,6 @@ export function useFmt() {
 
 /** Returns the base currency code (empty string while loading). */
 export function useBaseCurrency() {
-  const { data } = useQuery({
-    queryKey: ['config'],
-    queryFn: async () => (await api.get<{ baseCurrency: string }>('/config')).data,
-    staleTime: Infinity,
-  })
+  const { data } = useConfig()
   return data?.baseCurrency ?? ''
 }

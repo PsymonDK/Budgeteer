@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Plus, Pencil } from 'lucide-react'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { Category } from '../../api/types'
@@ -23,7 +24,7 @@ export function CategoriesAdminPage() {
   const [editName, setEditName] = useState('')
 
   const { data: categories = [], isLoading } = useQuery<Category[]>({
-    queryKey: ['categories', 'admin'],
+    queryKey: qk.categoriesAdmin(),
     queryFn: async () => (await api.get<Category[]>('/categories')).data,
   })
 
@@ -34,7 +35,7 @@ export function CategoriesAdminPage() {
     mutationFn: (body: { name: string; categoryType: 'EXPENSE' | 'SAVINGS' }) =>
       api.post('/admin/categories', body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', 'admin'] })
+      queryClient.invalidateQueries({ queryKey: qk.categoriesAdmin() })
       toast.success('Category created')
       setAddOpen(false)
       setAddName('')
@@ -49,7 +50,7 @@ export function CategoriesAdminPage() {
     mutationFn: ({ id, body }: { id: string; body: { name?: string; isActive?: boolean } }) =>
       api.patch(`/admin/categories/${id}`, body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', 'admin'] })
+      queryClient.invalidateQueries({ queryKey: qk.categoriesAdmin() })
       toast.success('Category updated')
       setEditTarget(null)
     },
@@ -61,7 +62,7 @@ export function CategoriesAdminPage() {
   const promoteMutation = useMutation({
     mutationFn: (id: string) => api.post(`/categories/${id}/promote`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', 'admin'] })
+      queryClient.invalidateQueries({ queryKey: qk.categoriesAdmin() })
       toast.success('Category promoted to system-wide')
     },
     onError: () => toast.error('Failed to promote category'),

@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
 import { useAuth } from '../contexts/AuthContext'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
@@ -40,7 +41,7 @@ export function HouseholdIncomePage() {
   const fmt = useFmt()
 
   const { data: summary, isLoading } = useQuery<IncomeSummary>({
-    queryKey: ['income-summary', householdId],
+    queryKey: qk.incomeSummary(householdId),
     queryFn: async () => (await api.get<IncomeSummary>(`/households/${householdId}/income-summary`)).data,
     enabled: !!householdId,
   })

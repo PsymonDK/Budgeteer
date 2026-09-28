@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../api/client'
@@ -12,7 +12,9 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { inputClass } from '../lib/styles'
 import { getApiError } from '../lib/apiError'
-import type { Category, Household } from '../api/types'
+import type { Category } from '../api/types'
+import { qk } from '../api/queryKeys'
+import { useCategories, useHouseholdDetail } from '../api/queries'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -31,18 +33,9 @@ export function CategoriesPage() {
   const [replacementId, setReplacementId] = useState('')
   const [deleteError, setDeleteError] = useState('')
 
-  const { data: household } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get<Household>(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: household } = useHouseholdDetail(householdId)
 
-  const { data: categories = [], isLoading } = useQuery<Category[]>({
-    queryKey: ['categories', householdId],
-    queryFn: async () =>
-      (await api.get<Category[]>(`/categories?householdId=${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: categories = [], isLoading } = useCategories(householdId)
 
   const isHouseholdAdmin = household?.myRole === 'ADMIN' || me?.role === 'SYSTEM_ADMIN'
   const isSystemAdmin = me?.role === 'SYSTEM_ADMIN'
@@ -60,7 +53,7 @@ export function CategoriesPage() {
     mutationFn: ({ name, icon, categoryType }: { name: string; icon: string | null; categoryType: 'EXPENSE' | 'SAVINGS' }) =>
       api.post<Category & { warning?: string }>('/categories', { name, householdId, categoryType, ...(icon ? { icon } : {}) }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['categories', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.categories(householdId) })
       setShowCreate(false)
       setNewName('')
       setNewIcon(null)
@@ -82,7 +75,7 @@ export function CategoriesPage() {
       return api.delete(`/categories/${id}`, totalInUse > 0 && repId ? { data: { replacementId: repId } } : undefined)
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['categories', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.categories(householdId) })
       setDeleteTarget(null)
       setReplacementId('')
       setDeleteError('')
@@ -98,7 +91,7 @@ export function CategoriesPage() {
   const promoteMutation = useMutation({
     onError: (err) => toast.error(getApiError(err, 'Failed to promote category')),
     mutationFn: (id: string) => api.post(`/categories/${id}/promote`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories', householdId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.categories(householdId) }),
   })
 
   function handleCreate(e: FormEvent) {

@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { useFmt } from '../hooks/useFmt'
@@ -60,13 +61,13 @@ export function HistoryPage() {
   // ── Queries ──────────────────────────────────────────────────────────────────
 
   const { data: trends = [], isLoading } = useQuery<TrendRow[]>({
-    queryKey: ['trends', householdId],
+    queryKey: qk.trends(householdId),
     queryFn: async () => (await api.get<TrendRow[]>(`/households/${householdId}/trends`)).data,
     enabled: !!householdId,
   })
 
   const { data: expandedSummary } = useQuery({
-    queryKey: ['dashboard', householdId, expandedYearId],
+    queryKey: qk.dashboardForYear(householdId, expandedYearId),
     queryFn: async () =>
       (await api.get(`/households/${householdId}/summary?budgetYearId=${expandedYearId}`)).data,
     enabled: !!expandedYearId,

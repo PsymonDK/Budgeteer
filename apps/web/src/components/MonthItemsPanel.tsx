@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft, ChevronRight, ListChecks } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
 import { getApiError } from '../lib/apiError'
 
 interface OccurrenceItem {
@@ -40,17 +41,16 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
   // undefined = let the API pick the current month of the budget year
   const [month, setMonth] = useState<number | undefined>(undefined)
 
-  const queryKey = ['occurrences', budgetYearId, month ?? 'current']
   const { data, isLoading } = useQuery<MonthItems>({
-    queryKey,
+    queryKey: qk.occurrencesMonth(budgetYearId, month ?? 'current'),
     queryFn: async () =>
       (await api.get<MonthItems>(`/budget-years/${budgetYearId}/occurrences`, { params: month ? { month } : undefined })).data,
   })
 
   function refresh() {
-    queryClient.invalidateQueries({ queryKey: ['occurrences', budgetYearId] })
+    queryClient.invalidateQueries({ queryKey: qk.occurrences(budgetYearId) })
     // The month's transfer total and breakdown can change
-    queryClient.invalidateQueries({ queryKey: ['transfers'] })
+    queryClient.invalidateQueries({ queryKey: qk.transfersAll() })
   }
 
   const toggleMutation = useMutation({

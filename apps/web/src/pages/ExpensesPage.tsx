@@ -14,10 +14,11 @@ import { inputClass } from '../lib/styles'
 import { FREQUENCIES, type Frequency, ACCOUNT_TYPE_LABELS, calcMonthly } from '../lib/constants'
 import { useFmt, useBaseCurrency } from '../hooks/useFmt'
 import { getApiError } from '../lib/apiError'
-import type {
-  AccountGroups, AccountInfo, BudgetYear, Category, Currency, CustomSplitInput, Household,
-  Ownership,
-} from '../api/types'
+import type { AccountInfo, BudgetYear, Category, CustomSplitInput, Ownership } from '../api/types'
+import { qk } from '../api/queryKeys'
+import {
+  useBudgetYearAccounts, useBudgetYears, useCategories, useCurrencies, useHouseholdDetail,
+} from '../api/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -135,11 +136,7 @@ export function ExpensesPage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: budgetYears = [], isLoading: yearsLoading } = useQuery<BudgetYear[]>({
-    queryKey: ['budget-years', householdId],
-    queryFn: async () => (await api.get<BudgetYear[]>(`/households/${householdId}/budget-years`)).data,
-    enabled: !!householdId,
-  })
+  const { data: budgetYears = [], isLoading: yearsLoading } = useBudgetYears(householdId)
 
   // Respect ?budgetYearId param; otherwise default to active year or most recent
   const [selectedYearId, setSelectedYearId] = useState<string | null>(requestedYearId)
@@ -151,36 +148,20 @@ export function ExpensesPage() {
   const isReadOnly = activeBudgetYear?.status === 'RETIRED'
 
   const { data: expenses = [], isLoading: expensesLoading } = useQuery<Expense[]>({
-    queryKey: ['expenses', activeBudgetYear?.id],
+    queryKey: qk.expenses(activeBudgetYear?.id),
     queryFn: async () =>
       (await api.get<Expense[]>(`/budget-years/${activeBudgetYear!.id}/expenses`)).data,
     enabled: !!activeBudgetYear,
   })
 
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories', householdId, 'EXPENSE'],
-    queryFn: async () =>
-      (await api.get<Category[]>(`/categories?householdId=${householdId}&type=EXPENSE`)).data,
-    enabled: !!householdId,
-  })
+  const { data: categories = [] } = useCategories(householdId, 'EXPENSE')
 
-  const { data: currencies = [] } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
-  })
+  const { data: currencies = [] } = useCurrencies()
 
-  const { data: householdData } = useQuery<Household>({
-    queryKey: ['household', householdId],
-    queryFn: async () => (await api.get(`/households/${householdId}`)).data,
-    enabled: !!householdId,
-  })
+  const { data: householdData } = useHouseholdDetail(householdId)
   const members = householdData?.members ?? []
 
-  const { data: accountGroups } = useQuery<AccountGroups>({
-    queryKey: ['accounts-for-budget-year', activeBudgetYear?.id],
-    queryFn: async () => (await api.get<AccountGroups>(`/budget-years/${activeBudgetYear!.id}/accounts`)).data,
-    enabled: !!activeBudgetYear,
-  })
+  const { data: accountGroups } = useBudgetYearAccounts(activeBudgetYear?.id)
   const personalAccounts = accountGroups?.personal ?? []
   const householdAccountOptions = accountGroups?.household ?? []
   const hasAccounts = personalAccounts.length > 0 || householdAccountOptions.length > 0
@@ -232,7 +213,7 @@ export function ExpensesPage() {
       api.post<BudgetYear>(`/households/${householdId}/budget-years`, {
         year: new Date().getFullYear(),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['budget-years', householdId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.budgetYears(householdId) }),
   })
 
   const createMutation = useMutation({
@@ -249,7 +230,7 @@ export function ExpensesPage() {
         accountId: data.accountId || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
+      queryClient.invalidateQueries({ queryKey: qk.expenses(activeBudgetYear?.id) })
       setShowAdd(false)
       setForm(emptyForm(baseCurrency))
       setFormError('')
@@ -276,7 +257,7 @@ export function ExpensesPage() {
         accountId: data.accountId || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
+      queryClient.invalidateQueries({ queryKey: qk.expenses(activeBudgetYear?.id) })
       setEditingExpense(null)
       setForm(emptyForm(baseCurrency))
       setFormError('')
@@ -294,7 +275,7 @@ export function ExpensesPage() {
     mutationFn: (id: string) =>
       api.delete(`/budget-years/${activeBudgetYear!.id}/expenses/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
+      queryClient.invalidateQueries({ queryKey: qk.expenses(activeBudgetYear?.id) })
       setDeleteTarget(null)
       toast.success('Expense deleted')
     },
@@ -304,7 +285,7 @@ export function ExpensesPage() {
     mutationFn: (payload: { ids: string[]; categoryId?: string; accountId?: string | null }) =>
       api.patch(`/budget-years/${activeBudgetYear!.id}/expenses/bulk`, payload),
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['expenses', activeBudgetYear?.id] })
+      queryClient.invalidateQueries({ queryKey: qk.expenses(activeBudgetYear?.id) })
       setBulkEditOpen(false)
       setSelectedIds(new Set())
       setBulkForm({ categoryId: '', accountId: '' })

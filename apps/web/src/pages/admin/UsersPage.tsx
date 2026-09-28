@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass } from '../../lib/styles'
@@ -72,7 +73,7 @@ export function AdminUsersPage() {
   const [resetPassword, setResetPassword] = useState('')
 
   const { data: users = [], isLoading } = useQuery<User[]>({
-    queryKey: ['users'],
+    queryKey: qk.users(),
     queryFn: async () => {
       const res = await api.get<User[]>('/users')
       return res.data
@@ -82,7 +83,7 @@ export function AdminUsersPage() {
   const createMutation = useMutation({
     mutationFn: (data: UserFormData) => api.post<User>('/users', data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setShowCreate(false)
       setCreateForm({ email: '', name: '', password: '', isProxy: false })
       setFormError('')
@@ -99,7 +100,7 @@ export function AdminUsersPage() {
     mutationFn: ({ id, data }: { id: string; data: Partial<EditFormData> }) =>
       api.put<User>(`/users/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setEditingUser(null)
       setFormError('')
       toast.success('User updated')
@@ -115,7 +116,7 @@ export function AdminUsersPage() {
     mutationFn: ({ id, password }: { id: string; password: string }) =>
       api.post<User>(`/users/${id}/reset-password`, { password }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: qk.users() })
       setResetUser(null)
       setResetPassword('')
       setFormError('')

@@ -7,7 +7,8 @@ import { PageHeader } from '../components/PageHeader'
 import { CategoryFilter } from '../components/CategoryFilter'
 import { FREQ_LABELS } from '../lib/constants'
 import { useBaseCurrency } from '../hooks/useFmt'
-import type { BudgetYear } from '../api/types'
+import { qk } from '../api/queryKeys'
+import { useBudgetYears } from '../api/queries'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ function makeFmt(currency: string) {
   }
 }
 
-function yearLabel(y: BudgetYear | { year: number; status: string; simulationName: string | null }) {
+function yearLabel(y: { year: number; status: string; simulationName: string | null }) {
   if (y.status === 'SIMULATION') return `${y.year} — ${y.simulationName ?? 'Simulation'}`
   return `${y.year} (${y.status.charAt(0) + y.status.slice(1).toLowerCase()})`
 }
@@ -102,16 +103,12 @@ export function ComparePage() {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
 
-  const { data: allYears = [] } = useQuery<BudgetYear[]>({
-    queryKey: ['budget-years', householdId],
-    queryFn: async () => (await api.get<BudgetYear[]>(`/households/${householdId}/budget-years`)).data,
-    enabled: !!householdId,
-  })
+  const { data: allYears = [] } = useBudgetYears(householdId)
 
   const canCompare = !!yearIdA && !!yearIdB && yearIdA !== yearIdB
 
   const { data: result, isLoading: comparing, isError } = useQuery<CompareResult>({
-    queryKey: ['compare', householdId, yearIdA, yearIdB],
+    queryKey: qk.compare(householdId, yearIdA, yearIdB),
     queryFn: async () =>
       (await api.get<CompareResult>(`/households/${householdId}/compare?a=${yearIdA}&b=${yearIdB}`)).data,
     enabled: canCompare,
