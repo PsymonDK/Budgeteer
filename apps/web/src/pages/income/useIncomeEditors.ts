@@ -1,6 +1,6 @@
 // State + mutations behind each income dialog/section. The hooks are called
 // from IncomePage so their state lives as long as the page, exactly as when
-// it was declared inline there.
+// it was declared directly in the page.
 
 import { useState, useMemo, type FormEvent } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'

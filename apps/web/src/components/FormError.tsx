@@ -8,7 +8,7 @@ interface FormErrorProps {
   size?: 'md' | 'sm'
 }
 
-/** The red inline error box shown under forms and in confirm dialogs. */
+/** The red error box shown under forms and in confirm dialogs. */
 export function FormError({ message, className, size = 'md' }: FormErrorProps) {
   if (!message) return null
   const base = size === 'sm' ? errorBoxSm : errorBox

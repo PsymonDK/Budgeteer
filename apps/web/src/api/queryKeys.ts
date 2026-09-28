@@ -3,7 +3,7 @@
 // qk.categories(id) also matches qk.categories(id, 'EXPENSE'), and
 // qk.transfersAll() matches every transfers query including the breakdown.
 //
-// Receipts screens (pages/ReceiptsPage.tsx) still declare their own keys inline.
+// Receipts screens (pages/ReceiptsPage.tsx) still declare their own key arrays.
 
 import type { CategoryType } from './types'
 

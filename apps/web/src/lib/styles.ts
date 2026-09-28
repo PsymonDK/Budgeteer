@@ -21,10 +21,10 @@ export const primaryBtnSm =
 
 // ── Feedback ──────────────────────────────────────────────────────────────────
 
-/** Inline error box under a form. */
+/** Error box under a form. */
 export const errorBox = 'bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm'
 
-/** Compact inline error box (confirm dialogs). */
+/** Compact error box (confirm dialogs). */
 export const errorBoxSm = 'bg-red-950 border border-red-800 text-red-300 px-3 py-2 rounded-lg text-xs'
 
 // ── Segmented toggles ─────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ interface QueryOpts {
   retry?: boolean
 }
 
-/** GET /config — static server config, fetched once per session. */
+/** GET /config — server config that never changes at runtime, fetched once per session. */
 export function useConfig() {
   return useQuery({
     queryKey: qk.config(),

@@ -6,7 +6,7 @@ import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import type { Household } from '../../api/types'
 
-/** Household name (inline rename for admins) and member count. */
+/** Household name (rename in place for admins) and member count. */
 export function HouseholdNameHeader({ householdId: id, household, isAdmin }: { householdId: string; household: Household; isAdmin: boolean }) {
   const queryClient = useQueryClient()
   const [editingName, setEditingName] = useState(false)
