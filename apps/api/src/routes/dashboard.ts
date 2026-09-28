@@ -8,6 +8,7 @@ import { assertHouseholdAccess, partitionByOwnership, resolveEffectiveAmount } f
 import { toNum } from '../lib/decimal'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 import { computeIncomeShares, formatSharePct, splitByShares } from '../lib/incomeShare'
+import { buildIncomeFlow } from '../lib/incomeFlow'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /me/summary ──────────────────────────────────────────────────────────
@@ -353,6 +354,14 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       },
       savings: { totalMonthly: totalMonthlySavings.toFixed(2) },
       surplus: surplus.toFixed(2),
+      // Savings as a percentage of net income (null without income)
+      savingsRate: totalMonthlyIncome > 0 ? ((totalMonthlySavings / totalMonthlyIncome) * 100).toFixed(1) : null,
+      incomeFlow: buildIncomeFlow(
+        incomeMembers.map((m) => ({ userId: m.userId, name: m.name, net: memberNetMap.get(m.userId) ?? new Decimal(0) })),
+        byCategory.map((c) => ({ categoryId: c.categoryId, categoryName: c.categoryName, total: new Decimal(c.totalMonthly) })),
+        new Decimal(totalMonthlySavings.toFixed(2)),
+        new Decimal(surplus.toFixed(2)),
+      ),
       memberSplits,
       warnings,
     })
