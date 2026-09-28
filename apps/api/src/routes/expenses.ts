@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcMonthlyInBase, activeMonthCount } from '../lib/calculations'
+import { calcMonthlyInBase, activeMonthCount, expenseMonthSchedule } from '../lib/calculations'
 import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
 import { assertBudgetYearAccess, findUsableCategory, validateAccountAccess, validateOwnership } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
@@ -80,7 +80,13 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       const months = activeMonthCount(e.startMonth, e.endMonth)
       const monthlyWhenActive = new Decimal(e.monthlyEquivalent.toString()).mul(12).div(months).toDecimalPlaces(2)
       const amountInBase = new Decimal(e.amount.toString()).mul(new Decimal(e.rateUsed?.toString() ?? '1')).toDecimalPlaces(2)
-      return { ...e, monthlyWhenActive: monthlyWhenActive.toString(), amountInBase: amountInBase.toString() }
+      return {
+        ...e,
+        monthlyWhenActive: monthlyWhenActive.toString(),
+        amountInBase: amountInBase.toString(),
+        // Amount due per month (Jan..Dec, null = nothing due) for the calendar view
+        monthSchedule: expenseMonthSchedule(e),
+      }
     })
 
     return reply.send(result)
