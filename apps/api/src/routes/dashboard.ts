@@ -2,10 +2,12 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { Decimal } from '@prisma/client/runtime/client'
+import { calcIncomeForYear, calcIncomeForYearDetailed, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { assertHouseholdAccess, partitionByEffectiveAmount, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
+import { computeIncomeShares, formatSharePct, splitByShares } from '../lib/incomeShare'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /me/summary ──────────────────────────────────────────────────────────
@@ -188,14 +190,16 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
     // ── Income ──────────────────────────────────────────────────────────────
     const referenceDate = getIncomeReferenceDate(activeBudgetYear.year, activeBudgetYear.status)
-    const incomeResult = await calcIncomeForYear(activeBudgetYear.id, referenceDate)
-    const totalMonthlyGross = incomeResult.totalMonthlyGross
-    const totalMonthlyIncome = incomeResult.totalMonthlyNet
+    const incomeResult = await calcIncomeForYearDetailed(activeBudgetYear.id, referenceDate)
+    const totalMonthlyIncome = incomeResult.totalMonthlyNet.toNumber()
     const memberGrossMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedGross]))
     const memberNetMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedNet]))
+    // Unrounded income shares (equal split when no income is allocated, like
+    // /transfers/breakdown); sharePct is rounded for display only.
+    const memberShares = computeIncomeShares(household.members.map((m) => m.userId), memberGrossMap)
     const incomeMembers = household.members.map((m) => {
-      const allocatedGross = memberGrossMap.get(m.userId) ?? 0
-      const allocatedNet = memberNetMap.get(m.userId) ?? 0
+      const allocatedGross = memberGrossMap.get(m.userId) ?? new Decimal(0)
+      const allocatedNet = memberNetMap.get(m.userId) ?? new Decimal(0)
       return {
         userId: m.userId,
         name: m.user.name,
@@ -203,9 +207,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlyAllocated: allocatedNet.toFixed(2),
         monthlyAllocatedGross: allocatedGross.toFixed(2),
         monthlyAllocatedNet: allocatedNet.toFixed(2),
-        sharePct: totalMonthlyGross > 0
-          ? ((allocatedGross / totalMonthlyGross) * 100).toFixed(1)
-          : '0.0',
+        sharePct: formatSharePct(memberShares.get(m.userId)),
       }
     })
 
@@ -295,14 +297,18 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
+    // Shared pools split by unrounded share into cents that add up to the pool
+    const sharedOwedMap = splitByShares(sharedPool, memberShares)
+    const sharedSavingsOwedMap = splitByShares(sharedSavingsPoolEff, memberShares)
+    const cents = (v: number) => new Decimal(v).toDecimalPlaces(2)
     const memberSplits = incomeMembers.map((m) => {
-      const sharedOwed = sharedPool * parseFloat(m.sharePct) / 100
-      const individualOwed = individualOwedMap.get(m.userId) ?? 0
-      const customOwed = customExpensesMap.get(m.userId) ?? 0
-      const sharedSavingsOwed = sharedSavingsPoolEff * parseFloat(m.sharePct) / 100
-      const individualSavingsOwed = individualSavingsMapEff.get(m.userId) ?? 0
-      const customSavingsOwed = customSavingsMapEff.get(m.userId) ?? 0
-      const totalSavingsOwed = sharedSavingsOwed + individualSavingsOwed + customSavingsOwed
+      const sharedOwed = sharedOwedMap.get(m.userId) ?? new Decimal(0)
+      const individualOwed = cents(individualOwedMap.get(m.userId) ?? 0)
+      const customOwed = cents(customExpensesMap.get(m.userId) ?? 0)
+      const sharedSavingsOwed = sharedSavingsOwedMap.get(m.userId) ?? new Decimal(0)
+      const individualSavingsOwed = cents(individualSavingsMapEff.get(m.userId) ?? 0)
+      const customSavingsOwed = cents(customSavingsMapEff.get(m.userId) ?? 0)
+      const totalSavingsOwed = sharedSavingsOwed.plus(individualSavingsOwed).plus(customSavingsOwed)
       return {
         userId: m.userId,
         name: m.name,
@@ -311,7 +317,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlySharedOwed: sharedOwed.toFixed(2),
         monthlyIndividualOwed: individualOwed.toFixed(2),
         monthlyCustomOwed: customOwed.toFixed(2),
-        monthlyTotalOwed: (sharedOwed + individualOwed + customOwed + sharedSavingsOwed + individualSavingsOwed + customSavingsOwed).toFixed(2),
+        monthlyTotalOwed: sharedOwed.plus(individualOwed).plus(customOwed).plus(totalSavingsOwed).toFixed(2),
         monthlySavingsSharedOwed: sharedSavingsOwed.toFixed(2),
         monthlySavingsIndividualOwed: individualSavingsOwed.toFixed(2),
         monthlySavingsCustomOwed: customSavingsOwed.toFixed(2),
