@@ -49,6 +49,7 @@ interface Household {
 interface IncomeSummary {
   allocationPct: string
   overAllocated: boolean
+  overAllocatedJobs: { jobId: string; jobName: string; year: number; allocationPct: string }[]
 }
 
 interface Account {
@@ -380,7 +381,11 @@ function HouseholdsTab() {
         <div className="flex items-center gap-3 bg-red-950 border border-red-800 rounded-xl px-4 py-3 text-sm text-red-300">
           <AlertTriangle size={16} className="flex-shrink-0" />
           <span>
-            Your income is over-allocated ({summary.allocationPct}%). Review your allocations on the{' '}
+            Your income is over-allocated
+            {summary.overAllocatedJobs.length > 0 && (
+              <> ({summary.overAllocatedJobs.map((j) => `${j.jobName} ${j.year}: ${Number(j.allocationPct)}%`).join(', ')})</>
+            )}
+            . Review your allocations on the{' '}
             <Link to="/income" className="underline hover:text-red-200">Income page</Link>.
           </span>
         </div>

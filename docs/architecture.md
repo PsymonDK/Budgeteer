@@ -234,6 +234,11 @@ Shared expense €1,000/month → A owes €600, B owes €400
 
 Individual and custom-split expenses bypass the proportional calculation.
 
+- Shares come from `lib/incomeShare.ts`: unrounded, over current members only, equal split when nobody has allocated income. Shared amounts are split with the largest-remainder method so the cents add up
+- Monthly job income comes from one pure implementation, `lib/jobIncome.ts` (salary record or month override, FX via `rateUsed`, job start/end months, bonuses). Budget-year income adds budget-included bonuses paid that year as amount ÷ 12; month views put ONE_OFF bonuses in their payment month and spread SPREAD_ANNUALLY ÷ 12 across the year. RETIRED years use the average of their twelve months
+- Tax cards are picked by the salary record's `effectiveFrom` (or the override's month), not today's date
+- Over-allocation is evaluated per job per calendar year (summed across households)
+
 Informational only — system calculates and displays, never enforces.
 
 ### Receipt Consumption

@@ -96,6 +96,8 @@ interface Currency {
 interface JobAllocation {
   budgetYearId: string
   allocationPct: string
+  /** The household's default (active, else earliest future) year — the one allocation edits target */
+  isDefaultYear: boolean
   budgetYear: {
     id: string
     year: number
@@ -1725,7 +1727,8 @@ export function IncomePage() {
   function getAllocationPct(job: Job, householdId: string): string {
     const key = `${job.id}:${householdId}`
     if (key in pendingAllocations) return pendingAllocations[key]
-    const alloc = job.allocations.find((a) => a.budgetYear.household.id === householdId)
+    // Edits save to the household's default year, so show that year's value (not a retired year's)
+    const alloc = job.allocations.find((a) => a.isDefaultYear && a.budgetYear.household.id === householdId)
     return alloc ? alloc.allocationPct : '0'
   }
 

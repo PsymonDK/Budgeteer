@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Bonuses never reached budget income** — budget-included bonuses now count toward household income (amount ÷ 12 in budget-year figures); income history spreads SPREAD_ANNUALLY bonuses ÷ 12 instead of treating them like one-offs.
+- **Income history, trends and sparklines ignored exchange rates** — foreign-currency salaries and bonuses are converted with their stored rate everywhere, via one shared monthly-income implementation (replacing five diverging copies and their N+1 queries).
+- **Ended jobs kept counting as income** after their end date; quarterly/yearly history buckets held only their first month instead of the period total.
+- **Over-allocation double-counted across years** (100% in 2026 + 100% in 2027 = "200%") — it is now checked per job per year; the summary lists the over-allocated jobs.
+- **Removing an allocation erased it from retired years** — it now only affects the household's current (default) budget year, the same year edits save to.
+- **Salary deductions used today's tax card** instead of the one in effect on the salary's date.
+- **Allocating income could silently create a budget year** — it now returns 409 `NO_BUDGET_YEAR` asking the user to create one.
+- **Member splits lost money to rounding** (three equal earners → 99.9%) and gave everyone 0 when nobody had income; the dashboard and transfer breakdown now share one unrounded split with an equal fallback, over current members only.
+- **Income summary picked the FUTURE year before the ACTIVE one** (enum sort order).
+- **Transfer breakdown ignored paid Pay/No-pay items** — it now matches the month's transfer amount.
 - **Month rollover wiped carry-overs when re-run** — rollover now derives carry from the closed month's rows, so a manual trigger or second API replica gives the same result instead of resetting all carries to 0. A PAID item that receives new carry is reopened.
 - **New Year rollover used the wrong year** — the automation now closes December and auto-marks the December transfer in the budget year that owns it (last year's), instead of looking for December under the new year.
 - **Editing a Pay/No-pay expense didn't change its upcoming months** — pending occurrences now follow the expense's current schedule.

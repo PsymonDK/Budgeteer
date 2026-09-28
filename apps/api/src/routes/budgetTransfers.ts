@@ -6,6 +6,7 @@ import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess, resolveEffectiveAmount } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { computeIncomeShares } from '../lib/incomeShare'
 
 const MarkPaidSchema = z.object({
   actualAmount: z.number().positive(),
@@ -150,18 +151,18 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       }),
     ])
 
-    // Fetch current-month occurrences for PAY_NO_PAY model
+    // PAY_NO_PAY: the target month's obligations (paid or not), matching its transfer amount
     let expOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
     let savOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
 
     if (budgetModel === 'PAY_NO_PAY') {
       const [expOccs, savOccs] = await Promise.all([
         prisma.expenseOccurrence.findMany({
-          where: { expense: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          where: { expense: { budgetYearId: id }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
         }),
         prisma.savingsOccurrence.findMany({
-          where: { savingsEntry: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          where: { savingsEntry: { budgetYearId: id }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
         }),
       ])
@@ -176,16 +177,11 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
     // Falls back to equal split if no income is allocated.
     const refDate = getIncomeReferenceDate(budgetYear.year, budgetYear.status)
     const incomeResult = await calcIncomeForYear(id, refDate)
-    const totalGross = incomeResult.totalMonthlyGross
-    const memberShareMap = new Map<string, number>()
-    if (totalGross > 0) {
-      for (const m of incomeResult.members) {
-        memberShareMap.set(m.userId, m.monthlyAllocatedGross / totalGross)
-      }
-    } else {
-      const equalShare = memberCount > 0 ? 1 / memberCount : 0
-      for (const uid of memberIds) memberShareMap.set(uid, equalShare)
-    }
+    const shares = computeIncomeShares(
+      memberIds,
+      new Map(incomeResult.members.map((m) => [m.userId, new Decimal(m.monthlyAllocatedGross)])),
+    )
+    const memberShareMap = new Map([...shares].map(([uid, share]) => [uid, share.toNumber()]))
 
     // Accumulator types
     type AccountKey = string // accountId or '__untagged__'
