@@ -364,7 +364,10 @@ model Receipt {
   account          Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
   merchantName     String?
   purchaseDate     DateTime?
+  // Sum of the non-ignored line items (kept in sync by the API)
   totalAmount      Decimal?          @db.Decimal(10, 2)
+  // TOTAL printed on the receipt (OCR, user-correctable) — used to flag missed or misread lines
+  printedTotal     Decimal?          @db.Decimal(10, 2)
   taxAmount        Decimal?          @db.Decimal(10, 2)
   feeAmount        Decimal?          @db.Decimal(10, 2)
   currencyCode     String            @default("DKK")

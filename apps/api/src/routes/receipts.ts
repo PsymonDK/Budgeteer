@@ -1,17 +1,18 @@
-import { FastifyInstance } from 'fastify'
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { Decimal } from '@prisma/client/runtime/client'
 import fs from 'fs'
 import path from 'path'
-import { prisma } from '../lib/prisma'
+import { prisma, type PrismaTx } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertHouseholdAccess, findUsableCategory, validateAccountAccess } from '../lib/ownership'
 import { BASE_CURRENCY } from '../lib/currency'
 import { buildReceiptSummaryDateFilter, summarizeReceiptConsumption } from '../lib/receiptConsumption'
 import { buildReceiptMappingExportKit, confirmReceiptMappingImport, previewReceiptMappingImport } from '../lib/receiptMappingImport'
-import { correctReceiptOcrText, learnReceiptMappings, loadReceiptClassifierConfig, normalizeReceiptLabel, parseReceipt } from '../lib/receiptParser'
+import { correctReceiptOcrText, learnReceiptMappings, loadReceiptClassifierConfig, normalizeReceiptLabel, parseReceipt, type ParsedReceipt } from '../lib/receiptParser'
+import type { ReceiptClassifierConfig } from '../lib/receiptClassifier'
 import { extractReceiptOcrText } from '../lib/receiptOcr'
-import { toNum } from '../lib/decimal'
 
 const ConfidenceSchema = z.enum(['LOW', 'MEDIUM', 'HIGH'])
 
@@ -31,7 +32,8 @@ type ReceiptFileExtension = 'pdf' | 'png' | 'jpg'
 const UpdateReceiptSchema = z.object({
   merchantName: z.string().max(200).nullable().optional(),
   purchaseDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  totalAmount: z.number().nonnegative().nullable().optional(),
+  // The TOTAL printed on the receipt; the line-item sum (totalAmount) is server-computed
+  printedTotal: z.number().nonnegative().nullable().optional(),
   taxAmount: z.number().nonnegative().nullable().optional(),
   feeAmount: z.number().nonnegative().nullable().optional(),
   currencyCode: z.string().length(3).optional(),
@@ -48,6 +50,12 @@ const UpdateLineItemSchema = z.object({
   confidence: ConfidenceSchema.optional(),
   isIgnored: z.boolean().optional(),
 })
+
+// Confirm saves the review's header and line edits and confirms in one transaction
+const ConfirmReceiptSchema = z.object({
+  receipt: UpdateReceiptSchema.optional(),
+  lineItems: z.array(UpdateLineItemSchema.extend({ id: z.string() })).max(500).optional(),
+}).optional()
 
 const CreateLineItemSchema = z.object({
   label: z.string().min(1).max(200),
@@ -133,38 +141,17 @@ export async function receiptRoutes(fastify: FastifyInstance) {
           householdId,
           uploadedByUserId: userId,
           accountId: body.data.accountId ?? null,
-          merchantName: parsed.merchantName ?? null,
-          purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
-          totalAmount: sumParsedLineItems(parsed.lineItems),
-          taxAmount: parsed.taxAmount != null ? new Decimal(parsed.taxAmount) : null,
-          feeAmount: parsed.feeAmount != null ? new Decimal(parsed.feeAmount) : null,
-          currencyCode: receiptCurrency,
           rawText: body.data.rawText ?? null,
-          confidence: parsed.confidence,
           status: 'DRAFT',
-          notes: parsed.notes,
-          lineItems: {
-            create: parsed.lineItems.map((item, index) => ({
-              originalText: item.originalText,
-              label: item.label,
-              normalizedLabel: item.normalizedLabel,
-              quantity: item.quantity != null ? new Decimal(item.quantity) : null,
-              amount: new Decimal(item.amount),
-              currencyCode: receiptCurrency,
-              categoryId: item.categoryId ?? null,
-              subcategoryId: item.subcategoryId ?? null,
-              confidence: item.confidence,
-              sortOrder: index,
-            })),
-          },
+          ...parsedReceiptData(parsed, receiptCurrency),
         },
         include: receiptInclude,
       })
 
       return reply.status(201).send(serializeReceipt(receipt))
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Receipt parsing failed'
-      return reply.status(422).send({ error: message, code: 'PARSE_ERROR' })
+      request.log.warn({ err }, 'Receipt parsing failed')
+      return reply.status(422).send({ error: 'Receipt parsing failed', code: 'PARSE_ERROR' })
     }
   })
 
@@ -248,6 +235,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       }, householdId)
       parsed.notes = [...ocr.notes, ...parsed.notes]
     } catch (err) {
+      request.log.warn({ err }, 'Receipt parsing failed after upload')
       parsed = {
         merchantName: data.filename.replace(/\.[^.]+$/, ''),
         purchaseDate: null,
@@ -256,40 +244,19 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         feeAmount: null,
         currencyCode: fallbackCurrency,
         confidence: 'LOW' as const,
-        notes: [...ocr.notes, err instanceof Error ? err.message : 'Receipt parsing failed. Review the stored receipt manually.'],
+        notes: [...ocr.notes, 'Receipt parsing failed. Review the stored receipt manually.'],
         lineItems: [],
-      }
+      } satisfies ParsedReceipt
     }
 
     const receiptCurrency = await resolveReceiptCurrency(parsed.currencyCode, fallbackCurrency)
     const updated = await prisma.receipt.update({
       where: { id: receipt.id },
       data: {
-        merchantName: parsed.merchantName ?? null,
-        purchaseDate: parsed.purchaseDate ? new Date(parsed.purchaseDate) : null,
-        totalAmount: sumParsedLineItems(parsed.lineItems),
-        taxAmount: parsed.taxAmount != null ? new Decimal(parsed.taxAmount) : null,
-        feeAmount: parsed.feeAmount != null ? new Decimal(parsed.feeAmount) : null,
-        currencyCode: receiptCurrency,
         sourceStoragePath: relativePath,
         sourceFileSize: fileSize,
         rawText: ocr.rawText || null,
-        confidence: parsed.confidence,
-        notes: parsed.notes,
-        lineItems: {
-          create: parsed.lineItems.map((item, index) => ({
-            originalText: item.originalText,
-            label: item.label,
-            normalizedLabel: item.normalizedLabel,
-            quantity: item.quantity != null ? new Decimal(item.quantity) : null,
-            amount: new Decimal(item.amount),
-            currencyCode: receiptCurrency,
-            categoryId: item.categoryId ?? null,
-            subcategoryId: item.subcategoryId ?? null,
-            confidence: item.confidence,
-            sortOrder: index,
-          })),
-        },
+        ...parsedReceiptData(parsed, receiptCurrency),
       },
       include: receiptInclude,
     })
@@ -304,16 +271,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     const receipts = await prisma.receipt.findMany({
       where: { householdId, deletedAt: null },
-      include: {
-        uploadedBy: { select: { id: true, name: true } },
-        account: { select: { id: true, name: true, type: true } },
-        lineItems: {
-          include: {
-            category: { select: { id: true, name: true, icon: true } },
-            subcategory: { select: { id: true, name: true } },
-          },
-        },
-      },
+      include: receiptSummaryInclude,
       orderBy: [{ purchaseDate: 'desc' }, { createdAt: 'desc' }],
     })
 
@@ -437,32 +395,13 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const body = UpdateReceiptSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
 
-    if (body.data.accountId) {
-      const { id: householdId } = request.params as { id: string }
-      const accountError = await validateAccountAccess(body.data.accountId, householdId, request.user.sub)
-      if (accountError) return reply.status(400).send({ error: accountError })
-    }
+    const headerError = await validateReceiptHeader(body.data, receipt.householdId, request.user.sub)
+    if (headerError) return reply.status(400).send({ error: headerError })
 
-    let nextCurrencyCode: string | undefined
-    if (body.data.currencyCode !== undefined) {
-      nextCurrencyCode = body.data.currencyCode.toUpperCase()
-      if (!await isEnabledReceiptCurrency(nextCurrencyCode)) {
-        return reply.status(400).send({ error: 'Currency is not enabled' })
-      }
-    }
-
-    await syncReceiptTotalFromLines(receipt.id)
-    const updated = await prisma.receipt.update({
-      where: { id: receipt.id },
-      data: {
-        ...(body.data.merchantName !== undefined && { merchantName: body.data.merchantName }),
-        ...(body.data.purchaseDate !== undefined && { purchaseDate: body.data.purchaseDate ? new Date(body.data.purchaseDate) : null }),
-        ...(body.data.taxAmount !== undefined && { taxAmount: body.data.taxAmount != null ? new Decimal(body.data.taxAmount) : null }),
-        ...(body.data.feeAmount !== undefined && { feeAmount: body.data.feeAmount != null ? new Decimal(body.data.feeAmount) : null }),
-        ...(nextCurrencyCode !== undefined && { currencyCode: nextCurrencyCode }),
-        ...(body.data.accountId !== undefined && { accountId: body.data.accountId }),
-      },
-      include: receiptInclude,
+    const updated = await prisma.$transaction(async (tx) => {
+      await applyReceiptHeader(tx, receipt.id, body.data)
+      await syncReceiptTotalFromLines(tx, receipt.id)
+      return tx.receipt.findUniqueOrThrow({ where: { id: receipt.id }, include: receiptInclude })
     })
 
     return reply.send(serializeReceipt(updated))
@@ -477,43 +416,18 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const body = UpdateLineItemSchema.safeParse(request.body)
     if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
 
-    const existing = await prisma.receiptLineItem.findFirst({ where: { id: lineItemId, receiptId: receipt.id } })
+    const existing = receipt.lineItems.find((item) => item.id === lineItemId)
     if (!existing) return reply.status(404).send({ error: 'Receipt line item not found' })
 
-    if (body.data.categoryId) {
-      const category = await validateExpenseCategory(body.data.categoryId, receipt.householdId)
-      if (!category) return reply.status(400).send({ error: 'Category not found' })
-    }
-    if (body.data.subcategoryId) {
-      const subcategory = await validateReceiptSubcategory(body.data.subcategoryId, body.data.categoryId ?? existing.categoryId, receipt.householdId)
-      if (!subcategory) return reply.status(400).send({ error: 'Subcategory not found' })
-    }
+    const lineError = await validateLineItemUpdate(body.data, existing, receipt.householdId)
+    if (lineError) return reply.status(400).send({ error: lineError })
 
-    const label = body.data.label ?? existing.label
-    const nextCategoryId = body.data.categoryId !== undefined ? body.data.categoryId : existing.categoryId
-    const updated = await prisma.receiptLineItem.update({
-      where: { id: lineItemId },
-      data: {
-        ...(body.data.originalText !== undefined && { originalText: body.data.originalText }),
-        ...(body.data.label !== undefined && { label, normalizedLabel: normalizeReceiptLabel(label, await loadReceiptClassifierConfig(receipt.householdId)) }),
-        ...(body.data.quantity !== undefined && { quantity: body.data.quantity != null ? new Decimal(body.data.quantity) : null }),
-        ...(body.data.amount !== undefined && { amount: new Decimal(body.data.amount) }),
-        ...(body.data.categoryId !== undefined && { categoryId: body.data.categoryId }),
-        ...(body.data.categoryId !== undefined && body.data.subcategoryId === undefined && { subcategoryId: null }),
-        ...(body.data.subcategoryId !== undefined && {
-          subcategoryId: body.data.subcategoryId,
-          ...(body.data.subcategoryId && !nextCategoryId ? { categoryId: nextCategoryId } : {}),
-        }),
-        ...(body.data.confidence !== undefined && { confidence: body.data.confidence }),
-        ...(body.data.isIgnored !== undefined && { isIgnored: body.data.isIgnored }),
-      },
-      include: {
-        category: { select: { id: true, name: true, icon: true } },
-        subcategory: { select: { id: true, name: true } },
-      },
+    const config = body.data.label !== undefined ? await loadReceiptClassifierConfig(receipt.householdId) : null
+    const updated = await prisma.$transaction(async (tx) => {
+      const line = await applyLineItemUpdate(tx, lineItemId, body.data, config)
+      await syncReceiptTotalFromLines(tx, receipt.id)
+      return line
     })
-
-    await syncReceiptTotalFromLines(receipt.id)
     return reply.send(serializeLineItem(updated))
   })
 
@@ -556,7 +470,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
       },
     })
 
-    await syncReceiptTotalFromLines(receipt.id)
+    await syncReceiptTotalFromLines(prisma, receipt.id)
     return reply.status(201).send(serializeLineItem(lineItem))
   })
 
@@ -565,12 +479,43 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     const receipt = await loadReceiptForHousehold(request, reply)
     if (!receipt) return
 
-    await syncReceiptTotalFromLines(receipt.id)
-    const confirmed = await prisma.receipt.update({
-      where: { id: receipt.id },
-      data: { status: 'CONFIRMED', confirmedAt: new Date() },
-      include: receiptInclude,
+    const body = ConfirmReceiptSchema.safeParse(request.body ?? undefined)
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    // Confirming teaches the classifier; doing it twice would count the same
+    // receipt twice (and could promote noise tokens), so it happens once.
+    if (receipt.status === 'CONFIRMED') {
+      return reply.status(409).send({ error: 'This receipt is already confirmed', code: 'RECEIPT_ALREADY_CONFIRMED' })
+    }
+
+    const header = body.data?.receipt
+    const lineEdits = body.data?.lineItems ?? []
+    if (header) {
+      const headerError = await validateReceiptHeader(header, receipt.householdId, request.user.sub)
+      if (headerError) return reply.status(400).send({ error: headerError })
+    }
+    for (const edit of lineEdits) {
+      const existing = receipt.lineItems.find((item) => item.id === edit.id)
+      if (!existing) return reply.status(404).send({ error: 'Receipt line item not found' })
+      const lineError = await validateLineItemUpdate(edit, existing, receipt.householdId)
+      if (lineError) return reply.status(400).send({ error: `${existing.label}: ${lineError}` })
+    }
+
+    const config = lineEdits.some((edit) => edit.label !== undefined) ? await loadReceiptClassifierConfig(receipt.householdId) : null
+    const confirmed = await prisma.$transaction(async (tx) => {
+      if (header) await applyReceiptHeader(tx, receipt.id, header)
+      for (const { id, ...edit } of lineEdits) await applyLineItemUpdate(tx, id, edit, config)
+      await syncReceiptTotalFromLines(tx, receipt.id)
+      // Guarded update: a concurrent confirm (double click) finds nothing to update
+      const claimed = await tx.receipt.updateMany({
+        where: { id: receipt.id, status: { not: 'CONFIRMED' } },
+        data: { status: 'CONFIRMED', confirmedAt: new Date() },
+      })
+      if (claimed.count === 0) return null
+      return tx.receipt.findUniqueOrThrow({ where: { id: receipt.id }, include: receiptInclude })
     })
+    if (!confirmed) {
+      return reply.status(409).send({ error: 'This receipt is already confirmed', code: 'RECEIPT_ALREADY_CONFIRMED' })
+    }
 
     await learnReceiptMappings({
       householdId: confirmed.householdId,
@@ -582,6 +527,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         categoryId: item.categoryId,
         subcategoryId: item.subcategoryId,
         isIgnored: item.isIgnored,
+        confidence: item.confidence,
       })),
     })
 
@@ -597,7 +543,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
   })
 }
 
-async function loadReceiptForHousehold(request: any, reply: any) {
+async function loadReceiptForHousehold(request: FastifyRequest, reply: FastifyReply) {
   const { id: householdId, receiptId } = request.params as { id: string; receiptId: string }
   const { sub: userId, role } = request.user
   if (!await assertHouseholdAccess(householdId, userId, role, reply)) return null
@@ -691,25 +637,147 @@ async function nextReceiptLineSortOrder(receiptId: string): Promise<number> {
   return (latest?.sortOrder ?? -1) + 1
 }
 
-async function syncReceiptTotalFromLines(receiptId: string) {
-  const lines = await prisma.receiptLineItem.findMany({
+type ReceiptUpdate = z.infer<typeof UpdateReceiptSchema>
+type LineItemUpdate = z.infer<typeof UpdateLineItemSchema>
+type ExistingLine = { categoryId: string | null }
+
+/** Receipt columns from a parse result: header fields, printed total and line items. */
+function parsedReceiptData(parsed: ParsedReceipt, currencyCode: string) {
+  const purchaseDate = parsed.purchaseDate ? new Date(`${parsed.purchaseDate}T00:00:00.000Z`) : null
+  return {
+    merchantName: parsed.merchantName ?? null,
+    // Invalid dates (e.g. from a local AI model) are dropped rather than failing the request
+    purchaseDate: purchaseDate && !Number.isNaN(purchaseDate.getTime()) ? purchaseDate : null,
+    totalAmount: parsed.lineItems.reduce((sum, item) => sum.plus(item.amount), new Decimal(0)),
+    printedTotal: parsed.totalAmount != null ? new Decimal(parsed.totalAmount) : null,
+    taxAmount: parsed.taxAmount != null ? new Decimal(parsed.taxAmount) : null,
+    feeAmount: parsed.feeAmount != null ? new Decimal(parsed.feeAmount) : null,
+    currencyCode,
+    confidence: parsed.confidence,
+    notes: parsed.notes,
+    lineItems: {
+      create: parsed.lineItems.map((item, index) => ({
+        originalText: item.originalText,
+        label: item.label,
+        normalizedLabel: item.normalizedLabel,
+        quantity: item.quantity != null ? new Decimal(item.quantity) : null,
+        amount: new Decimal(item.amount),
+        currencyCode,
+        categoryId: item.categoryId ?? null,
+        subcategoryId: item.subcategoryId ?? null,
+        confidence: item.confidence,
+        sortOrder: index,
+      })),
+    },
+  }
+}
+
+/** Null when the header edit is valid, else an error message. */
+async function validateReceiptHeader(data: ReceiptUpdate, householdId: string, userId: string): Promise<string | null> {
+  if (data.accountId) {
+    const accountError = await validateAccountAccess(data.accountId, householdId, userId)
+    if (accountError) return accountError
+  }
+  if (data.currencyCode !== undefined && !await isEnabledReceiptCurrency(data.currencyCode.toUpperCase())) {
+    return 'Currency is not enabled'
+  }
+  return null
+}
+
+async function applyReceiptHeader(tx: PrismaTx, receiptId: string, data: ReceiptUpdate) {
+  const decimalOrNull = (v: number | null) => (v != null ? new Decimal(v) : null)
+  await tx.receipt.update({
+    where: { id: receiptId },
+    data: {
+      ...(data.merchantName !== undefined && { merchantName: data.merchantName }),
+      ...(data.purchaseDate !== undefined && { purchaseDate: data.purchaseDate ? new Date(`${data.purchaseDate}T00:00:00.000Z`) : null }),
+      ...(data.printedTotal !== undefined && { printedTotal: decimalOrNull(data.printedTotal) }),
+      ...(data.taxAmount !== undefined && { taxAmount: decimalOrNull(data.taxAmount) }),
+      ...(data.feeAmount !== undefined && { feeAmount: decimalOrNull(data.feeAmount) }),
+      ...(data.currencyCode !== undefined && { currencyCode: data.currencyCode.toUpperCase() }),
+      ...(data.accountId !== undefined && { accountId: data.accountId }),
+    },
+  })
+}
+
+/** Null when the line edit is valid, else an error message. */
+async function validateLineItemUpdate(data: LineItemUpdate, existing: ExistingLine, householdId: string): Promise<string | null> {
+  if (data.categoryId) {
+    const category = await validateExpenseCategory(data.categoryId, householdId)
+    if (!category) return 'Category not found'
+  }
+  if (data.subcategoryId) {
+    // Validate against the category the line will have after this edit
+    const nextCategoryId = data.categoryId !== undefined ? data.categoryId : existing.categoryId
+    if (!nextCategoryId) return 'Choose a category before a subcategory'
+    const subcategory = await validateReceiptSubcategory(data.subcategoryId, nextCategoryId, householdId)
+    if (!subcategory) return 'Subcategory not found'
+  }
+  return null
+}
+
+async function applyLineItemUpdate(tx: PrismaTx, lineItemId: string, data: LineItemUpdate, config: ReceiptClassifierConfig | null) {
+  // Changing (or clearing) the category drops a subcategory that isn't re-specified
+  const clearsSubcategory = data.categoryId !== undefined && data.subcategoryId === undefined
+  return tx.receiptLineItem.update({
+    where: { id: lineItemId },
+    data: {
+      ...(data.originalText !== undefined && { originalText: data.originalText }),
+      ...(data.label !== undefined && {
+        label: data.label,
+        normalizedLabel: config ? normalizeReceiptLabel(data.label, config) : normalizeReceiptLabel(data.label),
+      }),
+      ...(data.quantity !== undefined && { quantity: data.quantity != null ? new Decimal(data.quantity) : null }),
+      ...(data.amount !== undefined && { amount: new Decimal(data.amount) }),
+      ...(data.categoryId !== undefined && { categoryId: data.categoryId }),
+      ...(data.categoryId === null && { subcategoryId: null }),
+      ...(clearsSubcategory && { subcategoryId: null }),
+      ...(data.subcategoryId !== undefined && data.categoryId !== null && { subcategoryId: data.subcategoryId }),
+      ...(data.confidence !== undefined && { confidence: data.confidence }),
+      ...(data.isIgnored !== undefined && { isIgnored: data.isIgnored }),
+    },
+    include: lineItemInclude,
+  })
+}
+
+async function syncReceiptTotalFromLines(client: PrismaTx | typeof prisma, receiptId: string) {
+  const lines = await client.receiptLineItem.findMany({
     where: { receiptId, isIgnored: false },
     select: { amount: true },
   })
   const total = lines.reduce((sum, line) => sum.plus(line.amount), new Decimal(0))
-  return prisma.receipt.update({ where: { id: receiptId }, data: { totalAmount: total } })
+  return client.receipt.update({ where: { id: receiptId }, data: { totalAmount: total } })
 }
 
-function sumParsedLineItems(lineItems: Array<{ amount: number; confidence?: string }>): Decimal {
-  return lineItems.reduce((sum, item) => sum.plus(item.amount), new Decimal(0))
+/** True when the printed total is known and the line items don't add up to it. */
+export function isTotalMismatch(totalAmount: Prisma.Decimal | null, printedTotal: Prisma.Decimal | null): boolean {
+  if (printedTotal == null || totalAmount == null) return false
+  return new Decimal(totalAmount.toString()).minus(new Decimal(printedTotal.toString())).abs().gt(new Decimal('0.01'))
 }
 
-function serializeReceipt(receipt: any) {
+const lineItemInclude = {
+  category: { select: { id: true, name: true, icon: true } },
+  subcategory: { select: { id: true, name: true } },
+} as const
+
+const receiptSummaryInclude = {
+  uploadedBy: { select: { id: true, name: true } },
+  account: { select: { id: true, name: true, type: true } },
+  lineItems: { select: { amount: true, isIgnored: true, confidence: true, categoryId: true } },
+} as const
+
+type ReceiptWithLines = Prisma.ReceiptGetPayload<{ include: typeof receiptInclude }>
+type ReceiptSummaryRow = Prisma.ReceiptGetPayload<{ include: typeof receiptSummaryInclude }>
+type LineItemRow = Prisma.ReceiptLineItemGetPayload<{ include: typeof lineItemInclude }>
+
+function serializeReceipt(receipt: ReceiptWithLines) {
   const { sourceStoragePath: _sourceStoragePath, ...safeReceipt } = receipt
   return {
     ...safeReceipt,
     purchaseDate: receipt.purchaseDate ? receipt.purchaseDate.toISOString().slice(0, 10) : null,
     totalAmount: receipt.totalAmount?.toString() ?? null,
+    printedTotal: receipt.printedTotal?.toString() ?? null,
+    totalMismatch: isTotalMismatch(receipt.totalAmount, receipt.printedTotal),
     taxAmount: receipt.taxAmount?.toString() ?? null,
     feeAmount: receipt.feeAmount?.toString() ?? null,
     hasSourceFile: Boolean(receipt.sourceStoragePath),
@@ -717,15 +785,18 @@ function serializeReceipt(receipt: any) {
   }
 }
 
-function serializeReceiptSummary(receipt: any) {
-  const items = receipt.lineItems.filter((item: any) => !item.isIgnored)
-  const itemTotal = items.reduce((sum: number, item: any) => sum + toNum(item.amount), 0)
-  const lowConfidenceCount = receipt.lineItems.filter((item: any) => item.confidence === 'LOW' || !item.categoryId).length
+function serializeReceiptSummary(receipt: ReceiptSummaryRow) {
+  const itemTotal = receipt.lineItems
+    .filter((item) => !item.isIgnored)
+    .reduce((sum, item) => sum.plus(item.amount), new Decimal(0))
+  const lowConfidenceCount = receipt.lineItems.filter((item) => item.confidence === 'LOW' || !item.categoryId).length
   return {
     id: receipt.id,
     merchantName: receipt.merchantName,
     purchaseDate: receipt.purchaseDate ? receipt.purchaseDate.toISOString().slice(0, 10) : null,
     totalAmount: receipt.totalAmount?.toString() ?? null,
+    printedTotal: receipt.printedTotal?.toString() ?? null,
+    totalMismatch: isTotalMismatch(receipt.totalAmount, receipt.printedTotal),
     currencyCode: receipt.currencyCode,
     status: receipt.status,
     confidence: receipt.confidence,
@@ -739,7 +810,7 @@ function serializeReceiptSummary(receipt: any) {
   }
 }
 
-function serializeLineItem(item: any) {
+function serializeLineItem(item: LineItemRow) {
   return {
     ...item,
     amount: item.amount.toString(),

@@ -64,11 +64,32 @@ export async function parseReceipt(input: ReceiptParseInput, householdId: string
     localAiNote = err instanceof Error ? err.message : 'Local AI receipt enhancement failed.'
   }
 
-  const parsed = localAi ?? parseReceiptText(input, classifierConfig)
+  const deterministic = parseReceiptText(input, classifierConfig)
+  const parsed = localAi ? mergeAiParse(localAi, deterministic) : deterministic
   if (localAiNote) {
     parsed.notes = [...parsed.notes, localAiNote]
   }
   return applyCategorySuggestions(parsed, householdId)
+}
+
+/**
+ * Combines a local-AI parse with the deterministic one: the AI's values win where it
+ * produced something usable, otherwise the regex parse fills in. An AI reply without
+ * line items (or an empty object) no longer wipes the detected lines.
+ */
+export function mergeAiParse(ai: ParsedReceipt, deterministic: ParsedReceipt): ParsedReceipt {
+  const useAiLines = ai.lineItems.length > 0
+  return {
+    merchantName: ai.merchantName || deterministic.merchantName,
+    purchaseDate: normalizeIsoDate(ai.purchaseDate) ?? deterministic.purchaseDate,
+    totalAmount: ai.totalAmount ?? deterministic.totalAmount,
+    taxAmount: ai.taxAmount ?? deterministic.taxAmount,
+    feeAmount: ai.feeAmount ?? deterministic.feeAmount,
+    currencyCode: ai.currencyCode || deterministic.currencyCode,
+    confidence: useAiLines ? ai.confidence : deterministic.confidence,
+    notes: [...deterministic.notes.filter(() => !useAiLines), ...ai.notes],
+    lineItems: useAiLines ? ai.lineItems : deterministic.lineItems,
+  }
 }
 
 export function parseReceiptText(input: ReceiptParseInput, classifierConfig?: ReceiptClassifierConfig): ParsedReceipt {
@@ -169,7 +190,7 @@ function normalizeParsedReceipt(parsed: Partial<ParsedReceipt>, input: ReceiptPa
   const fallbackCurrency = normalizeCurrency(input.fallbackCurrency) ?? BASE_CURRENCY
   return {
     merchantName: typeof parsed.merchantName === 'string' ? parsed.merchantName : null,
-    purchaseDate: typeof parsed.purchaseDate === 'string' ? parsed.purchaseDate : null,
+    purchaseDate: normalizeIsoDate(parsed.purchaseDate),
     totalAmount: toNullableNumber(parsed.totalAmount),
     taxAmount: toNullableNumber(parsed.taxAmount),
     feeAmount: toNullableNumber(parsed.feeAmount),
@@ -201,18 +222,35 @@ function inferMerchant(lines: string[]): string | null {
   return lines.find((line) => !extractTrailingAmount(line) && !/\d{2}[./-]\d{2}/.test(line))?.slice(0, 120) ?? null
 }
 
-function inferDate(lines: string[]): string | null {
+export function inferDate(lines: string[]): string | null {
   for (const line of lines) {
+    const iso = line.match(/\b(\d{4})-(\d{2})-(\d{2})\b/)
+    if (iso) {
+      const date = validDate(Number(iso[1]), Number(iso[2]), Number(iso[3]))
+      if (date) return date
+    }
     const match = line.match(/\b(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})\b/)
     if (!match) continue
-    const day = Number(match[1])
-    const month = Number(match[2])
     const year = Number(match[3].length === 2 ? `20${match[3]}` : match[3])
-    if (day >= 1 && day <= 31 && month >= 1 && month <= 12) {
-      return new Date(Date.UTC(year, month - 1, day)).toISOString().slice(0, 10)
-    }
+    const date = validDate(year, Number(match[2]), Number(match[1]))
+    if (date) return date
   }
   return null
+}
+
+/** YYYY-MM-DD for a real calendar date, or null (31.02 no longer rolls into March). */
+function validDate(year: number, month: number, day: number): string | null {
+  if (month < 1 || month > 12 || day < 1) return null
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null
+  return date.toISOString().slice(0, 10)
+}
+
+/** Accepts only a real YYYY-MM-DD date (e.g. from a local AI model). */
+export function normalizeIsoDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  return match ? validDate(Number(match[1]), Number(match[2]), Number(match[3])) : null
 }
 
 function inferCurrency(text: string): string | null {
@@ -225,11 +263,14 @@ function inferCurrency(text: string): string | null {
   return null
 }
 
-function inferAmountByKeywords(lines: string[], keywords: string[]): number | null {
+export function inferAmountByKeywords(lines: string[], keywords: string[]): number | null {
+  // Whole words only: "fee" must not match "coffee", "sum" not "Sumatra", "tax" not "taxi"
+  const alternatives = keywords.map((keyword) => escapeRegExp(keyword).replace(/ /g, '\\s+')).join('|')
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}])(?:${alternatives})(?![\\p{L}\\p{N}])`, 'iu')
   for (const line of [...lines].reverse()) {
-    const lower = line.toLowerCase()
-    if (keywords.some((keyword) => lower.includes(keyword))) {
-      const amount = extractLastAmount(line)
+    if (pattern.test(line)) {
+      // Summary lines never carry quantities, so "1 234,50" is safely one amount here
+      const amount = extractLastAmount(line, { allowSpaceGrouping: true })
       if (amount != null) return amount
     }
   }
@@ -461,7 +502,13 @@ function splitReceiptLines(text: string): string[] {
     .filter(Boolean)
 }
 
-const AMOUNT_TOKEN_PATTERN = /[-+]?\d{1,6}\s*[,.]\s*\d{2}-?/g
+// An amount with two decimals, e.g. 12,95 / 12.95 / 1.234,50 / 1,234.50 / -5,00 / 5,00-.
+// The lookbehind/lookahead stop a token from starting or ending inside a longer
+// number (1234567,50 is not 234567.50 and 1.234,50 is not 4.50).
+const AMOUNT_TOKEN_PATTERN = /(?<![\d.,])[-+]?(?:\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d{1,6}\s*[,.]\s*\d{2})(?!\d)-?/g
+// Also "1 234,50". Only used for summary lines: on item lines "2 125,00" is more
+// likely quantity 2 at 125,00 than 2125,00.
+const AMOUNT_TOKEN_WITH_SPACE_GROUPING = /(?<![\d.,])[-+]?(?:\d{1,3}(?:[ \u00a0]\d{3})+\s*[,.]\s*\d{2}|\d{1,3}(?:\.\d{3})+,\d{2}|\d{1,3}(?:,\d{3})+\.\d{2}|\d{1,6}\s*[,.]\s*\d{2})(?!\d)-?/g
 
 function stripTrailingAmountAndCurrency(line: string): string {
   const normalized = normalizeAmountSpacing(line)
@@ -479,18 +526,27 @@ function extractTrailingAmount(line: string): number | null {
   return last.value
 }
 
-function extractLastAmount(line: string): number | null {
-  const matches = extractAmountMatches(line)
+function extractLastAmount(line: string, options: { allowSpaceGrouping?: boolean } = {}): number | null {
+  const matches = extractAmountMatches(line, options)
   return matches.length > 0 ? matches[matches.length - 1].value : null
 }
 
-function extractAmountMatches(line: string): Array<{ value: number; start: number; end: number }> {
+/** Numeric value of an amount token: the last separator is the decimal point. */
+export function parseAmountToken(raw: string): number {
+  const digits = raw.replace(/[+\-\s\u00a0]/g, '')
+  const decimalAt = Math.max(digits.lastIndexOf(','), digits.lastIndexOf('.'))
+  if (decimalAt < 0) return Number(digits)
+  return Number(`${digits.slice(0, decimalAt).replace(/[.,]/g, '')}.${digits.slice(decimalAt + 1)}`)
+}
+
+export function extractAmountMatches(line: string, options: { allowSpaceGrouping?: boolean } = {}): Array<{ value: number; start: number; end: number }> {
   const normalized = normalizeAmountSpacing(line)
-  return [...normalized.matchAll(AMOUNT_TOKEN_PATTERN)]
+  const pattern = options.allowSpaceGrouping ? AMOUNT_TOKEN_WITH_SPACE_GROUPING : AMOUNT_TOKEN_PATTERN
+  return [...normalized.matchAll(pattern)]
     .map((match) => {
       const raw = match[0]
       const isNegative = raw.trim().startsWith('-') || raw.trim().endsWith('-')
-      const numeric = Number(raw.replace(/[+\-\s]/g, '').replace(',', '.'))
+      const numeric = parseAmountToken(raw)
       if (!Number.isFinite(numeric)) return null
       return {
         value: isNegative ? -numeric : numeric,
@@ -502,6 +558,7 @@ function extractAmountMatches(line: string): Array<{ value: number; start: numbe
 }
 
 function normalizeAmountSpacing(line: string): string {
+  // OCR often spaces decimals ("31 .95", "31. 95"); rejoin them
   return line
     .replace(/(\d{1,6})\s+([,.])\s*(\d{2})(?=\D|$)/g, '$1$2$3')
     .replace(/(\d{1,6})([,.])\s+(\d{2})(?=\D|$)/g, '$1$2$3')
@@ -523,4 +580,8 @@ function toNullableNumber(value: unknown): number | null {
   if (value == null || value === '') return null
   const numeric = typeof value === 'number' ? value : Number(String(value).replace(',', '.'))
   return Number.isFinite(numeric) ? numeric : null
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
