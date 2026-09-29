@@ -54,7 +54,7 @@ jobs:
 
       - name: API — extract metadata
         id: meta-api
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-api
           tags: |
@@ -93,7 +93,7 @@ jobs:
 
       - name: Web — extract metadata
         id: meta-web
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-web
           tags: |
