@@ -12,6 +12,15 @@ updates:
         patterns:
           - prisma
           - '@prisma/*'
+      # react, react-dom, react-is (a recharts peer) and their types must share a
+      # major, so a React major arrives as one PR instead of four mismatched ones
+      react:
+        patterns:
+          - react
+          - react-dom
+          - react-is
+          - '@types/react'
+          - '@types/react-dom'
       # One weekly PR for all non-breaking updates. Majors of other packages
       # still arrive as their own PRs.
       minor-and-patch:
@@ -21,17 +30,6 @@ updates:
     # These majors need migration work and are upgraded deliberately, not by
     # Dependabot. Remove an entry when starting that upgrade.
     ignore:
-      - dependency-name: react
-        update-types: ['version-update:semver-major']
-      - dependency-name: react-dom
-        update-types: ['version-update:semver-major']
-      # recharts needs react-is on the same major as React
-      - dependency-name: react-is
-        update-types: ['version-update:semver-major']
-      - dependency-name: '@types/react'
-        update-types: ['version-update:semver-major']
-      - dependency-name: '@types/react-dom'
-        update-types: ['version-update:semver-major']
       - dependency-name: tailwindcss
         update-types: ['version-update:semver-major']
 
