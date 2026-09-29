@@ -30,6 +30,8 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
   - `list`: expenses, savings, receipts, trash, categories, budget years, personal income, admin tables — full width
   - `analysis`: history, compare, household income — full width
   - `form`: profile, household settings, change password, new receipt — 56rem, centred
+- **Container queries** (`@tailwindcss/container-queries`): components that sit in variable-width cells style themselves by their own width (`@container` + `@xl:…`), not the viewport.
+- **Dashboard widget grid** (`components/WidgetGrid.tsx`): the household and personal dashboards are a `<WidgetGrid>` of `<Widget span={{ 2, 3, 4, 6 }}>` tiles. The grid has 1 column, then 2 from 600px, 3 from 960px, 4 from 1400px and 6 from 2200px of its own width, and packs rows densely; each widget sets how many columns it spans at each count. A widget whose content renders nothing takes no cell. Widget content fills the cell height, so tiles in a row line up; long lists (the dashboard expense list) scroll inside their tile instead of stretching the row.
 - **Hidden table headers** (e.g. the Actions column) put the `sr-only` text in a span inside a `relative` `<th>`; an `sr-only` class on the `<th>` itself escapes the table's scroll wrapper and makes phones scroll sideways.
 
 ### Backend

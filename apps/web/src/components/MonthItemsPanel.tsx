@@ -75,7 +75,7 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
   const busy = toggleMutation.isPending || markAllMutation.isPending
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
           <ListChecks size={16} className="text-amber-400" />

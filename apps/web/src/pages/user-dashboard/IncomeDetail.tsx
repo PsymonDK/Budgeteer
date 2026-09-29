@@ -19,7 +19,7 @@ function formatMonth(yyyymm: string): string {
 /** Income flow Sankey (gross → deductions → households) from the server-built graph. */
 export function IncomeFlowCard({ sankeyData, baseCurrency }: { sankeyData: IncomeSankeyData | undefined; baseCurrency: string }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
       <h3 className="text-sm font-semibold mb-4 text-gray-200">Income flow</h3>
       {sankeyData && sankeyData.nodes.length > 0 ? (
         <>
@@ -71,7 +71,7 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
   }
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 mb-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-gray-200">12-month income trend</h3>
         <div className={segmentGroupPlain}>

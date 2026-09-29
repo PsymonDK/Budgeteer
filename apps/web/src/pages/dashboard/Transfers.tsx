@@ -9,7 +9,7 @@ type Fmt = (v: number | string) => string
 /** Next pending budget transfer with a "Mark as Paid" action. */
 export function TransferTile({ nextPending, onMarkPaid, fmt }: { nextPending: BudgetTransfer | null; onMarkPaid: (t: BudgetTransfer) => void; fmt: Fmt }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <ArrowRightLeft size={16} className="text-amber-400" />
@@ -49,7 +49,7 @@ interface TransferHistoryProps {
 /** Collapsible table of the budget year's monthly transfers. */
 export function TransferHistory({ transfers, collapsed: historyCollapsed, onToggleCollapsed, onMarkPaid, onRevert, fmt }: TransferHistoryProps) {
   return (
-    <div className="mb-8">
+    <div>
       <button
         onClick={onToggleCollapsed}
         className="flex items-center gap-2 text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 hover:text-gray-300 transition-colors"
@@ -130,9 +130,9 @@ export function TransferHistory({ transfers, collapsed: historyCollapsed, onTogg
 export function TransferByAccount({ breakdown, fmt }: { breakdown: TransferBreakdown | undefined; fmt: Fmt }) {
   if (!breakdown || breakdown.byAccount.length === 0) return null
   return (
-    <div className="mb-8">
+    <div className="flex flex-col">
       <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Transfer by account</h2>
-      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+      <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <tbody>

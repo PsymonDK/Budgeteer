@@ -1,3 +1,5 @@
+import containerQueries from '@tailwindcss/container-queries'
+
 export default {
   content: [
     "./index.html",
@@ -31,5 +33,6 @@ export default {
       },
     },
   },
-  plugins: []
+  // `@container` + `@[600px]:…` variants: widgets and tables respond to their own width, not the viewport
+  plugins: [containerQueries],
 }

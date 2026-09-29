@@ -16,6 +16,7 @@ import { HouseholdCard } from './HouseholdCard'
 import { IncomeFlowCard, IncomeTrendCard } from './IncomeDetail'
 import type { IncomeSankeyData, IncomeTrend, NewHousehold, PersonalDashboard, UserSummary } from './types'
 import { Page } from '../../components/Page'
+import { Widget, WidgetGrid } from '../../components/WidgetGrid'
 
 /** Personal dashboard: income/expense/savings tiles, households and income detail. */
 export function UserDashboardPage() {
@@ -86,7 +87,7 @@ export function UserDashboardPage() {
       <Page template="dashboard">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <div>
             <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
@@ -117,36 +118,43 @@ export function UserDashboardPage() {
           <PageLoader />
         ) : (
           <>
-            {/* ── Four primary tiles ── */}
-            <PrimaryTiles dashboard={dashboard} showSparklines={showSparklines} pfmt={pfmt} periodLabel={periodLabel} />
+            {/* Spans per column count (2 / 3 / 4 / 6); on 4K everything fits on one screen */}
+            <WidgetGrid>
+              {/* ── Four primary tiles ── */}
+              <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 6 }}>
+                <PrimaryTiles dashboard={dashboard} showSparklines={showSparklines} pfmt={pfmt} periodLabel={periodLabel} />
+              </Widget>
 
-            {/* ── Households ── */}
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-semibold text-gray-200">Your households</h2>
-            </div>
+              {/* ── Households ── */}
+              <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 2 }}>
+                <div className="flex flex-col">
+                  <h2 className="text-base font-semibold text-gray-200 mb-4">Your households</h2>
+                  {households.length === 0 ? (
+                    <div className="flex-1 text-center py-16 text-gray-500">
+                      <PiggyBank size={40} className="mx-auto mb-4 opacity-30" />
+                      <p className="text-lg mb-2">No crews assembled yet</p>
+                      <p className="text-sm">Create a household to get started.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {households.map((h) => (
+                        <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={pfmt} periodLabel={periodLabel} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </Widget>
 
-            {households.length === 0 ? (
-              <div className="text-center py-16 text-gray-500">
-                <PiggyBank size={40} className="mx-auto mb-4 opacity-30" />
-                <p className="text-lg mb-2">No crews assembled yet</p>
-                <p className="text-sm">Create a household to get started.</p>
-              </div>
-            ) : (
-              <div className="space-y-3 mb-10">
-                {households.map((h) => (
-                  <HouseholdCard key={h.id} household={h} onClick={() => navigate(`/households/${h.id}`)} fmt={pfmt} periodLabel={periodLabel} />
-                ))}
-              </div>
-            )}
+              {/* ── Income detail (Sankey + 12-month trend) ── */}
+              <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 2 }}>
+                <IncomeFlowCard sankeyData={sankeyData} baseCurrency={baseCurrency} />
+              </Widget>
+              <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 2 }}>
+                <IncomeTrendCard incomeTrend={incomeTrend} showGross={showGross} setShowGross={setShowGross} fmt={fmt} />
+              </Widget>
+            </WidgetGrid>
 
-            {/* ── Income detail (Sankey + 12-month trend) ── */}
-            <h2 className="text-base font-semibold text-gray-200 mt-2 mb-4">Income detail</h2>
-
-            <IncomeFlowCard sankeyData={sankeyData} baseCurrency={baseCurrency} />
-
-            <IncomeTrendCard incomeTrend={incomeTrend} showGross={showGross} setShowGross={setShowGross} fmt={fmt} />
-
-            <div className="pb-2">
+            <div className="pt-6 pb-2">
               <Link to="/income" className="text-amber-400 hover:text-amber-300 text-sm transition-colors">
                 Manage jobs &amp; salary →
               </Link>

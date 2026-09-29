@@ -13,7 +13,7 @@ interface AffordabilityCalculatorProps {
 /** SAV-003: "what if I saved more each month?" slider (display-only what-if). */
 export function AffordabilityCalculator({ extraSavings, setExtraSavings, sliderMax, adjustedSurplus, savings, income, fmt }: AffordabilityCalculatorProps) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-8">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Affordability calculator</h2>
       <p className="text-gray-400 text-xs mb-4">What if I saved more each month?</p>
       <div className="flex items-center gap-4 mb-3">
@@ -57,9 +57,9 @@ export function AffordabilityCalculator({ extraSavings, setExtraSavings, sliderM
 export function SavingsRateHistory({ savingsHistory }: { savingsHistory: SavingsHistoryRow[] }) {
   if (savingsHistory.filter((r) => r.savingsRate !== null).length <= 1) return null
   return (
-    <div className="mb-8">
+    <div className="flex flex-col">
       <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Savings rate history</h2>
-      <div className="space-y-2">
+      <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-2">
         {savingsHistory.filter((r) => r.savingsRate !== null).map((r) => {
           const rate = parseFloat(r.savingsRate!)
           return (

@@ -14,7 +14,7 @@ interface PrimaryTilesProps {
 /** Income / expenses / savings / surplus tiles of the personal dashboard. */
 export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: PrimaryTilesProps) {
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+    <div className="grid grid-cols-2 @3xl:grid-cols-4 gap-4">
 
       {/* Income tile */}
       <Link
