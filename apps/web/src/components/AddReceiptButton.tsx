@@ -1,32 +1,17 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { ScanLine } from 'lucide-react'
-import { api } from '../api/client'
+import { useHouseholds, useUserMe } from '../api/queries'
 
-interface Household {
-  id: string
-  name: string
-}
-
-interface UserMe {
-  preferences: { defaultHouseholdId: string | null } | null
-}
-
+/**
+ * Opens the add-receipt page of `householdId`, or — outside a household — of the
+ * user's default household (falling back to their first one).
+ */
 export function AddReceiptButton({ householdId }: { householdId?: string | null }) {
   const navigate = useNavigate()
 
-  const { data: households = [] } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-    enabled: !householdId,
-  })
-
-  const { data: me } = useQuery<UserMe>({
-    queryKey: ['users-me'],
-    queryFn: async () => (await api.get<UserMe>('/users/me')).data,
-    enabled: !householdId,
-  })
+  const { data: households = [] } = useHouseholds({ enabled: !householdId })
+  const { data: me } = useUserMe({ enabled: !householdId })
 
   const targetHouseholdId = useMemo(() => {
     if (householdId) return householdId

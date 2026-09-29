@@ -1,5 +1,6 @@
+import type { Category } from '../../api/types'
 import { compactInputClass, draftNeedsReview, lineActionBtn, lineToDraft } from './helpers'
-import type { Category, LineDraft, ReceiptConfidence, ReceiptLineItem, ReceiptSubcategory } from './types'
+import type { LineDraft, ReceiptConfidence, ReceiptLineItem, ReceiptSubcategory } from './types'
 
 const ROW_GRID = '2xl:grid-cols-[minmax(150px,1.4fr)_72px_96px_minmax(120px,1fr)_minmax(120px,1fr)_96px_104px]'
 

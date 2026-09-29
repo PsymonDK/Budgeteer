@@ -6,7 +6,8 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import { qk } from './queryKeys'
 import type {
-  AccountGroups, AppConfig, BudgetYear, Category, CategoryType, Currency, Household, UserMe, UserPreferences,
+  Account, AccountGroups, AppConfig, BudgetYear, Category, CategoryType, Currency, Household,
+  ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
 } from './types'
 
 /** Per-call options a screen may set on a shared query. */
@@ -80,6 +81,49 @@ export function useBudgetYearAccounts(budgetYearId: string | undefined) {
     queryKey: qk.accountsForBudgetYear(budgetYearId),
     queryFn: async () => (await api.get<AccountGroups>(`/budget-years/${budgetYearId}/accounts`)).data,
     enabled: !!budgetYearId,
+  })
+}
+
+/** GET /users/me/accounts — all of the caller's personal accounts, active and inactive. */
+export function usePersonalAccounts() {
+  return useQuery({
+    queryKey: qk.accountsPersonal(),
+    queryFn: async () => (await api.get<Account[]>('/users/me/accounts')).data,
+  })
+}
+
+/** GET /households/:id/accounts — all of the household's accounts, active and inactive. */
+export function useHouseholdAccounts(householdId: string | undefined) {
+  return useQuery({
+    queryKey: qk.accountsHousehold(householdId),
+    queryFn: async () => (await api.get<Account[]>(`/households/${householdId}/accounts`)).data,
+    enabled: !!householdId,
+  })
+}
+
+/**
+ * GET /households/:id/receipts/summary — confirmed receipt consumption for a period.
+ * `startDate`/`endDate` are only sent for the custom period but always part of the key.
+ */
+export function useReceiptSummary(
+  householdId: string | undefined,
+  period: ReceiptSummaryPeriod,
+  startDate: string,
+  endDate: string,
+  opts: QueryOpts = {},
+) {
+  return useQuery({
+    queryKey: qk.receiptSummary(householdId, period, startDate, endDate),
+    queryFn: async () => {
+      const params = new URLSearchParams({ period })
+      if (period === 'custom') {
+        params.set('startDate', startDate)
+        params.set('endDate', endDate)
+      }
+      return (await api.get<ReceiptConsumptionSummary>(`/households/${householdId}/receipts/summary?${params}`)).data
+    },
+    ...opts,
+    enabled: !!householdId && (opts.enabled ?? true),
   })
 }
 

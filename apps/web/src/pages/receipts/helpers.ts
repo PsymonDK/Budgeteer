@@ -1,7 +1,8 @@
 import axios from 'axios'
+import type { Currency, ReceiptSummaryPeriod } from '../../api/types'
+import { getApiError } from '../../lib/apiError'
 import type {
-  Currency, HeaderDraft, LineDraft, Receipt, ReceiptConfidence, ReceiptLineItem, ReceiptMappingImportStatus,
-  ReceiptStatus, ReceiptSummaryPeriod,
+  HeaderDraft, LineDraft, Receipt, ReceiptConfidence, ReceiptLineItem, ReceiptMappingImportStatus, ReceiptStatus,
 } from './types'
 
 export const EMPTY_MANUAL_LINE: LineDraft = {
@@ -165,13 +166,14 @@ export function downloadText(fileName: string, text: string, mime = 'text/csv') 
   URL.revokeObjectURL(url)
 }
 
-/** The API's error message, a friendly message for oversized uploads, or a thrown Error's message. */
-export function readError(err: unknown, fallback: string) {
+/**
+ * `getApiError` plus two receipt cases: a friendly message for oversized uploads
+ * (HTTP 413) and the message of a client-side validation Error thrown by a mutation.
+ */
+export function readError(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
-    if (err.response?.status === 413) {
-      return 'Receipt file is too large. Upload a file smaller than 10 MB.'
-    }
-    return (err.response?.data as { error?: string })?.error ?? fallback
+    if (err.response?.status === 413) return 'Receipt file is too large. Upload a file smaller than 10 MB.'
+    return getApiError(err, fallback)
   }
   if (err instanceof Error) return err.message
   return fallback

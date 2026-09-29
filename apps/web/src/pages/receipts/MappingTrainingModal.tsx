@@ -1,13 +1,15 @@
 import { useState, type ChangeEvent } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Check, Clipboard, Download, FileUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { MAPPING_STATUS_CLASS, downloadText, readError } from './helpers'
-import type { ReceiptMappingExportKit, ReceiptMappingImportPreview, ReceiptMappingImportStatus } from './types'
+import { useReceiptMappingExportKit } from './queries'
+import type { ReceiptMappingImportPreview, ReceiptMappingImportStatus } from './types'
 
 export type MappingTab = 'export' | 'import'
 
@@ -28,11 +30,7 @@ export function MappingTrainingModal({ householdId, open, tab, onTabChange, onCl
   const queryClient = useQueryClient()
   const [csvText, setCsvText] = useState('')
 
-  const { data: exportKit, isLoading: exportLoading } = useQuery<ReceiptMappingExportKit>({
-    queryKey: ['receipt-mapping-export-kit', householdId],
-    queryFn: async () => (await api.get<ReceiptMappingExportKit>(`/households/${householdId}/receipt-mappings/export-kit`)).data,
-    enabled: !!householdId && open,
-  })
+  const { data: exportKit, isLoading: exportLoading } = useReceiptMappingExportKit(householdId, open)
 
   const previewMutation = useMutation({
     mutationFn: async () => (await api.post<ReceiptMappingImportPreview>(`/households/${householdId}/receipt-mappings/import-preview`, { csvText })).data,
@@ -42,8 +40,8 @@ export function MappingTrainingModal({ householdId, open, tab, onTabChange, onCl
   const confirmMutation = useMutation({
     mutationFn: async () => (await api.post<ReceiptMappingImportPreview>(`/households/${householdId}/receipt-mappings/import-confirm`, { csvText })).data,
     onSuccess: (preview) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt-mapping-export-kit', householdId] })
-      queryClient.invalidateQueries({ queryKey: ['receipts', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.receiptMappingExportKit(householdId) })
+      queryClient.invalidateQueries({ queryKey: qk.receipts(householdId) })
       previewMutation.reset()
       setCsvText('')
       toast.success(`${preview.counts.create + preview.counts.update} mapping${preview.counts.create + preview.counts.update === 1 ? '' : 's'} saved`)

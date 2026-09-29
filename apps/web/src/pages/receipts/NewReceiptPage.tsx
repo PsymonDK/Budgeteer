@@ -1,13 +1,16 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ScanLine, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
+import { useHouseholdAccounts, usePersonalAccounts } from '../../api/queries'
 import { PageHeader } from '../../components/PageHeader'
+import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { readError } from './helpers'
-import type { AccountInfo, Receipt } from './types'
+import type { Receipt } from './types'
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 
@@ -22,16 +25,8 @@ export function NewReceiptPage() {
   const [accountId, setAccountId] = useState('')
   const [parseError, setParseError] = useState('')
 
-  const { data: personalAccounts = [] } = useQuery<AccountInfo[]>({
-    queryKey: ['personal-accounts'],
-    queryFn: async () => (await api.get<AccountInfo[]>('/users/me/accounts')).data,
-  })
-
-  const { data: householdAccounts = [] } = useQuery<AccountInfo[]>({
-    queryKey: ['household-accounts', householdId],
-    queryFn: async () => (await api.get<AccountInfo[]>(`/households/${householdId}/accounts`)).data,
-    enabled: !!householdId,
-  })
+  const { data: personalAccounts = [] } = usePersonalAccounts()
+  const { data: householdAccounts = [] } = useHouseholdAccounts(householdId)
   const accountOptions = [...personalAccounts, ...householdAccounts]
 
   const parseMutation = useMutation({
@@ -54,7 +49,7 @@ export function NewReceiptPage() {
       return (await api.post<Receipt>(`/households/${householdId}/receipts/parse`, payload)).data
     },
     onSuccess: (receipt) => {
-      queryClient.invalidateQueries({ queryKey: ['receipts', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.receipts(householdId) })
       toast.success('Receipt parsed for review')
       navigate(`/households/${householdId}/receipts?receiptId=${receipt.id}`)
     },
@@ -142,7 +137,7 @@ export function NewReceiptPage() {
             </label>
           )}
 
-          {parseError && <p className="text-sm text-red-400">{parseError}</p>}
+          <FormError message={parseError} />
           <button type="submit" disabled={parseMutation.isPending} className={`${primaryBtn} w-full flex items-center justify-center gap-2`}>
             <ScanLine size={16} />
             {parseMutation.isPending ? (receiptFile ? 'Uploading...' : 'Parsing...') : (receiptFile ? 'Upload and parse receipt' : 'Parse receipt')}

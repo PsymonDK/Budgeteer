@@ -1,14 +1,13 @@
-import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
-import { api } from '../../api/client'
+import { useReceiptSummary } from '../../api/queries'
+import type { ReceiptSummaryPeriod } from '../../api/types'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { useFmt } from '../../hooks/useFmt'
 import { toLocalISODate, startOfLocalMonthISO } from '../../lib/dates'
 import {
   CATEGORY_COLORS, RECEIPT_PERIOD_OPTIONS, compactInputClass, formatPercent, parseMoney, percentage, sameId,
 } from './helpers'
-import type { ReceiptConsumptionSummary, ReceiptSummaryPeriod } from './types'
 
 /** Confirmed receipt spend for a chosen period, broken down by category and subcategory. */
 export function ReceiptConsumptionPanel({ householdId }: { householdId: string }) {
@@ -16,21 +15,10 @@ export function ReceiptConsumptionPanel({ householdId }: { householdId: string }
   const [period, setPeriod] = useState<ReceiptSummaryPeriod>('currentMonth')
   const [startDate, setStartDate] = useState(() => startOfLocalMonthISO())
   const [endDate, setEndDate] = useState(() => toLocalISODate())
-
-  const summaryQuery = useMemo(() => {
-    const params = new URLSearchParams({ period })
-    if (period === 'custom') {
-      params.set('startDate', startDate)
-      params.set('endDate', endDate)
-    }
-    return params.toString()
-  }, [endDate, period, startDate])
   const customRangeValid = period !== 'custom' || Boolean(startDate && endDate && startDate <= endDate)
 
-  const { data: summary, isLoading, isFetching } = useQuery<ReceiptConsumptionSummary>({
-    queryKey: ['receipt-summary', householdId, period, startDate, endDate],
-    queryFn: async () => (await api.get<ReceiptConsumptionSummary>(`/households/${householdId}/receipts/summary?${summaryQuery}`)).data,
-    enabled: !!householdId && customRangeValid,
+  const { data: summary, isLoading, isFetching } = useReceiptSummary(householdId, period, startDate, endDate, {
+    enabled: customRangeValid,
   })
 
   const total = parseMoney(summary?.total)

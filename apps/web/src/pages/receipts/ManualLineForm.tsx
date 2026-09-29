@@ -1,8 +1,9 @@
 import type { Dispatch, SetStateAction } from 'react'
 import { Plus } from 'lucide-react'
+import type { Category } from '../../api/types'
 import { primaryBtn } from '../../lib/styles'
 import { compactInputClass } from './helpers'
-import type { Category, LineDraft, ReceiptSubcategory } from './types'
+import type { LineDraft, ReceiptSubcategory } from './types'
 
 interface ManualLineFormProps {
   draft: LineDraft

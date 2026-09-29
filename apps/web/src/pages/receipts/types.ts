@@ -1,14 +1,11 @@
 // Shapes of the receipt API responses (apps/api/src/routes/receipts.ts) and the
-// review screen's edit drafts. Decimals arrive as strings.
+// review screen's edit drafts. Decimals arrive as strings. Shapes shared with
+// other screens (accounts, categories, consumption summary) live in api/types.ts.
+
+import type { AccountInfo, Category } from '../../api/types'
 
 export type ReceiptStatus = 'DRAFT' | 'CONFIRMED' | 'FAILED'
 export type ReceiptConfidence = 'LOW' | 'MEDIUM' | 'HIGH'
-
-export interface Category {
-  id: string
-  name: string
-  icon: string | null
-}
 
 /** GET /households/:id/receipt-subcategories */
 export interface ReceiptSubcategory {
@@ -17,20 +14,6 @@ export interface ReceiptSubcategory {
   householdId: string | null
   name: string
   isSystemWide: boolean
-}
-
-export interface AccountInfo {
-  id: string
-  name: string
-  type: string
-}
-
-export interface Currency {
-  code: string
-  name: string
-  rate: number | null
-  baseCurrency: string
-  fetchedDate: string | null
 }
 
 export interface ReceiptLineItem {
@@ -43,9 +26,9 @@ export interface ReceiptLineItem {
   currencyCode: string | null
   confidence: ReceiptConfidence
   categoryId: string | null
-  category: Category | null
+  category: Pick<Category, 'id' | 'name' | 'icon'> | null
   subcategoryId: string | null
-  subcategory: ReceiptSubcategory | null
+  subcategory: { id: string; name: string } | null
   isIgnored: boolean
 }
 
@@ -121,22 +104,6 @@ export interface ReceiptMappingImportRow {
 export interface ReceiptMappingImportPreview {
   counts: Record<ReceiptMappingImportStatus, number> & { total: number; valid: number }
   rows: ReceiptMappingImportRow[]
-}
-
-export type ReceiptSummaryPeriod = 'allTime' | 'currentMonth' | 'previousMonth' | 'currentQuarter' | 'previousQuarter' | 'currentYear' | 'previousYear' | 'last12Months' | 'custom'
-
-/** GET /households/:id/receipts/summary */
-export interface ReceiptConsumptionSummary {
-  total: string
-  itemCount: number
-  baseCurrency: string
-  period: ReceiptSummaryPeriod | 'legacy'
-  startDate: string | null
-  endDate: string | null
-  warnings: string[]
-  byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
-  bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
-  byMonth: Array<{ month: string; total: string }>
 }
 
 /** Edit state of one line item (inputs keep their raw strings). */

@@ -1,5 +1,6 @@
+import type { AccountInfo } from '../../api/types'
 import { compactInputClass } from './helpers'
-import type { AccountInfo, HeaderDraft } from './types'
+import type { HeaderDraft } from './types'
 
 interface ReceiptHeaderFormProps {
   draft: HeaderDraft

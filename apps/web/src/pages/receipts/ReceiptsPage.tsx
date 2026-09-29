@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
 import { Download, FileText, FileUp, Plus } from 'lucide-react'
-import { api } from '../../api/client'
 import { PageHeader } from '../../components/PageHeader'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { primaryBtn, secondaryBtn } from '../../lib/styles'
@@ -11,7 +9,7 @@ import { ReceiptConsumptionPanel } from './ReceiptConsumptionPanel'
 import { ReceiptHistoryList } from './ReceiptHistoryList'
 import { ReceiptReview } from './ReceiptReview'
 import { MappingTrainingModal, type MappingTab } from './MappingTrainingModal'
-import type { Receipt, ReceiptSummary } from './types'
+import { useReceipt, useReceipts } from './queries'
 
 /** Household receipts: consumption summary, receipt history and the review pane (`?receiptId=`). */
 export function ReceiptsPage() {
@@ -24,17 +22,8 @@ export function ReceiptsPage() {
   const [mappingModalOpen, setMappingModalOpen] = useState(false)
   const [mappingTab, setMappingTab] = useState<MappingTab>('export')
 
-  const { data: receipts = [], isLoading: receiptsLoading } = useQuery<ReceiptSummary[]>({
-    queryKey: ['receipts', householdId],
-    queryFn: async () => (await api.get<ReceiptSummary[]>(`/households/${householdId}/receipts`)).data,
-    enabled: !!householdId,
-  })
-
-  const { data: selectedReceipt, isLoading: receiptLoading } = useQuery<Receipt>({
-    queryKey: ['receipt', householdId, selectedReceiptId],
-    queryFn: async () => (await api.get<Receipt>(`/households/${householdId}/receipts/${selectedReceiptId}`)).data,
-    enabled: !!householdId && !!selectedReceiptId,
-  })
+  const { data: receipts = [], isLoading: receiptsLoading } = useReceipts(householdId)
+  const { data: selectedReceipt, isLoading: receiptLoading } = useReceipt(householdId, selectedReceiptId)
 
   useEffect(() => {
     const receiptId = searchParams.get('receiptId')

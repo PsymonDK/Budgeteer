@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { useBaseCurrency } from '../../hooks/useFmt'
 import { EMPTY_MANUAL_LINE, headerPayload, linePayload, lineToDraft, readError, receiptToHeaderDraft } from './helpers'
 import type { LineDraft, Receipt, ReceiptLineItem, ReceiptSubcategory } from './types'
@@ -39,8 +40,8 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
   }
 
   function invalidateLists() {
-    queryClient.invalidateQueries({ queryKey: ['receipts', householdId] })
-    queryClient.invalidateQueries({ queryKey: ['receipt-summary', householdId] })
+    queryClient.invalidateQueries({ queryKey: qk.receipts(householdId) })
+    queryClient.invalidateQueries({ queryKey: qk.receiptSummaryAll(householdId) })
   }
 
   async function saveReceiptHeader() {
@@ -68,7 +69,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
   const saveHeaderMutation = useMutation({
     mutationFn: saveReceiptHeader,
     onSuccess: (updated) => {
-      queryClient.setQueryData(['receipt', householdId, updated.id], updated)
+      queryClient.setQueryData(qk.receipt(householdId, updated.id), updated)
       invalidateLists()
       toast.success('Receipt details saved')
     },
@@ -78,7 +79,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
   const saveLineMutation = useMutation({
     mutationFn: saveLineItem,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['receipt', householdId, receiptId] })
+      queryClient.invalidateQueries({ queryKey: qk.receipt(householdId, receiptId) })
       invalidateLists()
       toast.success('Line item saved')
     },
@@ -89,7 +90,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
     mutationFn: createLineItem,
     onSuccess: () => {
       setManualLineDraft(EMPTY_MANUAL_LINE)
-      queryClient.invalidateQueries({ queryKey: ['receipt', householdId, receiptId] })
+      queryClient.invalidateQueries({ queryKey: qk.receipt(householdId, receiptId) })
       invalidateLists()
       toast.success('Line item added')
     },
@@ -102,7 +103,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
       subcategory: (await api.post<ReceiptSubcategory>(`/categories/${categoryId}/subcategories`, { householdId, name })).data,
     }),
     onSuccess: ({ itemId, subcategory }) => {
-      queryClient.invalidateQueries({ queryKey: ['receipt-subcategories', householdId] })
+      queryClient.invalidateQueries({ queryKey: qk.receiptSubcategories(householdId) })
       updateLineDraft(itemId, { subcategoryId: subcategory.id })
       setNewSubcategoryName((prev) => ({ ...prev, [itemId]: '' }))
       toast.success('Subcategory added')
@@ -119,7 +120,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
       return (await api.post<Receipt>(`/households/${householdId}/receipts/${receiptId}/confirm`)).data
     },
     onSuccess: (confirmed) => {
-      queryClient.setQueryData(['receipt', householdId, confirmed.id], confirmed)
+      queryClient.setQueryData(qk.receipt(householdId, confirmed.id), confirmed)
       invalidateLists()
       toast.success('Receipt confirmed')
     },

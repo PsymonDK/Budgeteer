@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Check, Trash2 } from 'lucide-react'
-import { api } from '../../api/client'
+import { useCategories, useCurrencies, useHouseholdAccounts, usePersonalAccounts } from '../../api/queries'
 import { useBaseCurrency, useFmt } from '../../hooks/useFmt'
 import { dangerBtn, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { CONFIDENCE_CLASS, buildCurrencyOptions, draftNeedsReview, lineToDraft, receiptStatusClass } from './helpers'
@@ -10,7 +9,8 @@ import { ReceiptPreview } from './ReceiptPreview'
 import { ReceiptHeaderForm } from './ReceiptHeaderForm'
 import { ManualLineForm } from './ManualLineForm'
 import { LineItemsTable } from './LineItemsTable'
-import type { AccountInfo, Category, Currency, Receipt, ReceiptConfidence, ReceiptSubcategory } from './types'
+import { useReceiptSubcategories } from './queries'
+import type { Receipt, ReceiptConfidence } from './types'
 
 interface ReceiptReviewProps {
   householdId: string
@@ -27,34 +27,12 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
   const editor = useReceiptEditor(householdId, receipt, onDeleted)
   const { headerDraft, lineDrafts } = editor
 
-  const { data: categories = [] } = useQuery<Category[]>({
-    queryKey: ['categories', householdId, 'EXPENSE'],
-    queryFn: async () => (await api.get<Category[]>(`/categories?householdId=${householdId}&type=EXPENSE`)).data,
-    enabled: !!householdId,
-  })
-
-  const { data: subcategories = [] } = useQuery<ReceiptSubcategory[]>({
-    queryKey: ['receipt-subcategories', householdId],
-    queryFn: async () => (await api.get<ReceiptSubcategory[]>(`/households/${householdId}/receipt-subcategories`)).data,
-    enabled: !!householdId,
-  })
-
-  const { data: personalAccounts = [] } = useQuery<AccountInfo[]>({
-    queryKey: ['personal-accounts'],
-    queryFn: async () => (await api.get<AccountInfo[]>('/users/me/accounts')).data,
-  })
-
-  const { data: householdAccounts = [] } = useQuery<AccountInfo[]>({
-    queryKey: ['household-accounts', householdId],
-    queryFn: async () => (await api.get<AccountInfo[]>(`/households/${householdId}/accounts`)).data,
-    enabled: !!householdId,
-  })
+  const { data: categories = [] } = useCategories(householdId, 'EXPENSE')
+  const { data: subcategories = [] } = useReceiptSubcategories(householdId)
+  const { data: personalAccounts = [] } = usePersonalAccounts()
+  const { data: householdAccounts = [] } = useHouseholdAccounts(householdId)
   const accountOptions = [...personalAccounts, ...householdAccounts]
-
-  const { data: currencies = [] } = useQuery<Currency[]>({
-    queryKey: ['currencies'],
-    queryFn: async () => (await api.get<Currency[]>('/currencies')).data,
-  })
+  const { data: currencies = [] } = useCurrencies()
 
   const currencyOptions = useMemo(
     () => buildCurrencyOptions(baseCurrency, currencies, headerDraft.currencyCode),
