@@ -8,6 +8,7 @@ import { qk } from '../../api/queryKeys'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
 import type { Household } from '../../api/types'
+import { Page } from '../../components/Page'
 
 export function HouseholdsAdminPage() {
   const queryClient = useQueryClient()
@@ -35,8 +36,8 @@ export function HouseholdsAdminPage() {
   })
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-6xl mx-auto px-6 py-8">
+    <>
+      <Page template="list">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">All Households</h1>
           <span className="text-sm text-gray-500">{households.length} total</span>
@@ -56,7 +57,7 @@ export function HouseholdsAdminPage() {
                   <th className="px-4 py-3 font-medium">Members</th>
                   <th className="px-4 py-3 font-medium">Admins</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                  <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -98,7 +99,7 @@ export function HouseholdsAdminPage() {
             </div>
           </div>
         )}
-      </main>
+      </Page>
 
       {confirmDelete && (
         <ConfirmDialog
@@ -115,6 +116,6 @@ export function HouseholdsAdminPage() {
           <FormError message={deleteError} className="mb-4" />
         </ConfirmDialog>
       )}
-    </div>
+    </>
   )
 }

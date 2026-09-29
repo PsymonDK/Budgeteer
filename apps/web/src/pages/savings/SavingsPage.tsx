@@ -25,6 +25,7 @@ import { SavingsTable } from './SavingsTable'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
+import { Page } from '../../components/Page'
 
 export function SavingsPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -248,7 +249,7 @@ export function SavingsPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <Page template="list">
         {/* Budget year selector */}
         <BudgetYearSelector
           budgetYears={budgetYears}
@@ -321,7 +322,7 @@ export function SavingsPage() {
           />
           </>
         )}
-      </main>
+      </Page>
 
       {/* Add / Edit modal */}
       {(showAdd || editingEntry) && (

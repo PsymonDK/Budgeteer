@@ -33,7 +33,7 @@ export function RegularYearsTable({ householdId, years: regularYears, isAdmin, c
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium text-right">Expenses</th>
                 <th className="px-4 py-3 font-medium text-right">Savings</th>
-                {isAdmin && <th className="px-4 py-3 sr-only">Actions</th>}
+                {isAdmin && <th className="relative px-4 py-3"><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>
@@ -145,7 +145,7 @@ export function SimulationsTable({ householdId, simulations, canCreate, onNewSim
                 <th className="px-4 py-3 font-medium">Year</th>
                 <th className="px-4 py-3 font-medium text-right">Expenses</th>
                 <th className="px-4 py-3 font-medium text-right">Savings</th>
-                <th className="px-4 py-3 sr-only">Actions</th>
+                <th className="relative px-4 py-3"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

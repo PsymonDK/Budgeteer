@@ -7,6 +7,7 @@ import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { FREQ_LABELS, type Frequency } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
+import { Page } from '../components/Page'
 
 interface IncomeEntry {
   id: string
@@ -49,7 +50,7 @@ export function HouseholdIncomePage() {
   const totalMonthly = parseFloat(summary?.totalMonthly ?? '0')
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
+    <Page template="analysis">
       {summary?.budgetYear && (
         <div className="mb-6">
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
@@ -86,7 +87,7 @@ export function HouseholdIncomePage() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
               <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Total / month</p>
               <p className="text-2xl font-bold text-amber-400">{fmt(totalMonthly)}</p>
@@ -168,6 +169,6 @@ export function HouseholdIncomePage() {
           </div>
         </>
       )}
-    </main>
+    </Page>
   )
 }

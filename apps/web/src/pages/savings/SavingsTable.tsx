@@ -38,7 +38,7 @@ export function SavingsTable({
             <th className="px-4 py-3 font-medium">Frequency</th>
             <th className="px-4 py-3 font-medium text-right">Amount</th>
             <th className="px-4 py-3 font-medium text-right">/ month</th>
-            {!isReadOnly && <th className="px-4 py-3 sr-only">Actions</th>}
+            {!isReadOnly && <th className="relative px-4 py-3"><span className="sr-only">Actions</span></th>}
           </tr>
         </thead>
         <tbody>

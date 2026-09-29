@@ -9,6 +9,7 @@ import { ReceiptHistoryList } from './ReceiptHistoryList'
 import { ReceiptReview } from './ReceiptReview'
 import { MappingTrainingModal, type MappingTab } from './MappingTrainingModal'
 import { useReceipt, useReceipts } from './queries'
+import { Page } from '../../components/Page'
 
 /** Household receipts: consumption summary, receipt history and the review pane (`?receiptId=`). */
 export function ReceiptsPage() {
@@ -46,7 +47,7 @@ export function ReceiptsPage() {
   }
 
   return (
-    <main className="w-full max-w-none px-3 sm:px-5 lg:px-6 py-5 overflow-x-hidden">
+    <Page template="list" className="overflow-x-hidden">
       <PageHeader
         title="Receipts"
         action={(
@@ -109,6 +110,6 @@ export function ReceiptsPage() {
         onTabChange={setMappingTab}
         onClose={() => setMappingModalOpen(false)}
       />
-    </main>
+    </Page>
   )
 }

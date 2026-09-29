@@ -120,7 +120,7 @@ export function MembersSection({ householdId: id, household, isAdmin, me }: Memb
               <th className="px-4 py-3 font-medium">Name</th>
               <th className="px-4 py-3 font-medium">Email</th>
               <th className="px-4 py-3 font-medium">Role</th>
-              {isAdmin && <th className="px-4 py-3 font-medium sr-only">Actions</th>}
+              {isAdmin && <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>}
             </tr>
           </thead>
           <tbody>

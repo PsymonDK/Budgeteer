@@ -10,6 +10,7 @@ import { HouseholdNameHeader } from './HouseholdNameHeader'
 import { MembersSection } from './MembersSection'
 import { HouseholdAccountsSection } from './HouseholdAccountsSection'
 import { DangerZone, TransferSettings } from './HouseholdAdminSettings'
+import { Page } from '../../components/Page'
 
 /** Household settings: name, members, accounts, transfer settings and deactivation. */
 export function HouseholdPage() {
@@ -45,7 +46,7 @@ export function HouseholdPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <Page template="form">
         {/* Household name */}
         <HouseholdNameHeader householdId={householdId} household={household} isAdmin={isAdmin} />
 
@@ -60,7 +61,7 @@ export function HouseholdPage() {
 
         {/* Danger zone */}
         {isAdmin && <DangerZone householdId={householdId} household={household} />}
-      </main>
+      </Page>
     </>
   )
 }

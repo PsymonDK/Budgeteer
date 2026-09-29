@@ -23,6 +23,7 @@ import { ExpenseBreakdown } from './ExpenseBreakdown'
 import { MarkPaidDialog, TransferByAccount, TransferHistory, TransferTile } from './Transfers'
 import type { DashboardSummary, SavingsHistoryRow } from './types'
 import type { ReceiptSummaryPeriod } from '../../api/types'
+import { Page } from '../../components/Page'
 
 export function DashboardPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -151,7 +152,7 @@ export function DashboardPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-8">
+    <Page template="dashboard">
 
       {/* Budget year badge */}
       {summary?.budgetYear && (
@@ -300,6 +301,6 @@ export function DashboardPage() {
 
         </>
       )}
-    </main>
+    </Page>
   )
 }

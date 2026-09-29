@@ -72,7 +72,7 @@ export function ExpensesTable({
                 /month <SortIcon col="monthly" sortKey={sortKey} sortAsc={sortAsc} />
               </button>
             </th>
-            {!isReadOnly && <th className="px-4 py-3 sr-only">Actions</th>}
+            {!isReadOnly && <th className="relative px-4 py-3"><span className="sr-only">Actions</span></th>}
           </tr>
         </thead>
         <tbody>

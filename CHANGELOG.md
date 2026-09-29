@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Responsive app shell** — one shared frame (`AppShell`) for the household, personal and admin areas, replacing three separately built headers and navigations. Phones get a bottom tab bar (Dashboard, Expenses, Add, Receipts, More) where Add offers Add expense, Add savings and Scan receipt; tablets get an icon rail; from 1024px the sidebar is grouped into "This year's budget" and "Plan & look back" and can be collapsed to the rail. The personal area gains a sidebar listing your households, and admin navigation moves from a row of header links into the sidebar. Groundwork for layouts that use the full width from phone to 4K.
+- **Page templates** — every page now declares one of four templates (dashboard, list, analysis, form) instead of its own width. Dashboards, lists and analysis pages use the full screen width instead of stopping at 896–1,280px; forms stay at a readable 56rem. Gutters grow with the screen size.
 - **API healthcheck** — the API image checks `/health`, and the web container in every compose file waits for a healthy API.
 - **Optional settings in the deploy compose files** — `ANTHROPIC_API_KEY`, `SCHEMA_SYNC_MODE`, `TRUST_PROXY`, the rate-limit, receipt OCR and local-AI variables are now passed to the API container; before, setting them in `.env` had no effect, so AI payslip import and local receipt AI couldn't be enabled in a Docker install.
 - **Dependabot for GitHub Actions and Docker base images.**
@@ -57,6 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - **Pages kept their old scroll position** when you moved to another page in a household; each page now opens at the top.
 - **Phones zoomed out on some pages** (e.g. Expenses) because hidden table headers widened the page to about 650px; the page now stays at the screen width.
+- **Pages scrolled sideways on phones** — Savings, Expenses, Household settings and Household income were wider than the screen (hidden table headers, a toolbar and stat cards that didn't wrap), and the Receipts header cut off "Add receipt". Every page now fits a 375px screen.
 - **The seed printed the admin password to the logs** on first boot; it ran the receipt training import twice when demo data was enabled.
 - **Currency rates were stored again on every restart** — the daily sync now keeps one row per currency per day.
 - **Saving one receipt line discarded unsaved edits on the others** — edited drafts are now kept when the receipt refreshes.

@@ -7,6 +7,7 @@ import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { Category } from '../../api/types'
+import { Page } from '../../components/Page'
 
 type TabType = 'system' | 'custom'
 
@@ -97,7 +98,7 @@ export function CategoriesAdminPage() {
     }`
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <Page template="list">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Categories</h1>
@@ -203,7 +204,7 @@ export function CategoriesAdminPage() {
           </form>
         </Modal>
       )}
-    </div>
+    </Page>
   )
 }
 
@@ -232,7 +233,7 @@ function SystemCategoryTable({
             <th className="px-4 py-3 font-medium">Type</th>
             <th className="px-4 py-3 font-medium">In use</th>
             <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 font-medium sr-only">Actions</th>
+            <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -317,7 +318,7 @@ function CustomCategoryTable({
               <th className="px-4 py-3 font-medium">Type</th>
               <th className="px-4 py-3 font-medium">Created by</th>
               <th className="px-4 py-3 font-medium">In use</th>
-              <th className="px-4 py-3 font-medium sr-only">Actions</th>
+              <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>

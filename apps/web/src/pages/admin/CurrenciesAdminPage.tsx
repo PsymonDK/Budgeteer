@@ -6,6 +6,7 @@ import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
+import { Page } from '../../components/Page'
 
 interface AdminCurrency {
   code: string
@@ -111,7 +112,7 @@ export function CurrenciesAdminPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
+    <Page template="list">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Currencies</h1>
@@ -150,7 +151,7 @@ export function CurrenciesAdminPage() {
                 <th className="px-4 py-3 font-medium">Rate</th>
                 <th className="px-4 py-3 font-medium">Last updated</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -299,6 +300,6 @@ export function CurrenciesAdminPage() {
           </form>
         </Modal>
       )}
-    </div>
+    </Page>
   )
 }

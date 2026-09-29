@@ -8,6 +8,7 @@ import { Modal } from '../../components/Modal'
 import { FormError } from '../../components/FormError'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass, primaryBtnSm } from '../../lib/styles'
+import { Page } from '../../components/Page'
 
 interface User {
   id: string
@@ -166,8 +167,8 @@ export function AdminUsersPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-6xl mx-auto px-6 py-8">
+    <>
+      <Page template="list">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-semibold">Users</h1>
           <button
@@ -190,7 +191,7 @@ export function AdminUsersPage() {
                   <th className="px-4 py-3 font-medium">Email</th>
                   <th className="px-4 py-3 font-medium">Role</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                  <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -234,7 +235,7 @@ export function AdminUsersPage() {
             </div>
           </div>
         )}
-      </main>
+      </Page>
 
       {/* Create user modal */}
       {showCreate && (
@@ -408,7 +409,7 @@ export function AdminUsersPage() {
           </form>
         </Modal>
       )}
-    </div>
+    </>
   )
 }
 

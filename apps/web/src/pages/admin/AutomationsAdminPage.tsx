@@ -6,6 +6,7 @@ import { qk } from '../../api/queryKeys'
 import { useAuth } from '../../contexts/AuthContext'
 import { toast } from 'sonner'
 import { getApiError } from '../../lib/apiError'
+import { Page } from '../../components/Page'
 
 interface AutomationRun {
   id: string
@@ -125,7 +126,7 @@ export function AutomationsAdminPage() {
   }
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
+    <Page template="list">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold mb-1 flex items-center gap-2">
@@ -262,6 +263,6 @@ export function AutomationsAdminPage() {
           </div>
         </div>
       )}
-    </main>
+    </Page>
   )
 }

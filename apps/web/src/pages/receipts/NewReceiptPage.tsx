@@ -11,6 +11,7 @@ import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { readError } from './helpers'
 import type { Receipt } from './types'
+import { Page } from '../../components/Page'
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 
@@ -85,7 +86,7 @@ export function NewReceiptPage() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8">
+    <Page template="form">
       <PageHeader
         title="Add receipt"
         action={(
@@ -144,6 +145,6 @@ export function NewReceiptPage() {
           </button>
         </form>
       </section>
-    </main>
+    </Page>
   )
 }

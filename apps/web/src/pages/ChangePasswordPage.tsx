@@ -5,6 +5,7 @@ import { api, setAccessToken } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { inputClass, primaryBtn, secondaryBtn } from '../lib/styles'
 import { FormError } from '../components/FormError'
+import { Page } from '../components/Page'
 
 export function ChangePasswordPage() {
   const { user, updateUser } = useAuth()
@@ -52,8 +53,8 @@ export function ChangePasswordPage() {
   const isMandatory = user?.mustChangePassword ?? false
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <main className="flex-1 flex items-center justify-center px-4">
+    <>
+      <Page template="form" className="flex justify-center">
         <div className="w-full max-w-sm">
           {isMandatory && (
             <div className="mb-6 bg-amber-950 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-300">
@@ -120,7 +121,7 @@ export function ChangePasswordPage() {
             </div>
           </form>
         </div>
-      </main>
-    </div>
+      </Page>
+    </>
   )
 }

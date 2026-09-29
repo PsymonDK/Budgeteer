@@ -11,6 +11,7 @@ import { yearLabel } from '../lib/budgetYear'
 import { qk } from '../api/queryKeys'
 import { useBudgetYears } from '../api/queries'
 import { segmentGroup, segmentBtn } from '../lib/styles'
+import { Page } from '../components/Page'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -172,7 +173,7 @@ export function ComparePage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-8">
+    <Page template="analysis">
       <PageHeader title="Compare Budgets" subtitle="Select two budget years or simulations to compare side by side." />
 
       {/* COMP-001: Year selectors */}
@@ -240,7 +241,7 @@ export function ComparePage() {
           </div>
 
           {/* COMP-003: Summary comparison cards */}
-          <div className="grid grid-cols-4 gap-3 mb-8">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
             {(
               [
                 { key: 'income',   label: 'Income',   invert: false },
@@ -413,6 +414,6 @@ export function ComparePage() {
           </div>
         </>
       ) : null}
-    </main>
+    </Page>
   )
 }

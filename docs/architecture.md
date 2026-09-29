@@ -25,6 +25,12 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Tailwind screens**: the defaults plus `wide` (1440px) and `ultra` (2200px), for detail panes and 4K layouts.
 - **Page scrolling** happens in the shell's content area, not the window; it resets to the top on every route change. The content area is `relative`, so absolutely positioned page content can't widen the document.
 - **Quick add from the tab bar**: Expenses and Savings open their add form for `?add=1` (`hooks/useAddFromQuery.ts`).
+- **Page templates**: every page inside the shell renders `<Page template=…>` (`components/Page.tsx`) instead of its own `max-w-* mx-auto px-6 py-8` wrapper. The template sets width and gutters (16 → 24 → 28 → 36px across the size classes):
+  - `dashboard`: household and personal dashboards — full width
+  - `list`: expenses, savings, receipts, trash, categories, budget years, personal income, admin tables — full width
+  - `analysis`: history, compare, household income — full width
+  - `form`: profile, household settings, change password, new receipt — 56rem, centred
+- **Hidden table headers** (e.g. the Actions column) put the `sr-only` text in a span inside a `relative` `<th>`; an `sr-only` class on the `<th>` itself escapes the table's scroll wrapper and makes phones scroll sideways.
 
 ### Backend
 - **Node.js + TypeScript** — runtime

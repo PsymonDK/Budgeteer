@@ -29,6 +29,7 @@ import { ExpenseCalendar } from './ExpenseCalendar'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
+import { Page } from '../../components/Page'
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -267,7 +268,7 @@ export function ExpensesPage() {
 
   return (
     <>
-      <main className={view === 'calendar' ? 'w-full px-6 py-8' : 'max-w-6xl mx-auto px-6 py-8'}>
+      <Page template="list">
         <PageHeader title="Expenses" />
         {/* Budget year selector */}
         <BudgetYearSelector
@@ -297,13 +298,13 @@ export function ExpensesPage() {
             {/* Controls */}
             <div className="flex flex-col gap-3 mb-4">
               <AccountFilterChips accounts={accountsInExpenses} selected={filterAccounts} setSelected={setFilterAccounts} />
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
                 <CategoryFilter
                   categories={categories}
                   selected={filterCategories}
                   onChange={setFilterCategories}
                 />
-                <div className="flex items-center gap-2 flex-shrink-0">
+                <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                   <div className={segmentGroup}>
                     <button
                       onClick={() => setView('list')}
@@ -368,7 +369,7 @@ export function ExpensesPage() {
             )}
           </>
         )}
-      </main>
+      </Page>
 
       {/* Add / Edit modal */}
       {!isReadOnly && (showAdd || editingExpense) && (

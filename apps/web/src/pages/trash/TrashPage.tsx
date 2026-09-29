@@ -6,6 +6,7 @@ import { useFmt } from '../../hooks/useFmt'
 import { useHouseholdTrash, useRestoreFromTrash, restoreUrl } from '../../hooks/useTrash'
 import { yearLabel } from '../../lib/budgetYear'
 import { FREQ_LABELS } from '../../lib/constants'
+import { Page } from '../../components/Page'
 
 /** Household trash: deleted expenses and savings entries, restorable. */
 export function TrashPage() {
@@ -17,7 +18,7 @@ export function TrashPage() {
   if (isLoading) return <PageLoader />
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-8">
+    <Page template="list">
       <PageHeader
         title="Trash"
         subtitle="Deleted expenses and savings entries. They don't count toward any totals until you restore them."
@@ -38,7 +39,7 @@ export function TrashPage() {
                   <th className="px-4 py-3 font-medium">Budget year</th>
                   <th className="px-4 py-3 font-medium text-right">/ month</th>
                   <th className="px-4 py-3 font-medium">Deleted</th>
-                  <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                  <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -81,6 +82,6 @@ export function TrashPage() {
           </div>
         </div>
       )}
-    </main>
+    </Page>
   )
 }

@@ -15,6 +15,7 @@ import { PrimaryTiles } from './PrimaryTiles'
 import { HouseholdCard } from './HouseholdCard'
 import { IncomeFlowCard, IncomeTrendCard } from './IncomeDetail'
 import type { IncomeSankeyData, IncomeTrend, NewHousehold, PersonalDashboard, UserSummary } from './types'
+import { Page } from '../../components/Page'
 
 /** Personal dashboard: income/expense/savings tiles, households and income detail. */
 export function UserDashboardPage() {
@@ -82,7 +83,7 @@ export function UserDashboardPage() {
 
   return (
     <div className="flex-1 flex flex-col">
-      <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8">
+      <Page template="dashboard">
 
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
@@ -152,7 +153,7 @@ export function UserDashboardPage() {
             </div>
           </>
         )}
-      </main>
+      </Page>
 
       {showCreate && (
         <Modal title="New household" onClose={() => setShowCreate(false)}>

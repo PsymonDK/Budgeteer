@@ -21,6 +21,7 @@ import {
 } from './useIncomeEditors'
 import type { Tab } from './types'
 import { IncomeTrashTab } from './IncomeTrashTab'
+import { Page } from '../../components/Page'
 
 /** Personal income: jobs & salary history, monthly overrides, bonuses and household allocations. */
 export function IncomePage() {
@@ -53,8 +54,8 @@ export function IncomePage() {
   } = taxCardEditor
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+    <>
+      <Page template="list" className="space-y-8">
         <PageHeader title="Personal Income" subtitle="Manage your income sources and household allocations." />
 
         {/* ── Proxy banner ────────────────────────────────────────────────── */}
@@ -108,7 +109,7 @@ export function IncomePage() {
 
           {activeTab === 'trash' && <IncomeTrashTab targetUserId={targetUserId ?? undefined} fmt={fmt} />}
         </div>
-      </main>
+      </Page>
 
       {/* ── Add/Edit Job modal ──────────────────────────────────────────────── */}
       {(jobEditor.showAddJob || jobEditor.editingJob) && <JobModal editor={jobEditor} />}
@@ -209,6 +210,6 @@ export function IncomePage() {
           <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>
         </ConfirmDialog>
       )}
-    </div>
+    </>
   )
 }
