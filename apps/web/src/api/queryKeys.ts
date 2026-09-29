@@ -2,8 +2,6 @@
 // always used, so prefix invalidation keeps working as before: e.g.
 // qk.categories(id) also matches qk.categories(id, 'EXPENSE'), and
 // qk.transfersAll() matches every transfers query including the breakdown.
-//
-// Receipts screens (pages/ReceiptsPage.tsx) still declare their own key arrays.
 
 import type { CategoryType } from './types'
 
@@ -42,8 +40,18 @@ export const qk = {
   trends: (householdId: Id) => ['trends', householdId] as const,
   compare: (householdId: Id, yearIdA: string, yearIdB: string) => ['compare', householdId, yearIdA, yearIdB] as const,
   incomeSummary: (householdId: Id) => ['income-summary', householdId] as const,
+
+  // ── Receipts ────────────────────────────────────────────────────────────────
+  /** GET /households/:id/receipts (one summary row per receipt) */
+  receipts: (householdId: Id) => ['receipts', householdId] as const,
+  /** GET /households/:id/receipts/:receiptId */
+  receipt: (householdId: Id, receiptId: Id) => ['receipt', householdId, receiptId] as const,
+  /** Prefix of every consumption summary of a household (all periods, receipts page and dashboard). */
+  receiptSummaryAll: (householdId: Id) => ['receipt-summary', householdId] as const,
   receiptSummary: (householdId: Id, period: string, startDate: string, endDate: string) =>
     ['receipt-summary', householdId, period, startDate, endDate] as const,
+  receiptSubcategories: (householdId: Id) => ['receipt-subcategories', householdId] as const,
+  receiptMappingExportKit: (householdId: Id) => ['receipt-mapping-export-kit', householdId] as const,
 
   // ── Accounts ────────────────────────────────────────────────────────────────
   accountsPersonal: () => ['accounts', 'personal'] as const,
@@ -78,4 +86,5 @@ export const qk = {
   // ── System admin ────────────────────────────────────────────────────────────
   adminCurrencies: () => ['admin', 'currencies'] as const,
   adminAutomations: () => ['admin', 'automations'] as const,
+  adminReceiptTraining: () => ['admin', 'receipt-training'] as const,
 }

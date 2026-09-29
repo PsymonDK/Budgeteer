@@ -181,3 +181,24 @@ export interface CustomSplitInput {
   userId: string
   pct: string
 }
+
+// ── Receipts ──────────────────────────────────────────────────────────────────
+
+export type ReceiptSummaryPeriod =
+  | 'allTime' | 'currentMonth' | 'previousMonth' | 'currentQuarter' | 'previousQuarter'
+  | 'currentYear' | 'previousYear' | 'last12Months' | 'custom'
+
+/** GET /households/:id/receipts/summary — confirmed, non-ignored receipt lines in base currency. */
+export interface ReceiptConsumptionSummary {
+  total: string
+  itemCount: number
+  baseCurrency: string
+  /** 'legacy' when the request used the old year/month parameters. */
+  period: ReceiptSummaryPeriod | 'legacy'
+  startDate: string | null
+  endDate: string | null
+  warnings: string[]
+  byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
+  bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
+  byMonth: Array<{ month: string; total: string }>
+}
