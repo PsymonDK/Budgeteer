@@ -17,6 +17,7 @@ import { AccountFilterChips, accountsIn } from '../../components/entries/Account
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
 import { useRowSelection } from '../../hooks/useRowSelection'
+import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm } from '../../lib/styles'
 import { useFmt } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
@@ -192,6 +193,8 @@ export function SavingsPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   function openAdd() { setForm(emptyForm(baseCurrency)); setFormError(''); setShowAdd(true) }
+
+  useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
 
   function openEdit(e: SavingsEntry) {
     setForm({

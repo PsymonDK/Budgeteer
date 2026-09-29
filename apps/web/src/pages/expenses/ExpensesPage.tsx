@@ -19,6 +19,7 @@ import { AccountFilterChips, accountsIn } from '../../components/entries/Account
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
 import { useRowSelection } from '../../hooks/useRowSelection'
+import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm, segmentGroup, segmentBtn } from '../../lib/styles'
 import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
@@ -205,6 +206,8 @@ export function ExpensesPage() {
     setFormError('')
     setShowAdd(true)
   }
+
+  useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
 
   function openEdit(expense: Expense) {
     if (isReadOnly) return

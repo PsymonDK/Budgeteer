@@ -1,33 +1,19 @@
-import { Link, Outlet, useParams, useLocation } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo } from 'react'
 import {
   LayoutDashboard, TrendingUp, PiggyBank, Receipt, ScanLine, Tag,
-  Calendar, Clock, BarChart2, Settings, Trash2, Menu, X,
+  Calendar, Clock, BarChart2, Settings, Trash2,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
-import { AppFooter } from '../components/AppFooter'
-import HeaderUserMenu from '../components/HeaderUserMenu'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import HouseholdSwitcher from '../components/HouseholdSwitcher'
 import { AddReceiptButton } from '../components/AddReceiptButton'
-
-const NAV_ITEMS = [
-  { label: 'Dashboard',    path: '',             icon: LayoutDashboard },
-  { label: 'Household Income', path: 'income',   icon: TrendingUp },
-  { label: 'Savings',      path: 'savings',      icon: PiggyBank },
-  { label: 'Expenses',     path: 'expenses',     icon: Receipt },
-  { label: 'Receipts',     path: 'receipts',     icon: ScanLine },
-  { label: 'Categories',   path: 'categories',   icon: Tag },
-  { label: 'Budget Years', path: 'budget-years', icon: Calendar },
-  { label: 'History',      path: 'history',      icon: Clock },
-  { label: 'Compare',      path: 'compare',      icon: BarChart2 },
-]
+import { AppShell, type ShellNavItem, type ShellNavSection, type ShellQuickAction } from './AppShell'
 
 export function HouseholdLayout() {
   const { id: householdId } = useParams<{ id: string }>()
-  const location = useLocation()
+  const navigate = useNavigate()
   const { setActiveHousehold } = useHousehold()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Keep localStorage in sync when navigating directly to a household URL
   useEffect(() => {
@@ -37,127 +23,51 @@ export function HouseholdLayout() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [householdId])
 
-  // Close mobile sidebar on navigation
-  useEffect(() => {
-    setSidebarOpen(false)
-  }, [location.pathname])
-
-  function isActive(path: string) {
+  const nav = useMemo(() => {
     const base = `/households/${householdId}`
-    if (path === '') return location.pathname === base
-    return location.pathname.startsWith(`${base}/${path}`)
-  }
+    const item = (label: string, path: string, icon: ShellNavItem['icon']): ShellNavItem =>
+      ({ label, to: path ? `${base}/${path}` : base, icon, end: path === '' })
 
-  function NavLinks() {
-    return (
-      <>
-        <div className="flex-1 px-3 space-y-0.5">
-          {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
-            const active = isActive(path)
-            return (
-              <Link
-                key={path}
-                to={`/households/${householdId}${path ? `/${path}` : ''}`}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  active
-                    ? 'bg-gray-800 text-white font-medium'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-                }`}
-              >
-                <Icon size={16} className={active ? 'text-amber-400' : 'text-gray-500'} />
-                {label}
-              </Link>
-            )
-          })}
-        </div>
+    const dashboard = item('Dashboard', '', LayoutDashboard)
+    const expenses = item('Expenses', 'expenses', Receipt)
+    const receipts = item('Receipts', 'receipts', ScanLine)
 
-        {/* Trash and Settings pinned at bottom */}
-        <div className="px-3 pt-3 border-t border-gray-800 mt-3">
-          {([['trash', 'Trash', Trash2], ['settings', 'Settings', Settings]] as const).map(([path, label, Icon]) => {
-            const active = isActive(path)
-            return (
-              <Link
-                key={path}
-                to={`/households/${householdId}/${path}`}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                  active
-                    ? 'bg-gray-800 text-white font-medium'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-                }`}
-              >
-                <Icon size={16} className={active ? 'text-amber-400' : 'text-gray-500'} />
-                {label}
-              </Link>
-            )
-          })}
-        </div>
-      </>
-    )
-  }
+    const sections: ShellNavSection[] = [
+      { items: [dashboard] },
+      {
+        title: "This year's budget",
+        items: [item('Household income', 'income', TrendingUp), expenses, item('Savings', 'savings', PiggyBank), receipts],
+      },
+      {
+        title: 'Plan & look back',
+        items: [item('Budget years', 'budget-years', Calendar), item('History', 'history', Clock), item('Compare', 'compare', BarChart2)],
+      },
+    ]
+    const footerItems = [item('Categories', 'categories', Tag), item('Trash', 'trash', Trash2), item('Settings', 'settings', Settings)]
+    const quickActions: ShellQuickAction[] = [
+      { label: 'Add expense', icon: Receipt, onSelect: () => navigate(`${base}/expenses?add=1`) },
+      { label: 'Add savings', icon: PiggyBank, onSelect: () => navigate(`${base}/savings?add=1`) },
+      { label: 'Scan receipt', icon: ScanLine, onSelect: () => navigate(`${base}/receipts/new`) },
+    ]
+    return { sections, footerItems, tabs: [dashboard, expenses, receipts], quickActions }
+  }, [householdId, navigate])
 
   return (
-    <div className="h-screen bg-gray-950 text-white flex flex-col overflow-hidden">
-      {/* Top header */}
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-3">
-          {/* Hamburger — mobile only */}
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="sm:hidden text-gray-400 hover:text-white transition-colors mr-1"
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          <span className="text-gray-600">/</span>
-          <HouseholdSwitcher currentHouseholdId={householdId!} />
-        </div>
-        <div className="flex items-center gap-5">
-          <AddReceiptButton householdId={householdId} />
+    <AppShell
+      context={<HouseholdSwitcher currentHouseholdId={householdId!} />}
+      actions={
+        <>
+          {/* On phones the tab bar's Add button covers this */}
+          <div className="hidden sm:block"><AddReceiptButton householdId={householdId} /></div>
           <HeaderSettingsMenu householdId={householdId} />
-          <HeaderUserMenu />
-        </div>
-      </header>
-
-      {/* Sidebar + content */}
-      <div className="flex flex-1 min-h-0">
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 z-40 sm:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Left sidebar — always visible on md+, slide-in drawer on mobile */}
-        <nav className={`
-          fixed inset-y-0 left-0 z-50 w-56 bg-gray-900 border-r border-gray-800 flex flex-col py-4
-          transform transition-transform duration-200
-          sm:static sm:translate-x-0 sm:z-auto sm:flex-shrink-0 sm:overflow-y-auto
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-        `}>
-          {/* Close button — mobile only */}
-          <div className="flex items-center justify-between px-4 pb-3 mb-1 border-b border-gray-800 sm:hidden">
-            <span className="text-sm font-medium text-gray-300">Menu</span>
-            <button onClick={() => setSidebarOpen(false)} className="text-gray-400 hover:text-white transition-colors">
-              <X size={18} />
-            </button>
-          </div>
-
-          <NavLinks />
-        </nav>
-
-        {/* Main content */}
-        <div className="flex-1 overflow-auto flex flex-col">
-          <div className="flex-1">
-            {/* Keyed so switching household remounts the page and drops the previous household's form, filter and selection state */}
-            <Outlet key={householdId} />
-          </div>
-          <AppFooter />
-        </div>
-      </div>
-    </div>
+        </>
+      }
+      sections={nav.sections}
+      footerItems={nav.footerItems}
+      tabs={nav.tabs}
+      quickActions={nav.quickActions}
+      // Keyed so switching household remounts the page and drops the previous household's form, filter and selection state
+      outletKey={householdId}
+    />
   )
 }

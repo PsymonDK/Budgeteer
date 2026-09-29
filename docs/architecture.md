@@ -19,6 +19,13 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Recharts** — budget visualisations
 - **D3 / Sankey** — income and receipt consumption flow diagrams
 
+### App shell and breakpoints
+- **`layouts/AppShell.tsx`** is the frame for all signed-in areas. `HouseholdLayout`, `GlobalLayout` (personal pages) and `AdminLayout` only pass it their navigation, header content and phone tab-bar setup.
+- **Size classes**: below 640px a bottom tab bar (optional centre quick action, "More" opens the full menu as a drawer); 640–1023px a 64px icon rail; from 1024px a 224px sidebar (248px from 2200px), which users can collapse to the rail (stored per browser in `localStorage`, `budgeteer.sidebarCollapsed`).
+- **Tailwind screens**: the defaults plus `wide` (1440px) and `ultra` (2200px), for detail panes and 4K layouts.
+- **Page scrolling** happens in the shell's content area, not the window; it resets to the top on every route change. The content area is `relative`, so absolutely positioned page content can't widen the document.
+- **Quick add from the tab bar**: Expenses and Savings open their add form for `?add=1` (`hooks/useAddFromQuery.ts`).
+
 ### Backend
 - **Node.js + TypeScript** — runtime
 - **Fastify** — API framework
