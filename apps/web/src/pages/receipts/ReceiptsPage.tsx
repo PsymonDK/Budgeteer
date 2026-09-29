@@ -4,7 +4,6 @@ import { Download, FileText, FileUp, Plus } from 'lucide-react'
 import { PageHeader } from '../../components/PageHeader'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { primaryBtn, secondaryBtn } from '../../lib/styles'
-import { useFmt } from '../../hooks/useFmt'
 import { ReceiptConsumptionPanel } from './ReceiptConsumptionPanel'
 import { ReceiptHistoryList } from './ReceiptHistoryList'
 import { ReceiptReview } from './ReceiptReview'
@@ -16,7 +15,6 @@ export function ReceiptsPage() {
   const { id } = useParams<{ id: string }>()
   const householdId = id ?? ''
   const [searchParams, setSearchParams] = useSearchParams()
-  const fmt = useFmt()
   const [selectedReceiptId, setSelectedReceiptId] = useState<string | null>(null)
   const [isHistoryOpen, setIsHistoryOpen] = useState(() => typeof window === 'undefined' ? true : window.innerWidth >= 1280)
   const [mappingModalOpen, setMappingModalOpen] = useState(false)
@@ -82,7 +80,6 @@ export function ReceiptsPage() {
             onToggle={() => setIsHistoryOpen((open) => !open)}
             selectedId={selectedReceiptId}
             onSelect={selectReceipt}
-            fmt={fmt}
           />
         </aside>
 

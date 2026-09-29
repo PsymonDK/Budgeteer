@@ -1,5 +1,6 @@
 import { AlertTriangle, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { PageLoader } from '../../components/LoadingSpinner'
+import { useFmt } from '../../hooks/useFmt'
 import { receiptStatusClass } from './helpers'
 import type { ReceiptSummary } from './types'
 
@@ -11,11 +12,11 @@ interface ReceiptHistoryListProps {
   onToggle: () => void
   selectedId: string | null
   onSelect: (receiptId: string) => void
-  fmt: (value: number | string) => string
 }
 
 /** The receipt sidebar: drafts first, then confirmed receipts. */
-export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, selectedId, onSelect, fmt }: ReceiptHistoryListProps) {
+export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, selectedId, onSelect }: ReceiptHistoryListProps) {
+  const fmt = useFmt()
   const draftReceipts = receipts.filter((receipt) => receipt.status === 'DRAFT')
   const confirmedReceipts = receipts.filter((receipt) => receipt.status === 'CONFIRMED')
   const allReceipts = [...draftReceipts, ...confirmedReceipts]
@@ -62,7 +63,7 @@ export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, sele
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
                       <span className="flex items-center gap-1">
-                        {fmt(receipt.itemTotal)}
+                        {fmt(receipt.itemTotal, receipt.currencyCode)}
                         {receipt.totalMismatch && (
                           <span className="text-amber-300" title="Line items don't add up to the printed total">
                             <AlertTriangle size={12} aria-hidden="true" />
