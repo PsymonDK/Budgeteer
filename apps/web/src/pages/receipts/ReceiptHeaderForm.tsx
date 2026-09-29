@@ -11,7 +11,7 @@ interface ReceiptHeaderFormProps {
   accountOptions: AccountInfo[]
 }
 
-/** Merchant, date, currency, tax/fees and account of the receipt under review. */
+/** Merchant, date, currency, printed total, tax/fees and account of the receipt under review. */
 export function ReceiptHeaderForm({ draft, onChange, onSubmit, baseCurrency, currencyOptions, accountOptions }: ReceiptHeaderFormProps) {
   const base = baseCurrency || 'DKK'
   return (
@@ -38,6 +38,16 @@ export function ReceiptHeaderForm({ draft, onChange, onSubmit, baseCurrency, cur
         </select>
       </label>
       <label className="min-w-0">
+        <span className="block text-xs font-medium text-gray-400 mb-1.5">Printed total</span>
+        <input
+          type="number"
+          step="0.01"
+          value={draft.printedTotal}
+          onChange={(e) => onChange({ printedTotal: e.target.value })}
+          className={compactInputClass}
+        />
+      </label>
+      <label className="min-w-0">
         <span className="block text-xs font-medium text-gray-400 mb-1.5">Tax</span>
         <input type="number" step="0.01" value={draft.taxAmount} onChange={(e) => onChange({ taxAmount: e.target.value })} className={compactInputClass} />
       </label>
@@ -46,7 +56,7 @@ export function ReceiptHeaderForm({ draft, onChange, onSubmit, baseCurrency, cur
         <input type="number" step="0.01" value={draft.feeAmount} onChange={(e) => onChange({ feeAmount: e.target.value })} className={compactInputClass} />
       </label>
       {accountOptions.length > 0 && (
-        <label className="min-w-0 md:col-span-2">
+        <label className="min-w-0 md:col-span-2 xl:col-span-1">
           <span className="block text-xs font-medium text-gray-400 mb-1.5">Account</span>
           <select value={draft.accountId} onChange={(e) => onChange({ accountId: e.target.value })} className={compactInputClass}>
             <option value="">No account</option>

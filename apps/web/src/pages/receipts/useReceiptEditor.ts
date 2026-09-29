@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import axios from 'axios'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import { useBaseCurrency } from '../../hooks/useFmt'
-import { EMPTY_MANUAL_LINE, headerPayload, linePayload, lineToDraft, readError, receiptToHeaderDraft } from './helpers'
+import {
+  EMPTY_MANUAL_LINE, confirmPayload, headerPayload, linePayload, lineToDraft, readError, receiptToHeaderDraft,
+} from './helpers'
 import type { LineDraft, Receipt, ReceiptLineItem, ReceiptSubcategory } from './types'
 
 function lineDraftsFor(receipt: Receipt): Record<string, LineDraft> {
@@ -111,20 +114,27 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
     onError: (err) => toast.error(readError(err, 'Failed to add subcategory')),
   })
 
+  // One request: the API saves the header and every line draft and confirms in
+  // a single transaction, so a failure leaves the receipt untouched.
   const confirmMutation = useMutation({
-    mutationFn: async () => {
-      await saveReceiptHeader()
-      for (const item of receipt.lineItems) {
-        await saveLineItem(item.id)
-      }
-      return (await api.post<Receipt>(`/households/${householdId}/receipts/${receiptId}/confirm`)).data
-    },
+    mutationFn: async () => (await api.post<Receipt>(
+      `/households/${householdId}/receipts/${receiptId}/confirm`,
+      confirmPayload(receipt, headerDraft, lineDrafts, baseCurrency),
+    )).data,
     onSuccess: (confirmed) => {
       queryClient.setQueryData(qk.receipt(householdId, confirmed.id), confirmed)
       invalidateLists()
       toast.success('Receipt confirmed')
     },
-    onError: (err) => toast.error(readError(err, 'Failed to confirm receipt')),
+    onError: (err) => {
+      toast.error(readError(err, 'Failed to confirm receipt'))
+      // RECEIPT_ALREADY_CONFIRMED (e.g. confirmed in another tab): reload so the
+      // screen shows the confirmed state and hides Confirm.
+      if (axios.isAxiosError(err) && err.response?.status === 409) {
+        queryClient.invalidateQueries({ queryKey: qk.receipt(householdId, receiptId) })
+        invalidateLists()
+      }
+    },
   })
 
   const deleteMutation = useMutation({

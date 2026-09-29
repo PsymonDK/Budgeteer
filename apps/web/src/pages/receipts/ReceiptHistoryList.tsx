@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { AlertTriangle, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { receiptStatusClass } from './helpers'
 import type { ReceiptSummary } from './types'
@@ -61,7 +61,15 @@ export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, sele
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
-                      <span>{fmt(receipt.itemTotal)}</span>
+                      <span className="flex items-center gap-1">
+                        {fmt(receipt.itemTotal)}
+                        {receipt.totalMismatch && (
+                          <span className="text-amber-300" title="Line items don't add up to the printed total">
+                            <AlertTriangle size={12} aria-hidden="true" />
+                            <span className="sr-only">Line items don't add up to the printed total</span>
+                          </span>
+                        )}
+                      </span>
                       {receipt.lowConfidenceCount > 0 && <span className="text-amber-300">{receipt.lowConfidenceCount} to review</span>}
                     </div>
                   </>

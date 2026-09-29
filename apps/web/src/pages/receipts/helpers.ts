@@ -2,7 +2,8 @@ import axios from 'axios'
 import type { Currency, ReceiptSummaryPeriod } from '../../api/types'
 import { getApiError } from '../../lib/apiError'
 import type {
-  HeaderDraft, LineDraft, Receipt, ReceiptConfidence, ReceiptLineItem, ReceiptMappingImportStatus, ReceiptStatus,
+  ConfirmReceiptBody, HeaderDraft, LineDraft, Receipt, ReceiptConfidence, ReceiptHeaderUpdate, ReceiptLineItem,
+  ReceiptLineUpdate, ReceiptMappingImportStatus, ReceiptStatus,
 } from './types'
 
 export const EMPTY_MANUAL_LINE: LineDraft = {
@@ -75,7 +76,7 @@ export function receiptToHeaderDraft(receipt: Receipt | undefined, baseCurrency:
   return {
     merchantName: receipt?.merchantName ?? '',
     purchaseDate: receipt?.purchaseDate ?? '',
-    totalAmount: receipt?.totalAmount ?? '',
+    printedTotal: receipt?.printedTotal ?? '',
     taxAmount: receipt?.taxAmount ?? '',
     feeAmount: receipt?.feeAmount ?? '',
     currencyCode: receipt?.currencyCode ?? baseCurrency,
@@ -88,10 +89,11 @@ export function draftNeedsReview(draft: LineDraft): boolean {
 }
 
 /** Body of PUT /households/:id/receipts/:receiptId. */
-export function headerPayload(draft: HeaderDraft, baseCurrency: string) {
+export function headerPayload(draft: HeaderDraft, baseCurrency: string): ReceiptHeaderUpdate {
   return {
     merchantName: draft.merchantName || null,
     purchaseDate: draft.purchaseDate || null,
+    printedTotal: draft.printedTotal ? parseFloat(draft.printedTotal) : null,
     taxAmount: draft.taxAmount ? parseFloat(draft.taxAmount) : null,
     feeAmount: draft.feeAmount ? parseFloat(draft.feeAmount) : null,
     currencyCode: draft.currencyCode || baseCurrency || 'DKK',
@@ -100,7 +102,7 @@ export function headerPayload(draft: HeaderDraft, baseCurrency: string) {
 }
 
 /** Body of PUT …/line-items/:lineItemId. */
-export function linePayload(draft: LineDraft) {
+export function linePayload(draft: LineDraft): Required<ReceiptLineUpdate> {
   return {
     label: draft.label,
     originalText: draft.originalText,
@@ -110,6 +112,16 @@ export function linePayload(draft: LineDraft) {
     subcategoryId: draft.subcategoryId || null,
     confidence: draft.confidence,
     isIgnored: draft.isIgnored,
+  }
+}
+
+/** Body of POST …/confirm: the header draft and every line's draft (unedited lines as loaded). */
+export function confirmPayload(
+  receipt: Receipt, headerDraft: HeaderDraft, lineDrafts: Record<string, LineDraft>, baseCurrency: string,
+): ConfirmReceiptBody {
+  return {
+    receipt: headerPayload(headerDraft, baseCurrency),
+    lineItems: receipt.lineItems.map((item) => ({ id: item.id, ...linePayload(lineDrafts[item.id] ?? lineToDraft(item)) })),
   }
 }
 

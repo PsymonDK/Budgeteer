@@ -113,6 +113,13 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
             </div>
           )}
 
+          {receipt.totalMismatch && receipt.printedTotal != null && (
+            <p className="flex gap-2 border border-amber-800/60 bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-amber-200">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              Line items add up to {fmt(receipt.totalAmount ?? '0')}, the receipt says {fmt(receipt.printedTotal)} — check for missed or misread lines.
+            </p>
+          )}
+
           <ReceiptHeaderForm
             draft={headerDraft}
             onChange={editor.updateHeaderDraft}
