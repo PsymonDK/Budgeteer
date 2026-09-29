@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Printed receipt total** — the TOTAL read from a receipt is now stored (`printedTotal`, editable) and receipts flag when their line items don't add up to it (`totalMismatch`), the quickest way to spot a missed or misread line. Previously the printed total was discarded and the header's total field was silently ignored.
+- **Single-step receipt confirm** — `POST …/receipts/:id/confirm` accepts the review's header and line edits and saves them with the confirmation in one transaction.
 - **Trash UI** — a household Trash page (sidebar, next to Settings) and a Trash tab on the Income page list deleted items with who deleted them and when, and restore them. Deleting shows a "Moved to trash" toast with Undo.
 - **Trash for financial records** — deleting an expense, savings entry, salary record, monthly override, bonus or tax card now moves it to a trash instead of erasing it (the project rule is never to hard-delete financial data). New endpoints list and restore trashed items per household (`/households/:id/trash`) and per user (`/users/:id/income/trash`). Trashed items are excluded from all totals, transfers and income until restored.
 - **Server-side session revocation** — password changes, admin password resets, role changes, deactivation and conversion to a proxy user now end all of the user's sessions immediately (refresh tokens deleted, older access tokens rejected). Changing your own password returns fresh tokens so the current tab stays signed in.
@@ -38,6 +40,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Receipt amounts with thousands separators were misread** ("1.234,50" became 4.50, "TOTAL 1 234,50" 234.50), and amounts could start inside longer numbers.
+- **Receipt keywords matched inside words** — "Coffee" was read as a fee, "Taxi" as tax and "Sumatra" as the sum.
+- **Danish "å" broke receipt labels and category rules** — "Blåbær" became "bla bær", so rules and mappings containing å never matched; other accents split words the same way. Stored keys are re-keyed on upgrade.
+- **Learned noise words could make real products disappear** — renaming a line (e.g. "KYLLINGEBRYST" → "Chicken breast") taught the classifier that the product name was noise, and confirming the same receipt repeatedly counted it again. Noise is now learned only from trimmed labels and a receipt can be confirmed once (409 `RECEIPT_ALREADY_CONFIRMED`).
+- **Household receipt mappings were cut off** once system and household mappings together passed 2,000; imported and admin-entered mapping keys weren't normalized (so they never matched), and seeded merchant keys used a different normalization than lookups.
+- **Short category terms matched unrelated words** — "sko" (shoes) matched "skovbær", "bog" (book) "boghvede", "te" (tea) almost anything. Three-letter terms now match compound endings ("hytteost", "rødvin"), two-letter terms whole words.
+- **Impossible receipt dates rolled over** (31.02 → 2 March); ISO dates weren't recognised; an invalid date from a local AI model caused a 500 and an orphaned upload.
+- **A local AI reply without line items wiped the detected lines.**
+- **Receipt consumption used today's exchange rate for past purchases** and float sums; it now uses the rate on the purchase date and exact decimals.
+- **Receipt uploads trusted the declared file type** — content is now verified (PDF/PNG/JPEG), OCR has an overall time budget per receipt, and oversized images are refused instead of exhausting memory.
+- **Seeding reverted admin edits to shipped receipt mappings on every boot.**
+- A line-item subcategory could be kept after clearing its category; the local-AI host check rejected `[::1]`; multi-word noise tokens never matched.
 - **Household admins couldn't add members** — the member picker filtered on fields `GET /users` doesn't return to non-admins, so the list was always empty.
 - **"Proxy" badge and "Manage income" link never showed for proxy members** — the member list now includes `isProxy`.
 - **Editing an expense or savings entry without touching ownership wiped its custom split.**

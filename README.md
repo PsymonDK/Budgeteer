@@ -97,6 +97,10 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `RECEIPT_OCR_MAX_PDF_PAGES` | No | `3` | Maximum scanned PDF pages rendered and OCR'd per receipt upload |
 | `RECEIPT_OCR_PDF_DPI` | No | `200` | DPI used when rendering scanned PDF receipts before OCR |
 | `RECEIPT_OCR_PSM` | No | `6` | Tesseract page segmentation mode for receipt image OCR |
+| `RECEIPT_OCR_TIMEOUT_MS` | No | `45000` | Time limit for a single OCR tool run (tesseract, PDF rendering) |
+| `RECEIPT_OCR_TOTAL_TIMEOUT_MS` | No | `120000` | Time budget for all OCR attempts on one receipt; the best result so far is used when it runs out |
+| `RECEIPT_OCR_MAX_PIXELS` | No | `60000000` | Images larger than this (width × height) are not OCR'd, guarding against decompression bombs |
+| `RECEIPT_OCR_PREPROCESS` / `RECEIPT_OCR_PYTHON` | No | on / `python3` | Set `RECEIPT_OCR_PREPROCESS=false` to skip the Pillow preprocessing step; `RECEIPT_OCR_PYTHON` picks the interpreter |
 | `LOCAL_AI_BASE_URL` | No | — | Optional local/self-hosted model endpoint for receipt cleanup/classification. Hosted AI endpoints are rejected for receipts |
 | `LOCAL_AI_MODEL` | No | — | Optional local model name used with `LOCAL_AI_BASE_URL` for receipt enhancement |
 | `RECEIPT_AI_CATEGORIZE` | No | `false` | Set to `true` to let the configured local model suggest categories for otherwise unclassified receipt lines |

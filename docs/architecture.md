@@ -265,6 +265,14 @@ Receipt imports represent actual purchases, not planned budget allocations. Conf
 
 Receipt category is two-level: top-level category uses the existing Budgeteer `EXPENSE` category; receipt subcategory captures more granular consumption detail within that category.
 
+Receipt text handling:
+- All stored keys (line-item `normalizedLabel`, mapping `normalizedLabel`/`merchantKey`, classifier terms) come from `apps/api/src/lib/receiptText.ts`, which the classifier, CSV import, admin training routes and seed share. Folding lowercases and strips accents (é → e) but keeps å/æ/ø
+- Amounts need two decimals and respect thousands separators (1.234,50 / 1,234.50; "1 234,50" only on TOTAL/MOMS-style summary lines, where quantities don't appear). Summary keywords (total, moms, gebyr, …) match whole words
+- `totalAmount` is the sum of non-ignored line items; `printedTotal` is the TOTAL read from the receipt (editable), and `totalMismatch` flags a difference so missed or misread lines are noticed
+- Confirming saves the review's edits and confirms in one transaction and happens once per receipt; it teaches the classifier: category mappings, and noise words only from labels the user trimmed (not renamed)
+- A local AI model (optional) enhances the deterministic parse; its values win only where usable
+- Uploads are checked by their bytes (PDF/PNG/JPEG magic numbers). OCR has a per-receipt time budget and refuses images above `RECEIPT_OCR_MAX_PIXELS`
+
 Receipt upload and parsing run server-side. The browser sends the original image/PDF file to the API, the API stores it locally, runs local OCR, and the receipt review UI loads the protected file beside extracted line items for validation. Pasted OCR text remains supported for manual imports, and failed or empty OCR still leaves a draft where line items can be added manually.
 
 Receipt OCR is local-first and server-side. Images are preprocessed locally to apply camera EXIF orientation, grayscale, and contrast normalization before Tesseract runs; Tesseract then tries multiple page segmentation modes and keeps the strongest receipt-like result. The Docker API image installs Danish and English Tesseract language data, and OCR defaults to `dan+eng` with an English fallback for local installs where Danish data is missing. PDFs are rendered to temporary page images with Poppler `pdftoppm`, then OCR runs locally on those images. OCR tuning is controlled by `RECEIPT_OCR_LANG`, `RECEIPT_OCR_PSM`, `RECEIPT_OCR_TIMEOUT_MS`, `RECEIPT_OCR_PDF_DPI`, `RECEIPT_OCR_MAX_PDF_PAGES`, and `RECEIPT_OCR_PREPROCESS`.
@@ -424,7 +432,7 @@ POST   /households/:id/receipt-mappings/import-confirm
 GET    /households/:id/receipts/:receiptId
 GET    /households/:id/receipts/:receiptId/file
 PUT    /households/:id/receipts/:receiptId
-POST   /households/:id/receipts/:receiptId/confirm
+POST   /households/:id/receipts/:receiptId/confirm      # optional { receipt, lineItems } saved in the same transaction; 409 when already confirmed
 POST   /households/:id/receipts/:receiptId/line-items
 PUT    /households/:id/receipts/:receiptId/line-items/:lineItemId
 DELETE /households/:id/receipts/:receiptId
