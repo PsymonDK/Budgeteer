@@ -13,6 +13,7 @@ import { buildReceiptMappingExportKit, confirmReceiptMappingImport, previewRecei
 import { correctReceiptOcrText, learnReceiptMappings, loadReceiptClassifierConfig, normalizeReceiptLabel, parseReceipt, type ParsedReceipt } from '../lib/receiptParser'
 import type { ReceiptClassifierConfig } from '../lib/receiptClassifier'
 import { extractReceiptOcrText } from '../lib/receiptOcr'
+import { detectReceiptFileType } from '../lib/receiptFiles'
 
 const ConfidenceSchema = z.enum(['LOW', 'MEDIUM', 'HIGH'])
 
@@ -134,7 +135,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         rawText: correctedRawText || rawText,
         displayRawText: rawText,
         fallbackCurrency,
-      }, householdId)
+      }, householdId, classifierConfig)
       const receiptCurrency = await resolveReceiptCurrency(parsed.currencyCode, fallbackCurrency)
       const receipt = await prisma.receipt.create({
         data: {
@@ -177,6 +178,10 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     const ext = data.mimetype === 'application/pdf' ? 'pdf' : data.mimetype === 'image/png' ? 'png' : 'jpg'
     const buffer = await data.toBuffer()
+    // The declared type is served back with the stored file, so it must match the bytes
+    if (detectReceiptFileType(buffer) !== data.mimetype) {
+      return reply.status(400).send({ error: 'The file content does not match a PNG, JPEG or PDF receipt', code: 'INVALID_FILE' })
+    }
     const fallbackCurrency = await getHouseholdReceiptCurrency(householdId)
     const receipt = await prisma.receipt.create({
       data: {
@@ -232,7 +237,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
         mimeType: data.mimetype as 'application/pdf' | 'image/png' | 'image/jpeg',
         fileBase64: data.mimetype.startsWith('image/') ? buffer.toString('base64') : undefined,
         fallbackCurrency,
-      }, householdId)
+      }, householdId, classifierConfig)
       parsed.notes = [...ocr.notes, ...parsed.notes]
     } catch (err) {
       request.log.warn({ err }, 'Receipt parsing failed after upload')

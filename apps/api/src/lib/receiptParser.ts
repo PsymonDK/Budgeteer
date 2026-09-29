@@ -54,8 +54,13 @@ export interface ParsedReceipt {
   lineItems: ParsedReceiptLineItem[]
 }
 
-export async function parseReceipt(input: ReceiptParseInput, householdId: string): Promise<ParsedReceipt> {
-  const classifierConfig = await loadReceiptClassifierConfig(householdId)
+export async function parseReceipt(
+  input: ReceiptParseInput,
+  householdId: string,
+  // Callers that already loaded the household's classifier config pass it in
+  classifierConfig: ReceiptClassifierConfig | null = null,
+): Promise<ParsedReceipt> {
+  classifierConfig ??= await loadReceiptClassifierConfig(householdId)
   let localAi: ParsedReceipt | null = null
   let localAiNote: string | null = null
   try {
@@ -69,7 +74,7 @@ export async function parseReceipt(input: ReceiptParseInput, householdId: string
   if (localAiNote) {
     parsed.notes = [...parsed.notes, localAiNote]
   }
-  return applyCategorySuggestions(parsed, householdId)
+  return applyCategorySuggestions(parsed, householdId, classifierConfig)
 }
 
 /**

@@ -3,6 +3,7 @@ import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
 import { promisify } from 'util'
+import { isImageTooLargeForOcr } from './receiptFiles'
 
 const execFileAsync = promisify(execFile)
 
@@ -21,10 +22,16 @@ export async function extractReceiptOcrText(args: {
     return { rawText: '', notes: ['Receipt OCR skipped because the file type is not supported.'] }
   }
 
+  // One time budget for the whole receipt: up to ten tesseract attempts per image
+  // (languages × page-segmentation modes) must not add up to minutes per request
+  const deadline = Date.now() + Math.max(1, Number(process.env.RECEIPT_OCR_TOTAL_TIMEOUT_MS ?? 120_000))
   try {
+    if (args.mimeType !== 'application/pdf' && isImageTooLargeForOcr(await fs.readFile(args.filePath))) {
+      return { rawText: '', notes: ['The image is too large for server-side OCR. Upload a smaller photo or add the lines manually.'] }
+    }
     const rawText = args.mimeType === 'application/pdf'
-      ? await extractPdfText(args.filePath)
-      : await extractImageText(args.filePath)
+      ? await extractPdfText(args.filePath, deadline)
+      : await extractImageText(args.filePath, deadline)
 
     const normalizedText = normalizeOcrText(rawText)
     return {
@@ -47,7 +54,7 @@ export function normalizeOcrText(value: string): string {
     .trim()
 }
 
-async function extractImageText(filePath: string): Promise<string> {
+async function extractImageText(filePath: string, deadline: number): Promise<string> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'budgeteer-receipt-image-'))
   const candidates: string[] = []
 
@@ -56,13 +63,13 @@ async function extractImageText(filePath: string): Promise<string> {
     if (preprocessedPath) candidates.push(preprocessedPath)
     candidates.push(filePath)
 
-    return await runBestTesseract(candidates)
+    return await runBestTesseract(candidates, deadline)
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true })
   }
 }
 
-async function extractPdfText(filePath: string): Promise<string> {
+async function extractPdfText(filePath: string, deadline: number): Promise<string> {
   const maxPages = Math.max(1, Number(process.env.RECEIPT_OCR_MAX_PDF_PAGES ?? 3))
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'budgeteer-receipt-ocr-'))
   const outputPrefix = path.join(tempDir, 'page')
@@ -88,7 +95,7 @@ async function extractPdfText(filePath: string): Promise<string> {
       .filter((file) => file.endsWith('.png'))
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 
-    const pages = await Promise.all(files.map((file) => runBestTesseract([path.join(tempDir, file)])))
+    const pages = await Promise.all(files.map((file) => runBestTesseract([path.join(tempDir, file)], deadline)))
     return pages.join('\n\n')
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true })
@@ -132,7 +139,7 @@ async function findPreprocessScript(): Promise<string | null> {
   return null
 }
 
-async function runBestTesseract(filePaths: string[]): Promise<string> {
+async function runBestTesseract(filePaths: string[], deadline: number): Promise<string> {
   const configuredPsm = process.env.RECEIPT_OCR_PSM
   const languages = getOcrLanguageCandidates()
   let bestText = ''
@@ -147,8 +154,14 @@ async function runBestTesseract(filePaths: string[]): Promise<string> {
 
     for (const lang of languages) {
       for (const psm of psms) {
+        const remaining = deadline - Date.now()
+        // Out of time: keep the best result so far rather than starting another run
+        if (remaining <= 0) {
+          if (bestText) return bestText
+          throw firstError ?? Object.assign(new Error('OCR time budget exhausted'), { killed: true })
+        }
         try {
-          const text = await runTesseract(filePath, psm, lang)
+          const text = await runTesseract(filePath, psm, lang, remaining)
           const score = scoreOcrText(text)
           if (score > bestScore) {
             bestScore = score
@@ -173,8 +186,8 @@ function getOcrLanguageCandidates(): string[] {
   return ['dan+eng', 'eng']
 }
 
-async function runTesseract(filePath: string, psm: string, lang: string): Promise<string> {
-  const timeout = Math.max(1, Number(process.env.RECEIPT_OCR_TIMEOUT_MS ?? 45_000))
+async function runTesseract(filePath: string, psm: string, lang: string, maxMs: number = Number.POSITIVE_INFINITY): Promise<string> {
+  const timeout = Math.max(1, Math.min(Number(process.env.RECEIPT_OCR_TIMEOUT_MS ?? 45_000), maxMs))
   const { stdout } = await execFileAsync('tesseract', [
     filePath,
     'stdout',

@@ -1,4 +1,5 @@
-import { BASE_CURRENCY, getLatestRate } from './currency'
+import { Decimal } from '@prisma/client/runtime/client'
+import { BASE_CURRENCY, getLatestRate, getRateOnOrBefore } from './currency'
 
 export type ReceiptSummaryPeriod =
   | 'allTime'
@@ -114,24 +115,24 @@ export async function summarizeReceiptConsumption(lineItems: ReceiptSummaryLineI
   period: ReceiptConsumptionSummary['period']
   filter: ReceiptSummaryDateFilter | null
 }): Promise<ReceiptConsumptionSummary> {
-  const rateCache = new Map<string, number | null>([[BASE_CURRENCY, 1]])
+  const rateCache = new Map<string, Decimal | null>()
   const warnings = new Set<string>()
-  const byCategory = new Map<string, { categoryId: string | null; categoryName: string; categoryIcon: string | null; total: number; itemCount: number }>()
-  const bySubcategory = new Map<string, { categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: number; itemCount: number }>()
-  const byMonth = new Map<string, number>()
-  let total = 0
+  const byCategory = new Map<string, { categoryId: string | null; categoryName: string; categoryIcon: string | null; total: Decimal; itemCount: number }>()
+  const bySubcategory = new Map<string, { categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: Decimal; itemCount: number }>()
+  const byMonth = new Map<string, Decimal>()
+  let total = new Decimal(0)
   let itemCount = 0
 
   for (const item of lineItems) {
     const currencyCode = (item.receipt.currencyCode ?? item.currencyCode ?? BASE_CURRENCY).toUpperCase()
-    const rate = await getReceiptRate(currencyCode, rateCache)
+    const rate = await getReceiptRate(currencyCode, item.receipt.purchaseDate, rateCache)
     if (rate == null) {
       warnings.add(`Missing exchange rate for ${currencyCode}; matching receipt lines were excluded.`)
       continue
     }
 
-    const amount = Number.parseFloat(item.amount?.toString() ?? '0') * rate
-    total += amount
+    const amount = new Decimal(item.amount?.toString() ?? '0').mul(rate)
+    total = total.plus(amount)
     itemCount += 1
 
     const categoryKey = item.categoryId ?? '__uncategorized__'
@@ -139,10 +140,10 @@ export async function summarizeReceiptConsumption(lineItems: ReceiptSummaryLineI
       categoryId: item.categoryId ?? null,
       categoryName: item.category?.name ?? 'Uncategorized',
       categoryIcon: item.category?.icon ?? null,
-      total: 0,
+      total: new Decimal(0),
       itemCount: 0,
     }
-    category.total += amount
+    category.total = category.total.plus(amount)
     category.itemCount += 1
     byCategory.set(categoryKey, category)
 
@@ -152,16 +153,16 @@ export async function summarizeReceiptConsumption(lineItems: ReceiptSummaryLineI
       categoryName: item.category?.name ?? 'Uncategorized',
       subcategoryId: item.subcategoryId ?? null,
       subcategoryName: item.subcategory?.name ?? 'No subcategory',
-      total: 0,
+      total: new Decimal(0),
       itemCount: 0,
     }
-    subcategory.total += amount
+    subcategory.total = subcategory.total.plus(amount)
     subcategory.itemCount += 1
     bySubcategory.set(subcategoryKey, subcategory)
 
     if (item.receipt.purchaseDate) {
       const monthKey = item.receipt.purchaseDate.toISOString().slice(0, 7)
-      byMonth.set(monthKey, (byMonth.get(monthKey) ?? 0) + amount)
+      byMonth.set(monthKey, (byMonth.get(monthKey) ?? new Decimal(0)).plus(amount))
     }
   }
 
@@ -174,10 +175,10 @@ export async function summarizeReceiptConsumption(lineItems: ReceiptSummaryLineI
     endDate: periodInfo.filter ? addUtcDays(periodInfo.filter.lt, -1).toISOString().slice(0, 10) : null,
     warnings: [...warnings],
     byCategory: [...byCategory.values()]
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.total.comparedTo(a.total))
       .map((row) => ({ ...row, total: row.total.toFixed(2) })),
     bySubcategory: [...bySubcategory.values()]
-      .sort((a, b) => b.total - a.total)
+      .sort((a, b) => b.total.comparedTo(a.total))
       .map((row) => ({ ...row, total: row.total.toFixed(2) })),
     byMonth: [...byMonth.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -185,10 +186,21 @@ export async function summarizeReceiptConsumption(lineItems: ReceiptSummaryLineI
   }
 }
 
-async function getReceiptRate(currencyCode: string, cache: Map<string, number | null>) {
-  if (cache.has(currencyCode)) return cache.get(currencyCode) ?? null
-  const rate = await getLatestRate(currencyCode)
-  cache.set(currencyCode, rate)
+/**
+ * Rate for converting a receipt to base currency: the rate on its purchase date
+ * (a past purchase keeps its historical value), falling back to the latest rate when
+ * no history reaches back that far or the date is unknown.
+ */
+async function getReceiptRate(currencyCode: string, purchaseDate: Date | null, cache: Map<string, Decimal | null>): Promise<Decimal | null> {
+  if (currencyCode === BASE_CURRENCY) return new Decimal(1)
+  const key = `${currencyCode}|${purchaseDate?.toISOString().slice(0, 10) ?? 'latest'}`
+  if (cache.has(key)) return cache.get(key) ?? null
+  let rate = purchaseDate ? await getRateOnOrBefore(currencyCode, purchaseDate) : null
+  if (!rate) {
+    const latest = await getLatestRate(currencyCode)
+    rate = latest === null ? null : new Decimal(latest)
+  }
+  cache.set(key, rate)
   return rate
 }
 

@@ -85,7 +85,7 @@ export async function getLatestRate(currencyCode: string): Promise<number | null
 }
 
 /** Most recent stored rate on or before a date, or null if none was fetched by then. */
-async function getRateOnOrBefore(currencyCode: string, date: Date): Promise<Decimal | null> {
+export async function getRateOnOrBefore(currencyCode: string, date: Date): Promise<Decimal | null> {
   const row = await prisma.currencyRate.findFirst({
     where: { currencyCode: currencyCode.toUpperCase(), baseCurrency: BASE_CURRENCY, fetchedDate: { lte: date } },
     orderBy: { fetchedDate: 'desc' },

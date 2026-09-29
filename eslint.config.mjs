@@ -11,9 +11,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     rules: {
-      // Warn for now: the remaining `any`s are receipt serializers slated for
-      // typing in the receipts refactor. Tighten to 'error' once cleared.
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },

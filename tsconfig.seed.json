@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true
   },
-  "include": ["prisma/seed.ts", "apps/api/src/lib/csv.ts"],
+  "include": ["prisma/seed.ts", "apps/api/src/lib/csv.ts", "apps/api/src/lib/receiptText.ts"],
   "exclude": ["node_modules", "dist", "dist-seed"]
 }

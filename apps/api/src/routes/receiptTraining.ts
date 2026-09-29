@@ -4,6 +4,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from '../lib/prisma'
 import { requireAdmin } from '../plugins/authenticate'
 import { fallbackReceiptClassifierConfig, loadReceiptClassifierConfig, normalizeReceiptLabel } from '../lib/receiptParser'
+import { merchantMappingKey, normalizeClassifierTerm } from '../lib/receiptText'
 
 const ScopeSchema = z.discriminatedUnion('scope', [
   z.object({ scope: z.literal('system') }),
@@ -102,7 +103,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
     if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
 
     const scoped = resolveScope(body.data)
-    const term = normalizeTrainingTerm(body.data.termType, body.data.term)
+    const term = normalizeClassifierTerm(body.data.termType, body.data.term)
     if (!term) return reply.status(400).send({ error: 'Invalid classifier term' })
 
     const created = await prisma.receiptClassifierTerm.upsert({
@@ -136,7 +137,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
     const termType = body.data.termType ?? existing.termType
     let nextTerm: string | undefined
     if (body.data.term !== undefined) {
-      const normalized = normalizeTrainingTerm(termType, body.data.term)
+      const normalized = normalizeClassifierTerm(termType, body.data.term)
       if (!normalized) return reply.status(400).send({ error: 'Invalid classifier term' })
       nextTerm = normalized
     }
@@ -249,7 +250,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
         scopeKey_normalizedLabel_merchantKey: {
           scopeKey: scoped.scopeKey,
           normalizedLabel,
-          merchantKey: body.data.merchantKey?.trim() ?? '',
+          merchantKey: merchantMappingKey(body.data.merchantKey, classifierConfig),
         },
       },
       create: {
@@ -296,7 +297,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
       where: { id },
       data: {
         ...(normalizedLabel !== undefined && { normalizedLabel }),
-        ...(body.data.merchantKey !== undefined && { merchantKey: body.data.merchantKey.trim() }),
+        ...(body.data.merchantKey !== undefined && { merchantKey: merchantMappingKey(body.data.merchantKey, classifierConfig) }),
         ...(body.data.categoryId !== undefined && { categoryId: body.data.categoryId }),
         ...(body.data.subcategoryId !== undefined && { subcategoryId: body.data.subcategoryId }),
         ...(body.data.confidence !== undefined && { confidence: new Decimal(body.data.confidence) }),
@@ -326,28 +327,7 @@ function resolveScope(value: { scope: 'system' } | { scope: 'household'; househo
     : { scopeKey: value.householdId, householdId: value.householdId }
 }
 
-function normalizeTrainingTerm(termType: 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS', value: string): string | null {
-  if (termType === 'OCR_ALIAS') {
-    const match = value.trim().toLowerCase().match(/^(.+?)(?:=>|->)(.+)$/)
-    if (!match) return null
-    const source = normalizeTermSide(match[1])
-    const target = normalizeTermSide(match[2])
-    return source && target && source !== target ? `${source}=>${target}` : null
-  }
-  const term = normalizeTermSide(value)
-  if (!term || term.length > 80 || /^\d+$/.test(term)) return null
-  return term
-}
 
-function normalizeTermSide(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
 
 async function validateMappingTargets(scoped: { scopeKey: string; householdId: string | null }, categoryId: string, subcategoryId: string | null): Promise<string | null> {
   const [household, category] = await Promise.all([
@@ -376,7 +356,19 @@ async function validateMappingTargets(scoped: { scopeKey: string; householdId: s
   return subcategory ? null : 'Subcategory not found for category'
 }
 
-function serializeTerm(term: any) {
+type Timestamp = Date | string
+type NamedRef = { name: string } | null
+
+function iso(value: Timestamp): string
+function iso(value: Timestamp | null): string | null
+function iso(value: Timestamp | null): string | null {
+  return value instanceof Date ? value.toISOString() : value
+}
+
+function serializeTerm(term: {
+  id: string; scopeKey: string; householdId: string | null; household?: NamedRef; termType: string; term: string
+  isActive: boolean; source: string; hitCount: number; lastSeenAt: Timestamp | null; updatedAt: Timestamp
+}) {
   return {
     id: term.id,
     scopeKey: term.scopeKey,
@@ -388,12 +380,15 @@ function serializeTerm(term: any) {
     isActive: term.isActive,
     source: term.source,
     hitCount: term.hitCount,
-    lastSeenAt: term.lastSeenAt?.toISOString?.() ?? term.lastSeenAt ?? null,
-    updatedAt: term.updatedAt?.toISOString?.() ?? term.updatedAt,
+    lastSeenAt: iso(term.lastSeenAt),
+    updatedAt: iso(term.updatedAt),
   }
 }
 
-function serializeSubcategory(subcategory: any) {
+function serializeSubcategory(subcategory: {
+  id: string; categoryId: string; category?: NamedRef; householdId: string | null; household?: NamedRef; name: string
+  isSystemWide: boolean; isActive: boolean; _count?: { lineItems?: number; mappings?: number }; updatedAt: Timestamp
+}) {
   return {
     id: subcategory.id,
     categoryId: subcategory.categoryId,
@@ -405,11 +400,15 @@ function serializeSubcategory(subcategory: any) {
     isActive: subcategory.isActive,
     lineItemCount: subcategory._count?.lineItems ?? 0,
     mappingCount: subcategory._count?.mappings ?? 0,
-    updatedAt: subcategory.updatedAt?.toISOString?.() ?? subcategory.updatedAt,
+    updatedAt: iso(subcategory.updatedAt),
   }
 }
 
-function serializeMapping(mapping: any) {
+function serializeMapping(mapping: {
+  id: string; scopeKey: string; householdId: string | null; household?: NamedRef; normalizedLabel: string; merchantKey: string
+  categoryId: string; category?: NamedRef; subcategoryId: string | null; subcategory?: NamedRef
+  confidence: { toString(): string } | number; hitCount: number; lastUsedAt: Timestamp; updatedAt: Timestamp
+}) {
   return {
     id: mapping.id,
     scopeKey: mapping.scopeKey,
@@ -424,7 +423,7 @@ function serializeMapping(mapping: any) {
     subcategoryName: mapping.subcategory?.name ?? null,
     confidence: Number(mapping.confidence),
     hitCount: mapping.hitCount,
-    lastUsedAt: mapping.lastUsedAt?.toISOString?.() ?? mapping.lastUsedAt,
-    updatedAt: mapping.updatedAt?.toISOString?.() ?? mapping.updatedAt,
+    lastUsedAt: iso(mapping.lastUsedAt),
+    updatedAt: iso(mapping.updatedAt),
   }
 }

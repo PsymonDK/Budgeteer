@@ -1,7 +1,21 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import type { ParsedReceipt, ParsedReceiptLineItem, ReceiptConfidence } from './receiptParser'
-import { foldReceiptText, matchesAnyTerm, receiptWords } from './receiptText'
+import {
+  FALLBACK_CLASSIFIER_CONFIG,
+  FALLBACK_LOW_VALUE_WORDS,
+  FALLBACK_NOISE_TOKENS,
+  FALLBACK_OCR_ALIASES,
+  matchesAnyTerm,
+  parseOcrAlias,
+  normalizeReceiptLabel,
+  merchantMappingKey,
+  receiptWords,
+  type ReceiptClassifierConfig,
+} from './receiptText'
+
+// Normalization lives in the pure receiptText module (shared with the seed script)
+export { fallbackReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel, type ReceiptClassifierConfig } from './receiptText'
 
 interface CategoryCandidate {
   id: string
@@ -28,99 +42,12 @@ interface CategorySuggestion {
   confidence?: ReceiptConfidence
 }
 
-export interface ReceiptClassifierConfig {
-  noiseTokens: Set<string>
-  lowValueWords: Set<string>
-  ocrAliases: Map<string, string>
-}
-
 const FUZZY_MIN_LABEL_SIMILARITY = 0.66
 const FUZZY_MIN_SCORE = 0.82
-const FALLBACK_NOISE_TOKENS = [
-  'stk',
-  'pcs',
-  'pc',
-  'kg',
-  'g',
-  'l',
-  'ml',
-  'cl',
-  'cm',
-  'mm',
-  'ltr',
-  'liter',
-  'gram',
-  'varenr',
-  'vare',
-  'nr',
-  'dk',
-  'kr',
-  'dkk',
-]
-const FALLBACK_LOW_VALUE_WORDS = [
-  'total',
-  'subtotal',
-  'sum',
-  'i alt',
-  'ialt',
-  'at betale',
-  'betale',
-  'til betaling',
-  'betaling',
-  'betalt',
-  'beløb',
-  'belob',
-  'change',
-  'cash',
-  'card',
-  'kort',
-  'kreditkort',
-  'betalingskort',
-  'visa',
-  'mastercard',
-  'dankort',
-  'mobilepay',
-  'kontant',
-  'tax',
-  'vat',
-  'moms',
-  'rabat',
-  'rabatten',
-  'retur',
-]
-const FALLBACK_OCR_ALIASES: Array<[string, string]> = [
-  ['totlet', 'toilet'],
-  ['tollet', 'toilet'],
-  ['toiletpapii', 'toiletpapir'],
-  ['chilt', 'chili'],
-  ['k kkenruller', 'køkkenruller'],
-  ['kokkenruller', 'køkkenruller'],
-  ['k@kkenruller', 'køkkenruller'],
-  ['minimalk', 'minimælk'],
-  ['handsebe', 'handsæbe'],
-  ['handsaebe', 'handsæbe'],
-  ['sonderyjsk', 'sønderjysk'],
-  ['spegopol', 'spegepøl'],
-  ['oksespegepol', 'oksespegepøl'],
-]
-const FALLBACK_CLASSIFIER_CONFIG: ReceiptClassifierConfig = {
-  noiseTokens: new Set(FALLBACK_NOISE_TOKENS),
-  lowValueWords: new Set(FALLBACK_LOW_VALUE_WORDS),
-  ocrAliases: new Map(FALLBACK_OCR_ALIASES),
-}
-
 type ReceiptClassifierTermType = 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS'
 
-export function fallbackReceiptClassifierConfig(): ReceiptClassifierConfig {
-  return {
-    noiseTokens: new Set(FALLBACK_NOISE_TOKENS),
-    lowValueWords: new Set(FALLBACK_LOW_VALUE_WORDS),
-    ocrAliases: new Map(FALLBACK_OCR_ALIASES),
-  }
-}
-
 export async function loadReceiptClassifierConfig(householdId: string): Promise<ReceiptClassifierConfig> {
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (!delegate?.findMany) return FALLBACK_CLASSIFIER_CONFIG
 
   const rows = await delegate.findMany({
@@ -140,7 +67,7 @@ export async function loadReceiptClassifierConfig(householdId: string): Promise<
     const term = normalizeClassifierTerm(row.term)
     if (!term) continue
     if (row.termType === 'OCR_ALIAS') {
-      const alias = parseOcrAliasTerm(term)
+      const alias = parseOcrAlias(term)
       if (!alias) continue
       if (row.scopeKey === householdId && !row.isActive) {
         config.ocrAliases.delete(alias.source)
@@ -162,29 +89,6 @@ export async function loadReceiptClassifierConfig(householdId: string): Promise<
   return config
 }
 
-export function normalizeReceiptLabel(value: string, config: ReceiptClassifierConfig = FALLBACK_CLASSIFIER_CONFIG): string {
-  const normalized = foldReceiptText(value)
-    .replace(/(?:^|\s)[a-z]{0,3}\d{4,}[a-z0-9-]*(?=\s|$)/gi, ' ')
-    .replace(/\b\d+(?:[,.]\d+)?\s*(?:x|stk|pcs?|kg|g|l|ml|cl|cm|mm|ltr|liter|gram)\b/gi, ' ')
-    .replace(/\b(?:x|stk|pcs?)\s*\d+(?:[,.]\d+)?\b/gi, ' ')
-    .replace(/\b\d+[,.]\d{2}\b(?=\s*$)/g, ' ')
-    .replace(/\b\d{2,}\b/g, ' ')
-    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  // Multi-word noise terms (e.g. "pr kg") are removed as phrases before the
-  // per-token filter, which only sees single words
-  let phraseFree = ` ${normalized} `
-  for (const noise of config.noiseTokens) {
-    if (noise.includes(' ')) phraseFree = phraseFree.split(` ${noise} `).join(' ')
-  }
-  const withoutNoise = phraseFree
-    .split(/\s+/)
-    .filter((token) => token.length > 1 && !config.noiseTokens.has(token))
-    .join(' ')
-  return applyOcrAliases(withoutNoise, config.ocrAliases)
-}
-
 export function correctReceiptOcrText(value: string, config: ReceiptClassifierConfig = FALLBACK_CLASSIFIER_CONFIG): string {
   if (!value || config.ocrAliases.size === 0) return value
   const aliases = [...config.ocrAliases.entries()]
@@ -201,11 +105,11 @@ export function correctReceiptOcrText(value: string, config: ReceiptClassifierCo
   return corrected
 }
 
-export function merchantMappingKey(merchantName?: string | null, config?: ReceiptClassifierConfig): string {
-  return normalizeReceiptLabel(merchantName ?? '', config)
-}
-
-export async function applyCategorySuggestions(receipt: ParsedReceipt, householdId: string): Promise<ParsedReceipt> {
+export async function applyCategorySuggestions(
+  receipt: ParsedReceipt,
+  householdId: string,
+  preloadedConfig: ReceiptClassifierConfig | null = null,
+): Promise<ParsedReceipt> {
   if (receipt.lineItems.length === 0) return receipt
 
   const [categories, classifierConfig] = await Promise.all([
@@ -227,7 +131,7 @@ export async function applyCategorySuggestions(receipt: ParsedReceipt, household
         },
       },
     }),
-    loadReceiptClassifierConfig(householdId),
+    preloadedConfig ?? loadReceiptClassifierConfig(householdId),
   ])
 
   const normalizedItems = receipt.lineItems.map((item) => ({
@@ -786,7 +690,7 @@ async function learnReceiptClassifierTerms(householdId: string, items: LearnItem
 
 async function observeClassifierTerm(householdId: string, termType: ReceiptClassifierTermType, rawTerm: string, activationThreshold: number) {
   const term = normalizeClassifierTerm(rawTerm)
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (!term || !delegate?.upsert) return
   await delegate.upsert({
     where: { scopeKey_termType_term: { scopeKey: householdId, termType, term } },
@@ -824,49 +728,7 @@ function normalizeClassifierTerm(value: string): string | null {
   return term
 }
 
-function parseOcrAliasTerm(term: string): { source: string; target: string } | null {
-  const match = term.match(/^(.+?)(?:=>|->)(.+)$/)
-  if (!match) return null
-  const source = normalizeAliasSide(match[1])
-  const target = normalizeAliasSide(match[2])
-  if (!source || !target || source === target) return null
-  return { source, target }
-}
 
-function normalizeAliasSide(value: string): string {
-  return foldReceiptText(value.trim())
-    .replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function applyOcrAliases(label: string, aliases: Map<string, string>): string {
-  if (!label || aliases.size === 0) return label
-  const tokens = label.split(/\s+/).filter(Boolean)
-  const aliasEntries = [...aliases.entries()]
-    .map(([source, target]) => ({
-      sourceTokens: source.split(/\s+/).filter(Boolean),
-      targetTokens: target.split(/\s+/).filter(Boolean),
-    }))
-    .filter((alias) => alias.sourceTokens.length > 0 && alias.targetTokens.length > 0)
-    .sort((a, b) => b.sourceTokens.length - a.sourceTokens.length)
-
-  const output: string[] = []
-  for (let index = 0; index < tokens.length;) {
-    const alias = aliasEntries.find((candidate) =>
-      candidate.sourceTokens.every((token, offset) => tokens[index + offset] === token),
-    )
-    if (alias) {
-      output.push(...alias.targetTokens)
-      index += alias.sourceTokens.length
-    } else {
-      output.push(tokens[index])
-      index += 1
-    }
-  }
-
-  return output.join(' ')
-}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
