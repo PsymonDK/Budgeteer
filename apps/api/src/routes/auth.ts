@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import crypto from 'crypto'
 import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { ACCESS_TOKEN_TTL, hashToken, issueSession, rotateRefreshToken } from '../lib/sessions'
@@ -18,7 +19,7 @@ const LOCKOUT_MINUTES = 15
 
 // Compared against when the account doesn't exist, so response time doesn't reveal
 // which email addresses have accounts.
-const dummyPasswordHash = hashPassword(`dummy-${Date.now()}-${Math.random()}`)
+const dummyPasswordHash = hashPassword(crypto.randomBytes(32).toString('hex'))
 
 export async function authRoutes(fastify: FastifyInstance) {
   const sign = (payload: { sub: string; email: string; role: 'SYSTEM_ADMIN' | 'BOOKKEEPER' | 'USER' }) =>
