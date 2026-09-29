@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { api } from '../api/client'
+import { api, setAccessToken } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import { inputClass, primaryBtn, secondaryBtn } from '../lib/styles'
 import { FormError } from '../components/FormError'
@@ -31,13 +31,13 @@ export function ChangePasswordPage() {
 
     setIsPending(true)
     try {
-      const res = await api.post<{ accessToken: string; refreshToken: string }>(
+      const res = await api.post<{ accessToken: string }>(
         '/users/me/change-password',
         { currentPassword, newPassword },
       )
-      // Changing the password ends every session; keep this one with the fresh tokens
-      localStorage.setItem('accessToken', res.data.accessToken)
-      localStorage.setItem('refreshToken', res.data.refreshToken)
+      // Changing the password ends every session; this one continues with the fresh
+      // access token (the new refresh token arrived as a cookie)
+      setAccessToken(res.data.accessToken)
       updateUser({ mustChangePassword: false })
       navigate('/', { replace: true })
     } catch (err) {

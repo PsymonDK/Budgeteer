@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
 
 ### Changed
+- **Refresh token moved to an httpOnly cookie** — the refresh token is now set as an `httpOnly`, `SameSite=Strict` cookie (`budgeteer_refresh`, `Secure` over HTTPS) instead of being returned in the response body and kept in `localStorage`, and the access token lives only in memory. A script injected into the page can no longer read either token. Login, refresh and change-password no longer return `refreshToken` in the body. Existing sessions are migrated on the next page load: the old `localStorage` token is exchanged for a cookie once and removed, so nobody is logged out. nginx now forwards `X-Forwarded-Proto` so the API can tell when to set `Secure`.
 - **One product version** — the repo-root `package.json` version (0.58.1) is the single source; `/health` and the web footer read it (they reported 0.14.1 and a hard-coded value). All workspace package versions are aligned.
 - **Empty environment variables count as unset** in the API, so compose files can pass optional settings through without `""` overriding defaults.
 - **OpenMediaVault compose file** requires its three secrets and no longer seeds demo users (password `demo1234`) by default.

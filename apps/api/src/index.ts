@@ -2,6 +2,7 @@ import './env'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
+import cookie from '@fastify/cookie'
 import helmet from '@fastify/helmet'
 import rateLimit from '@fastify/rate-limit'
 import fastifyStatic from '@fastify/static'
@@ -73,6 +74,8 @@ const jwtSecret = process.env.JWT_SECRET
 if (!jwtSecret) throw new Error('JWT_SECRET environment variable is required')
 
 app.register(jwt, { secret: jwtSecret })
+// Carries the refresh token (httpOnly, see lib/sessions.ts)
+app.register(cookie)
 
 // Security headers
 app.register(helmet)

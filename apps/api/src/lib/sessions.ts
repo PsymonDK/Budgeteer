@@ -91,3 +91,23 @@ export async function purgeRefreshTokens(now: Date = new Date()): Promise<number
   })
   return count
 }
+
+// ── Refresh-token cookie ─────────────────────────────────────────────────────
+// The refresh token lives in an httpOnly cookie so page scripts (an XSS bug, a
+// compromised dependency, an extension) can't read it and use it elsewhere.
+// SameSite=Strict keeps browsers from sending it on cross-site requests (CSRF).
+
+export const REFRESH_COOKIE = 'budgeteer_refresh'
+
+export function refreshCookieOptions(secure: boolean) {
+  return {
+    httpOnly: true,
+    sameSite: 'strict' as const,
+    // Secure whenever the browser reached us over HTTPS (behind a TLS-terminating
+    // proxy too, via X-Forwarded-Proto); plain-HTTP LAN installs still work
+    secure,
+    // "/" because the browser sees the API under /api (nginx/Vite strip it)
+    path: '/',
+    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60,
+  }
+}

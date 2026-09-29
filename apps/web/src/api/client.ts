@@ -9,27 +9,72 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach access token to every request
+// ── Tokens ────────────────────────────────────────────────────────────────────
+// The refresh token lives in an httpOnly cookie that page scripts can't read, so
+// an XSS bug can't take it elsewhere. The short-lived access token is kept only
+// in memory; after a reload it is re-issued from the cookie.
+
+let accessToken: string | null = null
+
+export function setAccessToken(token: string | null) {
+  accessToken = token
+}
+
+// Sessions from before the cookie switch kept both tokens in localStorage
+const LEGACY_TOKEN_KEYS = ['accessToken', 'refreshToken']
+
+let refreshing: Promise<string> | null = null
+
+/**
+ * A new access token from the refresh cookie. Concurrent callers share one request,
+ * since every refresh rotates the cookie.
+ */
+export function refreshAccessToken(): Promise<string> {
+  refreshing ??= requestNewAccessToken().finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
+
+async function requestNewAccessToken(): Promise<string> {
+  // One-time migration: hand an old localStorage refresh token to the API, which
+  // swaps it for a cookie. Removed right away so it never lingers in page storage.
+  const legacyRefreshToken = localStorage.getItem('refreshToken')
+  LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key))
+
+  const post = () =>
+    axios.post<{ accessToken: string }>(`${API_URL}/auth/refresh`, legacyRefreshToken ? { refreshToken: legacyRefreshToken } : {})
+  let response
+  try {
+    response = await post()
+  } catch (err) {
+    // Another tab may have rotated the cookie a moment ago; its response set the
+    // new cookie, so one retry picks it up instead of logging this tab out.
+    if (!legacyRefreshToken && axios.isAxiosError(err) && err.response?.status === 401) {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      response = await post()
+    } else {
+      throw err
+    }
+  }
+  accessToken = response.data.accessToken
+  return accessToken
+}
+
+/** True when a failed refresh means the session is over (not a network hiccup). */
+export function isSessionEnded(err: unknown): boolean {
+  return axios.isAxiosError(err) && (err.response?.status === 401 || err.response?.status === 403)
+}
+
+// Attach the access token to every request
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  const token = localStorage.getItem('accessToken')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`
   }
   return config
 })
 
 // Silent token refresh on 401
-let isRefreshing = false
-let pendingQueue: Array<{
-  resolve: (token: string) => void
-  reject: (err: unknown) => void
-}> = []
-
-function flushQueue(err: unknown, token: string | null) {
-  pendingQueue.forEach((p) => (err ? p.reject(err) : p.resolve(token!)))
-  pendingQueue = []
-}
-
 api.interceptors.response.use(
   (response) => response,
   async (error: unknown) => {
@@ -43,45 +88,20 @@ api.interceptors.response.use(
     if (error.response?.status !== 401 || originalRequest._retry || isAuthCall) {
       return Promise.reject(error)
     }
-
-    if (isRefreshing) {
-      return new Promise<string>((resolve, reject) => {
-        pendingQueue.push({ resolve, reject })
-      }).then((token) => {
-        originalRequest.headers.Authorization = `Bearer ${token}`
-        return api(originalRequest)
-      })
-    }
-
     originalRequest._retry = true
-    isRefreshing = true
-
-    const refreshToken = localStorage.getItem('refreshToken')
-    if (!refreshToken) {
-      isRefreshing = false
-      redirectToLogin()
-      return Promise.reject(error)
-    }
 
     try {
-      const { data } = await axios.post<{ accessToken: string; refreshToken: string }>(
-        `${API_URL}/auth/refresh`,
-        { refreshToken }
-      )
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
-      flushQueue(null, data.accessToken)
-      originalRequest.headers.Authorization = `Bearer ${data.accessToken}`
+      const token = await refreshAccessToken()
+      originalRequest.headers.Authorization = `Bearer ${token}`
       return api(originalRequest)
     } catch (refreshError) {
-      flushQueue(refreshError, null)
-      localStorage.removeItem('accessToken')
-      localStorage.removeItem('refreshToken')
-      localStorage.removeItem('user')
-      redirectToLogin()
+      // Only a rejected refresh ends the session; a network error leaves it intact
+      if (isSessionEnded(refreshError)) {
+        accessToken = null
+        localStorage.removeItem('user')
+        redirectToLogin()
+      }
       return Promise.reject(refreshError)
-    } finally {
-      isRefreshing = false
     }
   }
 )

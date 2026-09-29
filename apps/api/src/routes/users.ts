@@ -6,7 +6,7 @@ import crypto from 'crypto'
 import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
-import { ACCESS_TOKEN_TTL, issueSession, revokeAllSessions } from '../lib/sessions'
+import { ACCESS_TOKEN_TTL, REFRESH_COOKIE, issueSession, refreshCookieOptions, revokeAllSessions } from '../lib/sessions'
 
 const UpdateMeSchema = z
   .object({
@@ -280,7 +280,8 @@ export async function userRoutes(fastify: FastifyInstance) {
     // fresh pair so it stays signed in.
     await revokeAllSessions(userId)
     const session = await issueSession(user, (payload) => fastify.jwt.sign(payload, { expiresIn: ACCESS_TOKEN_TTL }))
-    return reply.send({ ...updated, ...session })
+    reply.setCookie(REFRESH_COOKIE, session.refreshToken, refreshCookieOptions(request.protocol === 'https'))
+    return reply.send({ ...updated, accessToken: session.accessToken })
   })
 
   // POST /users/me/avatar — upload avatar image
