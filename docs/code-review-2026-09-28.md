@@ -12,7 +12,7 @@ Whole-codebase review (API, receipts/OCR, web, schema/infra/docs). Findings mark
 | 2 — Security | `fix/REF-002-security` | Done (deferred: tokens in localStorage → httpOnly cookies; avatar auth; upload magic bytes → phase 5) |
 | 4 — Structure + soft delete/trash | `refactor/REF-004-structure` | Done (open: float money math in dashboard/compare/profile; client-computed payslip net submitted by IncomePage) |
 | 5 — Receipts | `fix/REF-005-receipts` | Done |
-| 6 — Docs & deploy | — | Not started |
+| 6 — Docs & deploy | `docs/REF-006-docs-deploy` | Done |
 
 Branches are stacked in the order above (each builds on the previous).
 

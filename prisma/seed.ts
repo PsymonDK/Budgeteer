@@ -140,9 +140,8 @@ async function main() {
       data: { email, name, passwordHash, role: 'SYSTEM_ADMIN', mustChangePassword: true },
     })
     await prisma.userPreferences.create({ data: { userId: admin.id } })
-    console.log(`✓ Created admin user: ${admin.email}`)
-    console.log(`  Default password: ${password}`)
-    console.log(`  Change this on first login.`)
+    // Never log the password: container logs are often shipped elsewhere
+    console.log(`✓ Created admin user: ${admin.email} (password from ADMIN_PASSWORD; change it on first login)`)
   }
 
   // ── Default system-wide expense categories (idempotent) ───────────────────
@@ -465,7 +464,6 @@ async function main() {
   })
 
   console.log('✓ Created Carol & Dave household (1 active budget year)')
-  await seedReceiptTrainingSeed()
   console.log('Demo data complete. Log in as alice@demo.local / demo1234 to explore.')
 }
 

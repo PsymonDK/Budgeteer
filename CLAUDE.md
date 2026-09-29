@@ -49,9 +49,9 @@ npm run test             # API unit tests
 ## API conventions
 - REST, JSON
 - Auth: JWT access token (15 min) + refresh token (7 days), rotated on use
-- All routes require authentication except `/auth/login` and `/health`
-- System admin routes are prefixed `/admin/`
-- Errors return `{ error: string, code: string }`
+- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config` and avatar images (`/uploads/avatars/`)
+- System admin routes are prefixed `/admin/`; user management (`/users`) and `DELETE /households/:id` are also admin-only via `requireAdmin`
+- Errors return `{ error: string, code?: string }` — add a machine-readable `code` when the client needs to react to the error (e.g. `BUDGET_YEAR_READ_ONLY`); unexpected errors are mapped by the global error handler
 - Successful creates return the created object with 201
 - Validation via Zod on all request bodies
 

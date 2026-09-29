@@ -75,9 +75,10 @@ jobs:
           labels: ${{ steps.meta-api.outputs.labels }}
 
       - name: API — Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-api:latest
+          # The image this run built — :latest isn't rebuilt on version-tag pushes
+          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-api@${{ steps.build-api.outputs.digest }}
           format: sarif
           output: trivy-api.sarif
           severity: HIGH,CRITICAL
@@ -103,6 +104,7 @@ jobs:
             type=sha,prefix=sha-,format=short
 
       - name: Web — build and push
+        id: build-web
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -112,9 +114,9 @@ jobs:
           labels: ${{ steps.meta-web.outputs.labels }}
 
       - name: Web — Trivy scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-web:latest
+          image-ref: ${{ env.REGISTRY }}/${{ env.OWNER }}/budgeteer-web@${{ steps.build-web.outputs.digest }}
           format: sarif
           output: trivy-web.sarif
           severity: HIGH,CRITICAL

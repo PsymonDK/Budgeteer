@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **API healthcheck** — the API image checks `/health`, and the web container in every compose file waits for a healthy API.
+- **Optional settings in the deploy compose files** — `ANTHROPIC_API_KEY`, `SCHEMA_SYNC_MODE`, `TRUST_PROXY`, the rate-limit, receipt OCR and local-AI variables are now passed to the API container; before, setting them in `.env` had no effect, so AI payslip import and local receipt AI couldn't be enabled in a Docker install.
+- **Dependabot for GitHub Actions and Docker base images.**
 - **Printed receipt total** — the TOTAL read from a receipt is now stored (`printedTotal`, editable) and receipts flag when their line items don't add up to it (`totalMismatch`), the quickest way to spot a missed or misread line. Previously the printed total was discarded and the header's total field was silently ignored.
 - **Single-step receipt confirm** — `POST …/receipts/:id/confirm` accepts the review's header and line edits and saves them with the confirmation in one transaction.
 - **Trash UI** — a household Trash page (sidebar, next to Settings) and a Trash tab on the Income page list deleted items with who deleted them and when, and restore them. Deleting shows a "Moved to trash" toast with Undo.
@@ -26,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
 
 ### Changed
+- **One product version** — the repo-root `package.json` version (0.58.1) is the single source; `/health` and the web footer read it (they reported 0.14.1 and a hard-coded value). All workspace package versions are aligned.
+- **Empty environment variables count as unset** in the API, so compose files can pass optional settings through without `""` overriding defaults.
+- **OpenMediaVault compose file** requires its three secrets and no longer seeds demo users (password `demo1234`) by default.
+- **Trivy scans the image the workflow just built** (by digest) instead of `:latest`, which isn't rebuilt on version-tag pushes; the action is pinned to a release instead of `@master`.
+- **Documentation** — CONTRIBUTING rewritten (it described a root compose file, ports, Swagger and a `packages/shared` package that don't exist); architecture, README, deploy notes, CLAUDE.md and AGENTS.md reconciled with the code (public routes, admin routes, error shape, reverse-proxy variable name, migration switch-over).
+- Removed the unused `packages/` placeholder and the obsolete `version` key in `docker-compose.dev.yml`.
 - **Receipts screens restructured** — the 1,500-line receipts page is split into `pages/receipts/` and uses the shared query keys, hooks and types. Review edits are confirmed in one request; a "Printed total" field and a soft warning show when line items don't add up to the receipt's total.
 - **Receipt amounts are labelled in the receipt's own currency** (they were shown with the base currency label).
 - **Frontend structure** — shared API types (`api/types.ts`), a query-key factory and shared query hooks (`api/queryKeys.ts`, `api/queries.ts`), shared components (ConfirmDialog, FormError, StatusBadge, BudgetYearSelector, AccountSelect, OwnershipFields, entry table pieces) and style constants replace code duplicated across pages. The large pages are split into folders (`pages/income`, `expenses`, `savings`, `dashboard`, `household`, `profile`, `budget-years`, `user-dashboard`). `calcDanishDeductions` moved to `lib/danishTaxPreview.ts`.
@@ -42,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **The seed printed the admin password to the logs** on first boot; it ran the receipt training import twice when demo data was enabled.
+- **Currency rates were stored again on every restart** — the daily sync now keeps one row per currency per day.
 - **Saving one receipt line discarded unsaved edits on the others** — edited drafts are now kept when the receipt refreshes.
 - **Account edits didn't refresh the receipts screens** (they cached accounts under different keys); inactive accounts are no longer offered for new receipts.
 - **Failed uploads never appeared in the receipt list**, and opening a deleted receipt's link showed a spinner forever.

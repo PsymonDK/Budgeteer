@@ -9,3 +9,15 @@ updates:
       patch-updates:
         update-types:
           - patch
+
+  # Workflow actions (e.g. the pinned Trivy action) and base images get updates too
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directories:
+      - /docker
+    schedule:
+      interval: weekly

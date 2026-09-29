@@ -78,4 +78,7 @@ COPY docker/entrypoint.sh ./entrypoint.sh
 RUN chmod +x entrypoint.sh
 
 EXPOSE 3001
+# Startup runs schema sync and the seed first, hence the generous start period
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${API_PORT:-3001}/health" > /dev/null || exit 1
 CMD ["./entrypoint.sh"]

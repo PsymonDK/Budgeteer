@@ -36,7 +36,17 @@ import { purgeRefreshTokens } from './lib/sessions'
 import { prisma } from './lib/prisma'
 import { toErrorResponse } from './lib/errors'
 
-const VERSION = process.env.npm_package_version ?? '0.14.1'
+// The product version lives in the repo-root package.json (copied into the image)
+const VERSION = readProductVersion()
+
+function readProductVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8')) as { version?: string }
+    return pkg.version ?? 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
 
 // The API normally sits behind nginx. Trust X-Forwarded-For only from loopback and
 // private networks (the Docker network) so request.ip — and with it rate limiting —

@@ -11,10 +11,11 @@ For the full architecture, data model, and API reference, read `docs/architectur
 - `apps/api/src/lib/` - shared backend domain logic such as calculations, currency handling, income, ownership, tax, automations, and budget transfers.
 - `apps/api/src/plugins/` - Fastify plugins such as authentication.
 - `apps/web/` - React 18 + TypeScript + Vite app.
-- `apps/web/src/pages/` - route-level screens.
+- `apps/web/src/pages/` - route-level screens; larger screens are folders (`income/`, `expenses/`, `savings/`, `dashboard/`, `household/`, `profile/`, `receipts/`, `trash/`, …).
 - `apps/web/src/components/` - reusable UI components.
 - `apps/web/src/contexts/` - auth and household context providers.
 - `apps/web/src/api/client.ts` - configured Axios client and refresh-token flow.
+- `apps/web/src/api/types.ts`, `queryKeys.ts`, `queries.ts` - shared API response types, the TanStack Query key factory (`qk`) and shared query hooks. Add keys and hooks here instead of inlining them in pages.
 - `apps/web/src/lib/` - frontend constants, formatting helpers, styles, and preview-only utilities.
 - `prisma/schema.prisma` - source of truth for database models.
 - `prisma/migrations/` - committed schema migrations.
@@ -22,7 +23,7 @@ For the full architecture, data model, and API reference, read `docs/architectur
 - `docker/` and `deploy/` - container builds, nginx config, entrypoint, and deployment docs.
 - `docs/architecture.md` - canonical architecture, data model, calculations, and API inventory.
 
-`packages/` currently only contains the placeholder `@budgeteer/shared` package. Do not move shared code there unless the package is wired into the workspace and build flow.
+- `docs/code-review-2026-09-28.md` - the 2026-09 review findings and refactor progress.
 
 ## Commands
 
@@ -69,7 +70,7 @@ The local development API runs on `http://localhost:3001`; the Vite web app runs
 
 - API style is REST over JSON.
 - Validate request bodies with Zod.
-- All routes require authentication except `/auth/login`, `/health`, and public config where already implemented.
+- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config` and avatar images (`/uploads/avatars/`).
 - Auth uses short-lived JWT access tokens plus rotated refresh tokens.
 - System admin routes are prefixed with `/admin/` or protected with equivalent admin checks in existing route modules.
 - Errors should follow the project shape: `{ error: string, code?: string }`. Existing routes sometimes include `details` for validation errors; keep that pattern when extending nearby code.

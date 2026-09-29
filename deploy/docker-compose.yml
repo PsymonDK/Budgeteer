@@ -38,6 +38,29 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       # Base currency for all calculations — must be a currency Danmarks Nationalbank publishes rates for
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
+      # ── Optional features (leave unset for defaults; see README) ─────────
+      # AI-assisted payslip import (Anthropic)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Startup schema sync: push (default), migrate, skip, force-push
+      SCHEMA_SYNC_MODE: ${SCHEMA_SYNC_MODE:-}
+      # Proxies trusted for the client IP (default: loopback + private networks)
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      API_RATE_LIMIT_ENABLED: ${API_RATE_LIMIT_ENABLED:-}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-}
+      API_RATE_LIMIT_WINDOW: ${API_RATE_LIMIT_WINDOW:-}
+      # Receipt OCR tuning
+      RECEIPT_OCR_LANG: ${RECEIPT_OCR_LANG:-}
+      RECEIPT_OCR_MAX_PDF_PAGES: ${RECEIPT_OCR_MAX_PDF_PAGES:-}
+      RECEIPT_OCR_PDF_DPI: ${RECEIPT_OCR_PDF_DPI:-}
+      RECEIPT_OCR_PSM: ${RECEIPT_OCR_PSM:-}
+      RECEIPT_OCR_TIMEOUT_MS: ${RECEIPT_OCR_TIMEOUT_MS:-}
+      RECEIPT_OCR_TOTAL_TIMEOUT_MS: ${RECEIPT_OCR_TOTAL_TIMEOUT_MS:-}
+      RECEIPT_OCR_MAX_PIXELS: ${RECEIPT_OCR_MAX_PIXELS:-}
+      RECEIPT_OCR_PREPROCESS: ${RECEIPT_OCR_PREPROCESS:-}
+      # Local/self-hosted AI for receipt cleanup and categorisation
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-}
+      RECEIPT_AI_CATEGORIZE: ${RECEIPT_AI_CATEGORIZE:-}
     volumes:
       - uploads_data:/app/uploads
 
@@ -45,7 +68,8 @@ services:
     image: ghcr.io/psymondk/budgeteer-web:latest
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       # APP_PORT: the host port the web UI is served on (default 7272)
       - "${APP_PORT:-7272}:80"

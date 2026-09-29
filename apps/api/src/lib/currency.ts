@@ -50,6 +50,11 @@ export async function syncRates(): Promise<number> {
   const currencies = await fetchRates()
   const fetchedDate = new Date()
 
+  // Keep one rate per currency per day: a restart or manual re-sync replaces
+  // today's rows instead of adding duplicates (the history is kept for locking
+  // past entries at their payment-date rate)
+  const startOfDay = new Date(Date.UTC(fetchedDate.getUTCFullYear(), fetchedDate.getUTCMonth(), fetchedDate.getUTCDate()))
+  await prisma.currencyRate.deleteMany({ where: { baseCurrency: BASE_CURRENCY, fetchedDate: { gte: startOfDay } } })
   await prisma.currencyRate.createMany({
     data: currencies.map(({ code, rate }) => ({
       currencyCode: code,

@@ -62,6 +62,8 @@ docker compose up -d
 
 Open **http://localhost:7272** and log in with your admin credentials.
 
+On OpenMediaVault, use [`deploy/docker-compose.omv.yml`](deploy/docker-compose.omv.yml) instead (see the header of that file).
+
 On first boot Budgeteer automatically sets up the database, creates your admin account, and seeds default categories and currencies. No manual setup required.
 
 ### Updating
@@ -70,7 +72,7 @@ On first boot Budgeteer automatically sets up the database, creates your admin a
 docker compose pull && docker compose up -d
 ```
 
-Schema changes are applied automatically on startup.
+Schema changes are applied automatically on startup. See [deploy/README.md](deploy/README.md#updating) to switch an existing install to versioned migrations.
 
 ### Configuration
 
@@ -84,7 +86,7 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `ADMIN_EMAIL` | No | `admin@budgeteer.local` | Email for the initial admin account |
 | `ADMIN_NAME` | No | `Admin` | Display name for the initial admin account |
 | `APP_PORT` | No | `7272` | Host port the web UI is served on |
-| `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`) |
+| `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`). Used as the allowed CORS origin (`CORS_ORIGIN` is a fallback when it is unset) |
 | `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
 | `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
 | `API_RATE_LIMIT_ENABLED` | No | `true` | Enables global API rate limiting. Local dev compose defaults this to `false` to avoid locking out the web UI during testing |

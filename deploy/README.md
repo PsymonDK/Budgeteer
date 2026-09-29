@@ -54,15 +54,22 @@ docker compose pull
 docker compose up -d
 ```
 
-Schema changes are applied automatically on startup.
+Schema changes are applied automatically on startup (`SCHEMA_SYNC_MODE`, default `push`). To switch an existing install to versioned migrations, mark the baseline as applied once and then set `SCHEMA_SYNC_MODE=migrate`:
+
+```bash
+docker compose exec api ./node_modules/.bin/prisma migrate resolve --applied 20260928000000_baseline
+```
+
+If you run Budgeteer on OpenMediaVault, use `docker-compose.omv.yml` instead; it takes its paths and time zone from OMV's global environment and needs the same three secrets.
 
 ---
 
 ## Behind a reverse proxy (Nginx Proxy Manager, Traefik, etc.)
 
-1. Set `APP_URL` in your `.env` to the public URL, e.g. `https://budget.yourdomain.com`
+1. Set `PUBLIC_URL` in your `.env` to the public URL, e.g. `https://budget.yourdomain.com`
 2. Point your reverse proxy at port `7272` (or whatever `APP_PORT` you set)
 3. The API is not exposed outside Docker — only the web UI port needs to be proxied
+4. Rate limiting uses the client address your proxy forwards (`X-Forwarded-For`). Proxies on private networks are trusted by default; if yours has a public address, set `TRUST_PROXY` to it
 
 ---
 

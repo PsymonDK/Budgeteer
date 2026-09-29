@@ -26,14 +26,15 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
-- **node-cron** — daily currency rate sync (06:00)
+- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
 
 ### Infrastructure
-- **Docker + Docker Compose** — single-command self-hosted setup; the API image uses a multi-stage build so TypeScript compilation, Prisma generation, and build-only dependencies stay out of the runtime image.
-- **Bare metal** — setup script for direct server installs
+- **Docker + Docker Compose** — single-command self-hosted setup (`deploy/`) with published images; the API image uses a multi-stage build so TypeScript compilation, Prisma generation, and build-only dependencies stay out of the runtime image, and has a `/health` healthcheck the web container waits for.
+- **CI** (`.github/workflows/ci.yml`) — typecheck, lint, tests, builds, and migrations against an empty Postgres on every PR; `docker-publish.yml` runs it before building, pushing and Trivy-scanning the images.
+- **Versioning** — the product version is the `version` in the repo-root `package.json`; the API's `/health` and the web footer read it. Bump it (and the `CHANGELOG.md` heading) when releasing.
 
 ### Runtime Configuration
 - **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
@@ -50,17 +51,22 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 ```
 budgeteer/
 ├── apps/
-│   ├── web/          # React frontend (Vite)
-│   └── api/          # Fastify backend
-├── docker/
-│   ├── Dockerfile.web
-│   ├── Dockerfile.api
-│   ├── nginx.conf
-│   └── docker-compose.yml
-├── prisma/
-│   └── schema.prisma
-├── scripts/
-└── docs/
+│   ├── web/                 # React frontend (Vite)
+│   │   └── src/
+│   │       ├── api/         # Axios client, shared API types, query keys and query hooks
+│   │       ├── pages/       # route screens, larger ones as folders (income/, expenses/, receipts/, …)
+│   │       ├── components/  # shared UI (Modal, ConfirmDialog, AccountSelect, …)
+│   │       ├── contexts/ hooks/ layouts/ lib/
+│   └── api/                 # Fastify backend
+│       ├── src/routes/      # REST route modules
+│       ├── src/lib/         # domain logic (calculations, income, transfers, receipts, sessions, …)
+│       ├── src/plugins/     # authenticate / requireAdmin
+│       └── scripts/         # receipt image preprocessing (Python/Pillow)
+├── prisma/                  # schema.prisma, migrations/, seed.ts, receipt training CSV
+├── docker/                  # Dockerfile.api, Dockerfile.web, nginx.conf, entrypoint.sh
+├── deploy/                  # docker-compose.yml, docker-compose.omv.yml (published images)
+├── docs/                    # this file, review notes
+└── docker-compose.dev.yml   # full stack from source
 ```
 
 ---
@@ -70,7 +76,7 @@ budgeteer/
 ### Entities
 
 **users** — system accounts
-- id, email, name, passwordHash, role (`SYSTEM_ADMIN` | `BOOKKEEPER` | `USER`), isActive, isProxy, mustChangePassword, avatarUrl, failedLoginAttempts, lockedUntil
+- id, email, name, passwordHash, role (`SYSTEM_ADMIN` | `BOOKKEEPER` | `USER`), isActive, isProxy, mustChangePassword, avatarUrl, failedLoginAttempts, lockedUntil, sessionsValidAfter
 
 **user_preferences** — per-user settings (1:1 with user)
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
@@ -134,7 +140,7 @@ budgeteer/
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **receipts** — actual consumption imports from scanned receipts/photos
-- householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount, taxAmount, feeAmount, currencyCode
+- householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount (sum of line items), printedTotal (TOTAL printed on the receipt), taxAmount, feeAmount, currencyCode
 - sourceMimeType, sourceFileName, sourceStoragePath, sourceFileSize, rawText, status (`DRAFT` | `CONFIRMED` | `FAILED`), confidence (`LOW` | `MEDIUM` | `HIGH`), notes, confirmedAt, deletedAt
 - Receipts are actual consumption data and must not create or update planned `expenses`
 - Receipt parsing uses the currency found in OCR/AI output when present and falls back to the configured household/base currency
@@ -404,7 +410,6 @@ PUT    /households/:id
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)
-GET    /households/:id/members
 POST   /households/:id/members
 PUT    /households/:id/members/:memberId
 DELETE /households/:id/members/:memberId
