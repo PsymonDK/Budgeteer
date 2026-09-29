@@ -8,6 +8,8 @@ import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { Category } from '../../api/types'
 import { Page } from '../../components/Page'
+import { PageHeader } from '../../components/PageHeader'
+import { DataTable, type DataColumn } from '../../components/DataTable'
 
 type TabType = 'system' | 'custom'
 
@@ -99,20 +101,16 @@ export function CategoriesAdminPage() {
 
   return (
     <Page template="list">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Categories</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Manage system-wide categories available to all households.
-          </p>
-        </div>
-        {tab === 'system' && (
+      <PageHeader
+        title="Categories"
+        subtitle="Manage system-wide categories available to all households."
+        action={tab === 'system' ? (
           <button onClick={() => setAddOpen(true)} className={`${primaryBtn} flex items-center gap-2`}>
             <Plus size={14} />
             Add category
           </button>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {/* Tabs */}
       <div className="flex gap-2 mb-6">
@@ -208,6 +206,19 @@ export function CategoriesAdminPage() {
   )
 }
 
+function TypeBadge({ category: c }: { category: Category }) {
+  return (
+    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+      c.categoryType === 'SAVINGS' ? 'bg-emerald-900/50 text-emerald-300' : 'bg-gray-800 text-gray-400'
+    }`}>
+      {c.categoryType === 'SAVINGS' ? 'Savings' : 'Expense'}
+    </span>
+  )
+}
+
+const typeLabel = (c: Category) => (c.categoryType === 'SAVINGS' ? 'Savings' : 'Expense')
+const inUse = (c: Category) => c._count.expenses + c._count.savingsEntries
+
 function SystemCategoryTable({
   categories,
   onEdit,
@@ -223,72 +234,37 @@ function SystemCategoryTable({
     return <div className="text-center py-20 text-gray-500">No system categories found.</div>
   }
 
-  return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[560px]">
-        <thead>
-          <tr className="border-b border-gray-800 text-gray-400 text-left">
-            <th className="px-4 py-3 font-medium">Name</th>
-            <th className="px-4 py-3 font-medium">Type</th>
-            <th className="px-4 py-3 font-medium">In use</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
-          </tr>
-        </thead>
-        <tbody>
-          {categories.map((c) => (
-            <tr
-              key={c.id}
-              className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${!c.isActive ? 'opacity-50' : ''}`}
-            >
-              <td className="px-4 py-3 text-white font-medium">{c.name}</td>
-              <td className="px-4 py-3">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                  c.categoryType === 'SAVINGS'
-                    ? 'bg-emerald-900/50 text-emerald-300'
-                    : 'bg-gray-800 text-gray-400'
-                }`}>
-                  {c.categoryType === 'SAVINGS' ? 'Savings' : 'Expense'}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-gray-400">{c._count.expenses + c._count.savingsEntries}</td>
-              <td className="px-4 py-3">
-                {c.isActive ? (
-                  <span className="text-xs bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded-full">Active</span>
-                ) : (
-                  <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">Inactive</span>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    onClick={() => onEdit(c)}
-                    className="text-gray-400 hover:text-white transition-colors"
-                    aria-label={`Rename ${c.name}`}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                  <button
-                    onClick={() => onToggleActive(c)}
-                    disabled={isPending}
-                    className={`text-xs transition-colors disabled:opacity-40 ${
-                      c.isActive
-                        ? 'text-gray-500 hover:text-red-400'
-                        : 'text-gray-500 hover:text-emerald-400'
-                    }`}
-                  >
-                    {c.isActive ? 'Deactivate' : 'Activate'}
-                  </button>
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  )
+  const columns: DataColumn<Category>[] = [
+    { key: 'name', header: 'Name', cell: (c) => <span className="text-white font-medium">{c.name}</span> },
+    { key: 'type', header: 'Type', priority: 2, cell: (c) => <TypeBadge category={c} />, summary: typeLabel },
+    { key: 'inUse', header: 'In use', priority: 2, cell: (c) => <span className="text-gray-400">{inUse(c)}</span>, summary: (c) => `${inUse(c)} in use` },
+    {
+      key: 'status', header: 'Status', priority: 3,
+      cell: (c) => c.isActive
+        ? <span className="text-xs bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded-full">Active</span>
+        : <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">Inactive</span>,
+      summary: (c) => (c.isActive ? null : 'Inactive'),
+    },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+      cell: (c) => (
+        <span className="inline-flex items-center justify-end gap-3">
+          <button onClick={() => onEdit(c)} className="p-1 text-gray-400 hover:text-white transition-colors" aria-label={`Rename ${c.name}`}>
+            <Pencil size={14} />
+          </button>
+          <button
+            onClick={() => onToggleActive(c)}
+            disabled={isPending}
+            className={`text-xs transition-colors disabled:opacity-40 ${c.isActive ? 'text-gray-500 hover:text-red-400' : 'text-gray-500 hover:text-emerald-400'}`}
+          >
+            {c.isActive ? 'Deactivate' : 'Activate'}
+          </button>
+        </span>
+      ),
+    },
+  ]
+
+  return <DataTable rows={categories} columns={columns} rowClassName={(c) => (c.isActive ? '' : 'opacity-50')} />
 }
 
 function CustomCategoryTable({
@@ -304,53 +280,32 @@ function CustomCategoryTable({
     return <div className="text-center py-20 text-gray-500">No custom household categories yet.</div>
   }
 
+  const columns: DataColumn<Category>[] = [
+    { key: 'name', header: 'Name', cell: (c) => <span className="text-white font-medium">{c.name}</span> },
+    { key: 'type', header: 'Type', priority: 2, cell: (c) => <TypeBadge category={c} />, summary: typeLabel },
+    { key: 'createdBy', header: 'Created by', priority: 3, cell: (c) => <span className="text-gray-300">{c.createdBy.name}</span>, summary: (c) => c.createdBy.name },
+    { key: 'inUse', header: 'In use', priority: 2, cell: (c) => <span className="text-gray-400">{inUse(c)}</span>, summary: (c) => `${inUse(c)} in use` },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+      cell: (c) => (
+        <button
+          onClick={() => onPromote(c.id)}
+          disabled={isPending}
+          className="text-xs text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+        >
+          <span className="@[520px]/table:hidden">Promote</span>
+          <span className="hidden @[520px]/table:inline">Promote to system-wide</span>
+        </button>
+      ),
+    },
+  ]
+
   return (
     <>
       <p className="text-sm text-gray-400 mb-4">
         Promote a household category to make it available to all households as a system-wide category.
       </p>
-      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-        <div className="overflow-x-auto">
-        <table className="w-full text-sm min-w-[560px]">
-          <thead>
-            <tr className="border-b border-gray-800 text-gray-400 text-left">
-              <th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Type</th>
-              <th className="px-4 py-3 font-medium">Created by</th>
-              <th className="px-4 py-3 font-medium">In use</th>
-              <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map((c) => (
-              <tr key={c.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
-                <td className="px-4 py-3 text-white font-medium">{c.name}</td>
-                <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    c.categoryType === 'SAVINGS'
-                      ? 'bg-emerald-900/50 text-emerald-300'
-                      : 'bg-gray-800 text-gray-400'
-                  }`}>
-                    {c.categoryType === 'SAVINGS' ? 'Savings' : 'Expense'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-gray-300">{c.createdBy.name}</td>
-                <td className="px-4 py-3 text-gray-400">{c._count.expenses + c._count.savingsEntries}</td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    onClick={() => onPromote(c.id)}
-                    disabled={isPending}
-                    className="text-xs text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
-                  >
-                    Promote to system-wide
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      </div>
+      <DataTable rows={categories} columns={columns} />
     </>
   )
 }

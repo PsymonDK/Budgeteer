@@ -9,6 +9,8 @@ import { FormError } from '../../components/FormError'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass, primaryBtnSm } from '../../lib/styles'
 import { Page } from '../../components/Page'
+import { PageHeader } from '../../components/PageHeader'
+import { DataTable, type DataColumn } from '../../components/DataTable'
 
 interface User {
   id: string
@@ -166,74 +168,63 @@ export function AdminUsersPage() {
     updateMutation.mutate({ id: editingUser.id, data: editForm })
   }
 
+  const columns: DataColumn<User>[] = [
+    {
+      key: 'name', header: 'Name',
+      cell: (u) => (
+        <span className="text-white">
+          {u.name}
+          {u.isProxy && <ProxyBadge />}
+        </span>
+      ),
+    },
+    { key: 'email', header: 'Email', priority: 2, cell: (u) => <span className="text-gray-300 break-all">{u.email}</span>, summary: (u) => u.email },
+    {
+      key: 'role', header: 'Role', priority: 3,
+      cell: (u) => (
+        <span className={`text-xs font-medium ${u.role === 'SYSTEM_ADMIN' ? 'text-amber-400' : u.role === 'BOOKKEEPER' ? 'text-blue-400' : 'text-gray-400'}`}>
+          {roleLabel(u.role)}
+        </span>
+      ),
+      summary: (u) => roleLabel(u.role),
+    },
+    { key: 'status', header: 'Status', priority: 2, cell: (u) => <Badge active={u.isActive} />, summary: (u) => (u.isActive ? null : 'Inactive') },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+      cell: (u) => (
+        <span className="inline-flex items-center justify-end gap-4" onClick={(e) => e.stopPropagation()}>
+          {!u.isProxy && (
+            <button onClick={() => openReset(u)} className="text-xs text-gray-400 hover:text-amber-400 transition-colors whitespace-nowrap">
+              Reset password
+            </button>
+          )}
+          <button onClick={() => openEdit(u)} className="hidden @[520px]/table:inline text-xs text-gray-400 hover:text-white transition-colors">
+            Edit
+          </button>
+        </span>
+      ),
+    },
+  ]
+
   return (
     <>
       <Page template="list">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">Users</h1>
-          <button
-            onClick={() => { setShowCreate(true); setFormError('') }}
-            className={primaryBtnSm}
-          >
-            + New user
-          </button>
-        </div>
+        <PageHeader
+          title="Users"
+          action={(
+            <button
+              onClick={() => { setShowCreate(true); setFormError('') }}
+              className={primaryBtnSm}
+            >
+              + New user
+            </button>
+          )}
+        />
 
         {isLoading ? (
           <PageLoader />
         ) : (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="border-b border-gray-800 text-gray-400 text-left">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Email</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
-                    <td className="px-4 py-3 text-white">
-                      {u.name}
-                      {u.isProxy && <ProxyBadge />}
-                    </td>
-                    <td className="px-4 py-3 text-gray-300">{u.email}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium ${u.role === 'SYSTEM_ADMIN' ? 'text-amber-400' : u.role === 'BOOKKEEPER' ? 'text-blue-400' : 'text-gray-400'}`}>
-                        {roleLabel(u.role)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge active={u.isActive} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-4">
-                        {!u.isProxy && (
-                          <button
-                            onClick={() => openReset(u)}
-                            className="text-xs text-gray-400 hover:text-amber-400 transition-colors"
-                          >
-                            Reset password
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openEdit(u)}
-                          className="text-xs text-gray-400 hover:text-white transition-colors"
-                        >
-                          Edit
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
+          <DataTable rows={users} columns={columns} onRowClick={openEdit} />
         )}
       </Page>
 

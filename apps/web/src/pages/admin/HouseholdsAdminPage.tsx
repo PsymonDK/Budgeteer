@@ -9,6 +9,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { FormError } from '../../components/FormError'
 import type { Household } from '../../api/types'
 import { Page } from '../../components/Page'
+import { PageHeader } from '../../components/PageHeader'
+import { DataTable, type DataColumn } from '../../components/DataTable'
 
 export function HouseholdsAdminPage() {
   const queryClient = useQueryClient()
@@ -35,69 +37,44 @@ export function HouseholdsAdminPage() {
     },
   })
 
+  const adminNames = (h: Household) => h.members.filter((m) => m.role === 'ADMIN').map((m) => m.user.name).join(', ')
+  const columns: DataColumn<Household>[] = [
+    { key: 'name', header: 'Name', cell: (h) => <span className="font-medium text-white">{h.name}</span> },
+    { key: 'members', header: 'Members', priority: 2, cell: (h) => <span className="text-gray-300">{h._count.members}</span>, summary: (h) => `${h._count.members} members` },
+    { key: 'admins', header: 'Admins', priority: 3, cell: (h) => <span className="text-gray-300 text-xs">{adminNames(h)}</span>, summary: adminNames },
+    {
+      key: 'status', header: 'Status', priority: 2,
+      cell: (h) => (
+        <span className={`text-xs font-medium px-2 py-0.5 rounded ${h.isActive ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500'}`}>
+          {h.isActive ? 'Active' : 'Inactive'}
+        </span>
+      ),
+      summary: (h) => (h.isActive ? null : 'Inactive'),
+    },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+      cell: (h) => (
+        <span className="inline-flex items-center justify-end gap-4">
+          <Link to={`/households/${h.id}`} className="text-xs text-gray-400 hover:text-white transition-colors">View</Link>
+          <button onClick={() => { setConfirmDelete(h); setDeleteError('') }} className="text-xs text-red-500 hover:text-red-400 transition-colors">
+            Delete
+          </button>
+        </span>
+      ),
+    },
+  ]
+
   return (
     <>
       <Page template="list">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-semibold">All Households</h1>
-          <span className="text-sm text-gray-500">{households.length} total</span>
-        </div>
+        <PageHeader title="All Households" action={<span className="text-sm text-gray-500">{households.length} total</span>} />
 
         {isLoading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : households.length === 0 ? (
           <div className="text-center py-20 text-gray-500">No crews on the seas yet.</div>
         ) : (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[560px]">
-              <thead>
-                <tr className="border-b border-gray-800 text-gray-400 text-left">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Members</th>
-                  <th className="px-4 py-3 font-medium">Admins</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {households.map((h) => {
-                  const admins = h.members.filter((m) => m.role === 'ADMIN')
-                  return (
-                    <tr key={h.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/50 ${!h.isActive ? 'opacity-50' : ''}`}>
-                      <td className="px-4 py-3 font-medium text-white">{h.name}</td>
-                      <td className="px-4 py-3 text-gray-300">{h._count.members}</td>
-                      <td className="px-4 py-3 text-gray-300 text-xs">
-                        {admins.map((a) => a.user.name).join(', ')}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${h.isActive ? 'bg-green-900/50 text-green-300' : 'bg-gray-800 text-gray-500'}`}>
-                          {h.isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-4">
-                          <Link
-                            to={`/households/${h.id}`}
-                            className="text-xs text-gray-400 hover:text-white transition-colors"
-                          >
-                            View
-                          </Link>
-                          <button
-                            onClick={() => { setConfirmDelete(h); setDeleteError('') }}
-                            className="text-xs text-red-500 hover:text-red-400 transition-colors"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-            </div>
-          </div>
+          <DataTable rows={households} columns={columns} rowClassName={(h) => (h.isActive ? '' : 'opacity-50')} />
         )}
       </Page>
 
