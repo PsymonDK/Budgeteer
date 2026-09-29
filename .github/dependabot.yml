@@ -25,13 +25,14 @@ updates:
         update-types: ['version-update:semver-major']
       - dependency-name: react-dom
         update-types: ['version-update:semver-major']
+      # recharts needs react-is on the same major as React
+      - dependency-name: react-is
+        update-types: ['version-update:semver-major']
       - dependency-name: '@types/react'
         update-types: ['version-update:semver-major']
       - dependency-name: '@types/react-dom'
         update-types: ['version-update:semver-major']
       - dependency-name: tailwindcss
-        update-types: ['version-update:semver-major']
-      - dependency-name: recharts
         update-types: ['version-update:semver-major']
 
   # Workflow actions (e.g. the pinned Trivy action), in one weekly PR

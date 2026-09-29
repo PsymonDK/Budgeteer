@@ -3,6 +3,7 @@ import {
   Legend, ResponsiveContainer, Dot,
 } from 'recharts'
 import { SankeyChart } from '../../components/SankeyChart'
+import { legendInOrder } from '../../lib/charts'
 import { segmentGroupPlain, segmentBtnSolid } from '../../lib/styles'
 import type { IncomeSankeyData, IncomeTrend } from './types'
 
@@ -92,7 +93,8 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
               labelStyle={{ color: '#f3f4f6' }}
               itemStyle={{ color: '#d1d5db' }}
             />
-            <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }} />
+            <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }}
+              itemSorter={legendInOrder([...incomeTrend.jobs.map((job) => job.name), 'total'])} />
             {incomeTrend.jobs.map((job, i) => (
               <Line
                 key={job.id}
@@ -114,7 +116,18 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
                       </g>
                     )
                   }
-                  return <Dot key={`dot-${job.id}-${monthKey}`} {...props} r={3} />
+                  // Only the circle's own props; the render props also carry data fields and a key
+                  return (
+                    <Dot
+                      key={`dot-${job.id}-${monthKey}`}
+                      cx={cx}
+                      cy={cy}
+                      r={3}
+                      fill={props.fill}
+                      stroke={props.stroke}
+                      strokeWidth={props.strokeWidth}
+                    />
+                  )
                 }}
               />
             ))}

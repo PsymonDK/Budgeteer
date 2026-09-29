@@ -7,6 +7,7 @@ import {
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
 import { qk } from '../api/queryKeys'
+import { legendInOrder } from '../lib/charts'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -165,9 +166,10 @@ export function HistoryPage() {
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
                       labelStyle={{ color: '#f3f4f6', fontWeight: 600 }}
                       itemStyle={{ color: '#d1d5db' }}
-                      formatter={(value: number) => fmt(value)}
+                      formatter={(value) => fmt(Number(value))}
                     />
-                    <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12, paddingTop: 16 }} />
+                    <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12, paddingTop: 16 }}
+                      itemSorter={legendInOrder(['income', 'expenses', 'savings'])} />
                     <Bar dataKey="income"   name="Income"   fill={CHART_COLOURS.income}   radius={[3,3,0,0]} />
                     <Bar dataKey="expenses" name={filterCategoryId ? (allCategories.find(([id]) => id === filterCategoryId)?.[1] ?? 'Expenses') : 'Expenses'}
                          fill={CHART_COLOURS.expenses} radius={[3,3,0,0]} />

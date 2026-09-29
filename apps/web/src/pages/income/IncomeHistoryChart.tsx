@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
+import { legendInOrder } from '../../lib/charts'
 import { toLocalISOMonth } from '../../lib/dates'
 import { segmentGroupPlain, segmentBtnSolid } from '../../lib/styles'
 import type { Granularity, HistoryBucket } from './types'
@@ -82,9 +83,9 @@ export function IncomeHistoryChart({ targetUserId, fmt }: IncomeHistoryChartProp
               contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
               labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
               itemStyle={{ color: '#d1d5db' }}
-              formatter={(value: number) => fmt(value)}
+              formatter={(value) => fmt(Number(value))}
             />
-            <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} />
+            <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} itemSorter={legendInOrder(['bonuses', 'gross', 'net'])} />
             <Bar dataKey="bonuses" name="Bonuses" fill="#d97706" opacity={0.7} radius={[3, 3, 0, 0]} />
             <Line type="monotone" dataKey={showGross ? 'gross' : 'net'} name={showGross ? 'Gross income' : 'Net income'} stroke="#fbbf24" strokeWidth={2} dot={false} />
           </ComposedChart>
