@@ -139,7 +139,7 @@ export function ExpensesTable({
       rowActions={isReadOnly ? undefined : (e) => (
         <>
           <RowActionButton label={`Edit ${e.label}`} hideWhenNarrow onClick={() => onEdit(e)}><Pencil size={15} /></RowActionButton>
-          <RowActionButton label={`Delete ${e.label}`} tone="danger" onClick={() => onDelete(e)}><Trash2 size={15} /></RowActionButton>
+          <RowActionButton label={`Move ${e.label} to trash`} tone="danger" onClick={() => onDelete(e)}><Trash2 size={15} /></RowActionButton>
         </>
       )}
       rowClassName={(e) => (isPast(e) ? 'opacity-50' : '')}

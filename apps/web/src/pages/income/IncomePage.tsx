@@ -146,13 +146,13 @@ export function IncomePage() {
       {/* ── Confirm delete bonus ────────────────────────────────────────────── */}
       {confirmDeleteBonus && (
         <ConfirmDialog
-          title="Delete bonus"
+          title="Move bonus to trash"
           onClose={() => setConfirmDeleteBonus(null)}
           onConfirm={() => { deleteBonusMutation.mutate(confirmDeleteBonus); setConfirmDeleteBonus(null) }}
           pending={deleteBonusMutation.isPending}
-          confirmLabel="Delete"
+          confirmLabel="Move to trash"
         >
-          <p className="text-gray-300 text-sm mb-6">Delete this bonus? This action cannot be undone.</p>
+          <p className="text-gray-300 text-sm mb-6">Move this bonus to the trash? It stops counting toward your income. You can restore it from the Trash tab.</p>
         </ConfirmDialog>
       )}
 
@@ -201,13 +201,13 @@ export function IncomePage() {
       {/* ── Confirm delete override ─────────────────────────────────────────── */}
       {confirmDeleteOverride && (
         <ConfirmDialog
-          title="Delete override"
+          title="Move override to trash"
           onClose={() => setConfirmDeleteOverride(null)}
           onConfirm={() => { deleteOverrideMutation.mutate(confirmDeleteOverride); setConfirmDeleteOverride(null) }}
           pending={deleteOverrideMutation.isPending}
-          confirmLabel="Delete"
+          confirmLabel="Move to trash"
         >
-          <p className="text-gray-300 text-sm mb-6">Delete this monthly override? This action cannot be undone.</p>
+          <p className="text-gray-300 text-sm mb-6">Move this monthly override to the trash? That month goes back to your regular salary. You can restore it from the Trash tab.</p>
         </ConfirmDialog>
       )}
     </>

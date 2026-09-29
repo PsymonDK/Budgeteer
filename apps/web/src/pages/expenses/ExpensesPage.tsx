@@ -440,16 +440,16 @@ export function ExpensesPage() {
       {/* Delete confirmation */}
       {!isReadOnly && deleteTarget && (
         <ConfirmDialog
-          title="Delete expense"
+          title="Move to trash"
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
           pending={deleteMutation.isPending}
-          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+          confirmLabel={deleteMutation.isPending ? 'Moving…' : 'Move to trash'}
         >
           <p className="text-gray-300 text-sm mb-1">
-            Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
+            Move <span className="text-white font-medium">"{deleteTarget.label}"</span> to the trash?
           </p>
-          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <p className="text-gray-500 text-xs mb-6">It stops counting toward totals and transfers. You can restore it from Trash.</p>
         </ConfirmDialog>
       )}
     </>
