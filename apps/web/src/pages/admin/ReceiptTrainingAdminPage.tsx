@@ -6,6 +6,7 @@ import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import type { Category, Household } from '../../api/types'
 import { Modal } from '../../components/Modal'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { getApiError } from '../../lib/apiError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 
@@ -82,6 +83,8 @@ export function ReceiptTrainingAdminPage() {
   const [editTerm, setEditTerm] = useState<TrainingTerm | null>(null)
   const [editSubcategory, setEditSubcategory] = useState<TrainingSubcategory | null>(null)
   const [editMapping, setEditMapping] = useState<TrainingMapping | null>(null)
+  // Deleting training data changes how every receipt is read, so it asks first
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'term' | 'mapping'; id: string } | null>(null)
 
   const { data, isLoading } = useQuery<ReceiptTrainingSnapshot>({
     queryKey: qk.adminReceiptTraining(),
@@ -173,12 +176,12 @@ export function ReceiptTrainingAdminPage() {
       ) : tab === 'terms' ? (
         <>
           <TermCreateForm draft={termDraft} setDraft={setTermDraft} households={activeHouseholds} onSubmit={() => createTermMutation.mutate()} isPending={createTermMutation.isPending} />
-          <TermsTable terms={filteredTerms} onEdit={setEditTerm} onToggle={(term) => updateTermMutation.mutate({ id: term.id, body: { isActive: !term.isActive } })} onDelete={(id) => deleteTermMutation.mutate(id)} />
+          <TermsTable terms={filteredTerms} onEdit={setEditTerm} onToggle={(term) => updateTermMutation.mutate({ id: term.id, body: { isActive: !term.isActive } })} onDelete={(id) => setPendingDelete({ kind: 'term', id })} />
         </>
       ) : tab === 'mappings' ? (
         <>
           <MappingCreateForm draft={mappingDraft} setDraft={setMappingDraft} households={activeHouseholds} categories={activeCategories} subcategories={snapshot.subcategories} onSubmit={() => createMappingMutation.mutate()} isPending={createMappingMutation.isPending} />
-          <MappingsTable mappings={filteredMappings} onEdit={setEditMapping} onDelete={(id) => deleteMappingMutation.mutate(id)} />
+          <MappingsTable mappings={filteredMappings} onEdit={setEditMapping} onDelete={(id) => setPendingDelete({ kind: 'mapping', id })} />
         </>
       ) : (
         <>
@@ -187,6 +190,20 @@ export function ReceiptTrainingAdminPage() {
         </>
       )}
 
+      {pendingDelete && (
+        <ConfirmDialog
+          title={pendingDelete.kind === 'term' ? 'Delete classifier term?' : 'Delete receipt mapping?'}
+          confirmLabel="Delete"
+          pending={deleteTermMutation.isPending || deleteMappingMutation.isPending}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const mutation = pendingDelete.kind === 'term' ? deleteTermMutation : deleteMappingMutation
+            mutation.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) })
+          }}
+        >
+          <p className="text-sm text-gray-400 mb-6">This changes how future receipts are cleaned up and categorised. It can't be undone.</p>
+        </ConfirmDialog>
+      )}
       {editTerm && (
         <EditTermModal
           term={editTerm}

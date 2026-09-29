@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { AlertTriangle, Check, Trash2 } from 'lucide-react'
 import { useCategories, useCurrencies, useHouseholdAccounts, usePersonalAccounts } from '../../api/queries'
 import { useBaseCurrency, useFmt } from '../../hooks/useFmt'
@@ -31,7 +32,8 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
   const { data: subcategories = [] } = useReceiptSubcategories(householdId)
   const { data: personalAccounts = [] } = usePersonalAccounts()
   const { data: householdAccounts = [] } = useHouseholdAccounts(householdId)
-  const accountOptions = [...personalAccounts, ...householdAccounts]
+  const accountOptions = [...personalAccounts, ...householdAccounts].filter((a) => a.isActive || a.id === receipt.accountId)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const { data: currencies = [] } = useCurrencies()
 
   const currencyOptions = useMemo(
@@ -83,13 +85,26 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
                 Confirm
               </button>
             )}
-            <button onClick={() => editor.deleteMutation.mutate(receipt.id)} className={`${dangerBtn} flex items-center gap-2`}>
+            <button onClick={() => setConfirmingDelete(true)} className={`${dangerBtn} flex items-center gap-2`}>
               <Trash2 size={16} />
               Delete
             </button>
           </div>
         </div>
       </div>
+      {confirmingDelete && (
+        <ConfirmDialog
+          title="Delete receipt?"
+          confirmLabel="Delete"
+          pending={editor.deleteMutation.isPending}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => editor.deleteMutation.mutate(receipt.id, { onSettled: () => setConfirmingDelete(false) })}
+        >
+          <p className="text-sm text-gray-400 mb-6">
+            {receipt.merchantName ?? 'This receipt'} and its line items will be removed from receipts and consumption totals.
+          </p>
+        </ConfirmDialog>
+      )}
 
       <div className="grid grid-cols-1 2xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)] gap-4 p-4 min-w-0">
         <ReceiptPreview householdId={householdId} receipt={receipt} />

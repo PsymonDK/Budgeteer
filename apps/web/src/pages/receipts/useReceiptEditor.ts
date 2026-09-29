@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
@@ -16,8 +16,9 @@ function lineDraftsFor(receipt: Receipt): Record<string, LineDraft> {
 
 /**
  * Edit state (header, line items, manual line, new-subcategory names) and the
- * save/confirm/delete mutations of the receipt review screen. Drafts are reset
- * from the server copy whenever the receipt query data changes.
+ * save/confirm/delete mutations of the receipt review screen. When the server copy
+ * changes (e.g. after saving one line), drafts the user hasn't edited are refreshed
+ * from it while edited, unsaved drafts are kept.
  */
 export function useReceiptEditor(householdId: string, receipt: Receipt, onDeleted: (receiptId: string) => void) {
   const queryClient = useQueryClient()
@@ -29,16 +30,29 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
   const [manualLineDraft, setManualLineDraft] = useState<LineDraft>(EMPTY_MANUAL_LINE)
   const [newSubcategoryName, setNewSubcategoryName] = useState<Record<string, string>>({})
 
+  // Edited-but-unsaved drafts. Refs, not state: they only decide what a refetch keeps.
+  const headerDirty = useRef(false)
+  const dirtyLines = useRef(new Set<string>())
+
   useEffect(() => {
-    setHeaderDraft(receiptToHeaderDraft(receipt, baseCurrency))
-    setLineDrafts(lineDraftsFor(receipt))
+    if (!headerDirty.current) setHeaderDraft(receiptToHeaderDraft(receipt, baseCurrency))
+    setLineDrafts((prev) => {
+      const fresh = lineDraftsFor(receipt)
+      for (const id of dirtyLines.current) {
+        if (fresh[id] && prev[id]) fresh[id] = prev[id]
+        else dirtyLines.current.delete(id) // line was removed on the server
+      }
+      return fresh
+    })
   }, [receipt, baseCurrency])
 
   function updateHeaderDraft(patch: Partial<typeof headerDraft>) {
+    headerDirty.current = true
     setHeaderDraft((prev) => ({ ...prev, ...patch }))
   }
 
   function updateLineDraft(itemId: string, patch: Partial<LineDraft>) {
+    dirtyLines.current.add(itemId)
     setLineDrafts((prev) => ({ ...prev, [itemId]: { ...prev[itemId], ...patch } }))
   }
 
@@ -72,6 +86,7 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
   const saveHeaderMutation = useMutation({
     mutationFn: saveReceiptHeader,
     onSuccess: (updated) => {
+      headerDirty.current = false
       queryClient.setQueryData(qk.receipt(householdId, updated.id), updated)
       invalidateLists()
       toast.success('Receipt details saved')
@@ -81,7 +96,8 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
 
   const saveLineMutation = useMutation({
     mutationFn: saveLineItem,
-    onSuccess: () => {
+    onSuccess: (_saved, itemId) => {
+      dirtyLines.current.delete(itemId)
       queryClient.invalidateQueries({ queryKey: qk.receipt(householdId, receiptId) })
       invalidateLists()
       toast.success('Line item saved')
@@ -122,6 +138,9 @@ export function useReceiptEditor(householdId: string, receipt: Receipt, onDelete
       confirmPayload(receipt, headerDraft, lineDrafts, baseCurrency),
     )).data,
     onSuccess: (confirmed) => {
+      // Everything was saved with the confirmation
+      headerDirty.current = false
+      dirtyLines.current.clear()
       queryClient.setQueryData(qk.receipt(householdId, confirmed.id), confirmed)
       invalidateLists()
       toast.success('Receipt confirmed')

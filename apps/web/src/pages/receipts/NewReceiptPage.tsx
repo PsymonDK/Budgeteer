@@ -27,7 +27,7 @@ export function NewReceiptPage() {
 
   const { data: personalAccounts = [] } = usePersonalAccounts()
   const { data: householdAccounts = [] } = useHouseholdAccounts(householdId)
-  const accountOptions = [...personalAccounts, ...householdAccounts]
+  const accountOptions = [...personalAccounts, ...householdAccounts].filter((a) => a.isActive)
 
   const parseMutation = useMutation({
     mutationFn: async () => {

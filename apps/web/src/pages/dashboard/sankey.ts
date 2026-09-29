@@ -2,7 +2,8 @@
 // server's pre-aggregated totals for display.
 
 import type { SankeyLinkDef, SankeyNodeDef } from '../../components/SankeyChart'
-import type { DashboardSummary, IncomeFlowTarget, ReceiptConsumptionSummary } from './types'
+import type { DashboardSummary, IncomeFlowTarget } from './types'
+import type { ReceiptConsumptionSummary } from '../../api/types'
 
 const MEMBER_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 const CATEGORY_COLORS = ['#6366f1', '#f97316', '#a78bfa', '#fb923c', '#34d399', '#f43f5e', '#22d3ee', '#fbbf24']

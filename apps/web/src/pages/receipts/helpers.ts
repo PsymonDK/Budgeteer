@@ -33,7 +33,9 @@ export const MAPPING_STATUS_CLASS: Record<ReceiptMappingImportStatus, string> = 
 
 /** Border/text colour of a receipt status pill. */
 export function receiptStatusClass(status: ReceiptStatus): string {
-  return status === 'CONFIRMED' ? 'border-green-800 text-green-300' : 'border-amber-800 text-amber-300'
+  if (status === 'CONFIRMED') return 'border-green-800 text-green-300'
+  if (status === 'FAILED') return 'border-red-800 text-red-300'
+  return 'border-amber-800 text-amber-300'
 }
 
 /** A denser variant of `inputClass` for the receipt review grids. */

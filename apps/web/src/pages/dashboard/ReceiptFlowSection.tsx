@@ -1,5 +1,5 @@
 import { SankeyChart, type SankeyLinkDef, type SankeyNodeDef } from '../../components/SankeyChart'
-import type { ReceiptConsumptionSummary, ReceiptSummaryPeriod } from './types'
+import type { ReceiptConsumptionSummary, ReceiptSummaryPeriod } from '../../api/types'
 
 const inputSelectClass = 'bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-amber-400'
 

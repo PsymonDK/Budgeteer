@@ -79,21 +79,7 @@ export interface IncomeFlow {
   links: { userId: string; target: IncomeFlowTarget; amount: string }[]
 }
 
-// GET /households/:id/receipts/summary
-
-export type ReceiptSummaryPeriod = 'currentMonth' | 'previousMonth' | 'currentYear' | 'custom'
-
-export interface ReceiptConsumptionSummary {
-  total: string
-  itemCount: number
-  baseCurrency: string
-  period: ReceiptSummaryPeriod | 'allTime' | 'legacy'
-  startDate: string | null
-  endDate: string | null
-  warnings: string[]
-  byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
-  bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
-}
+// Receipt consumption types live in api/types.ts (shared with the receipts screens)
 
 // GET /households/:id/savings-history
 

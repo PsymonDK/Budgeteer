@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
-import { useHouseholdDetail } from '../../api/queries'
+import { useHouseholdDetail, useReceiptSummary } from '../../api/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { SankeyChart } from '../../components/SankeyChart'
@@ -21,7 +21,8 @@ import { MemberObligations } from './MemberObligations'
 import { AffordabilityCalculator, SavingsRateHistory } from './SavingsSections'
 import { ExpenseBreakdown } from './ExpenseBreakdown'
 import { MarkPaidDialog, TransferByAccount, TransferHistory, TransferTile } from './Transfers'
-import type { DashboardSummary, ReceiptConsumptionSummary, ReceiptSummaryPeriod, SavingsHistoryRow } from './types'
+import type { DashboardSummary, SavingsHistoryRow } from './types'
+import type { ReceiptSummaryPeriod } from '../../api/types'
 
 export function DashboardPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -61,21 +62,9 @@ export function DashboardPage() {
     enabled: !!householdId,
   })
 
-  const receiptSummaryQuery = useMemo(() => {
-    const params = new URLSearchParams({ period: receiptPeriod })
-    if (receiptPeriod === 'custom') {
-      params.set('startDate', receiptStartDate)
-      params.set('endDate', receiptEndDate)
-    }
-    return params.toString()
-  }, [receiptEndDate, receiptPeriod, receiptStartDate])
   const receiptCustomRangeValid = receiptPeriod !== 'custom' || Boolean(receiptStartDate && receiptEndDate && receiptStartDate <= receiptEndDate)
 
-  const { data: receiptSummary } = useQuery<ReceiptConsumptionSummary>({
-    queryKey: qk.receiptSummary(householdId, receiptPeriod, receiptStartDate, receiptEndDate),
-    queryFn: async () => (await api.get<ReceiptConsumptionSummary>(`/households/${householdId}/receipts/summary?${receiptSummaryQuery}`)).data,
-    enabled: !!householdId && receiptCustomRangeValid,
-  })
+  const { data: receiptSummary } = useReceiptSummary(householdId, receiptPeriod, receiptStartDate, receiptEndDate, { enabled: receiptCustomRangeValid })
 
   const queryClient = useQueryClient()
   const { data: transfers = [] } = useTransfers(summary?.budgetYear?.id)

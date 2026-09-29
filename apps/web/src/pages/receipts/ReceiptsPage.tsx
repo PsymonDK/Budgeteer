@@ -21,7 +21,7 @@ export function ReceiptsPage() {
   const [mappingTab, setMappingTab] = useState<MappingTab>('export')
 
   const { data: receipts = [], isLoading: receiptsLoading } = useReceipts(householdId)
-  const { data: selectedReceipt, isLoading: receiptLoading } = useReceipt(householdId, selectedReceiptId)
+  const { data: selectedReceipt, isLoading: receiptLoading, isError: receiptError } = useReceipt(householdId, selectedReceiptId)
 
   useEffect(() => {
     const receiptId = searchParams.get('receiptId')
@@ -88,6 +88,11 @@ export function ReceiptsPage() {
             <div className="h-full min-h-[520px] flex flex-col items-center justify-center text-center text-gray-500 px-6">
               <FileText size={36} className="mb-4 text-gray-700" />
               <p>Select a receipt or add a new one.</p>
+            </div>
+          ) : receiptError ? (
+            <div className="h-full min-h-[520px] flex flex-col items-center justify-center text-center text-gray-500 px-6">
+              <FileText size={36} className="mb-4 text-gray-700" />
+              <p>This receipt could not be loaded. It may have been deleted.</p>
             </div>
           ) : receiptLoading || !selectedReceipt ? (
             <PageLoader />

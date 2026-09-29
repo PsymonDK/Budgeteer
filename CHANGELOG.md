@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
 
 ### Changed
+- **Receipts screens restructured** — the 1,500-line receipts page is split into `pages/receipts/` and uses the shared query keys, hooks and types. Review edits are confirmed in one request; a "Printed total" field and a soft warning show when line items don't add up to the receipt's total.
+- **Receipt amounts are labelled in the receipt's own currency** (they were shown with the base currency label).
 - **Frontend structure** — shared API types (`api/types.ts`), a query-key factory and shared query hooks (`api/queryKeys.ts`, `api/queries.ts`), shared components (ConfirmDialog, FormError, StatusBadge, BudgetYearSelector, AccountSelect, OwnershipFields, entry table pieces) and style constants replace code duplicated across pages. The large pages are split into folders (`pages/income`, `expenses`, `savings`, `dashboard`, `household`, `profile`, `budget-years`, `user-dashboard`). `calcDanishDeductions` moved to `lib/danishTaxPreview.ts`.
 - **Route-level code splitting** — the first page load drops from one ~1.1 MB bundle to ~300 kB.
 - **Calculations moved to the API** — the expense calendar's month schedule (`monthSchedule` on expenses), the dashboard savings rate and the per-member income-flow split (`savingsRate`, `incomeFlow` on the household summary) are now server-computed.
@@ -40,6 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Saving one receipt line discarded unsaved edits on the others** — edited drafts are now kept when the receipt refreshes.
+- **Account edits didn't refresh the receipts screens** (they cached accounts under different keys); inactive accounts are no longer offered for new receipts.
+- **Failed uploads never appeared in the receipt list**, and opening a deleted receipt's link showed a spinner forever.
+- **Deleting a receipt, classifier term or learned mapping happened without confirmation.**
 - **Receipt amounts with thousands separators were misread** ("1.234,50" became 4.50, "TOTAL 1 234,50" 234.50), and amounts could start inside longer numbers.
 - **Receipt keywords matched inside words** — "Coffee" was read as a fee, "Taxi" as tax and "Sumatra" as the sum.
 - **Danish "å" broke receipt labels and category rules** — "Blåbær" became "bla bær", so rules and mappings containing å never matched; other accents split words the same way. Stored keys are re-keyed on upgrade.

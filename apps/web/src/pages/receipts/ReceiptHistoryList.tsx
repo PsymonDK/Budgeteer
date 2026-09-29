@@ -14,12 +14,13 @@ interface ReceiptHistoryListProps {
   onSelect: (receiptId: string) => void
 }
 
-/** The receipt sidebar: drafts first, then confirmed receipts. */
+/** The receipt sidebar: drafts and failed uploads first, then confirmed receipts. */
 export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, selectedId, onSelect }: ReceiptHistoryListProps) {
   const fmt = useFmt()
   const draftReceipts = receipts.filter((receipt) => receipt.status === 'DRAFT')
+  const failedReceipts = receipts.filter((receipt) => receipt.status === 'FAILED')
   const confirmedReceipts = receipts.filter((receipt) => receipt.status === 'CONFIRMED')
-  const allReceipts = [...draftReceipts, ...confirmedReceipts]
+  const allReceipts = [...draftReceipts, ...failedReceipts, ...confirmedReceipts]
 
   return (
     <section className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden xl:sticky xl:top-5">
@@ -76,7 +77,7 @@ export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, sele
                   </>
                 ) : (
                   <div className="flex flex-col items-center gap-1">
-                    <span className={`h-3 w-3 rounded-full ${receipt.status === 'CONFIRMED' ? 'bg-green-400' : 'bg-amber-400'}`} />
+                    <span className={`h-3 w-3 rounded-full ${receipt.status === 'CONFIRMED' ? 'bg-green-400' : receipt.status === 'FAILED' ? 'bg-red-400' : 'bg-amber-400'}`} />
                     {receipt.lowConfidenceCount > 0 && <span className="text-[10px] text-amber-300">{receipt.lowConfidenceCount}</span>}
                   </div>
                 )}
