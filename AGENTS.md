@@ -10,7 +10,7 @@ For the full architecture, data model, and API reference, read `docs/architectur
 - `apps/api/src/routes/` - REST route modules. Request validation belongs here with Zod.
 - `apps/api/src/lib/` - shared backend domain logic such as calculations, currency handling, income, ownership, tax, automations, and budget transfers.
 - `apps/api/src/plugins/` - Fastify plugins such as authentication.
-- `apps/web/` - React 18 + TypeScript + Vite app.
+- `apps/web/` - React 19 + TypeScript + Vite app.
 - `apps/web/src/pages/` - route-level screens; larger screens are folders (`income/`, `expenses/`, `savings/`, `dashboard/`, `household/`, `profile/`, `receipts/`, `trash/`, …).
 - `apps/web/src/components/` - reusable UI components.
 - `apps/web/src/contexts/` - auth and household context providers.
