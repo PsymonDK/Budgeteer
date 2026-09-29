@@ -1,9 +1,9 @@
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
-import { SelectAllHeaderCell, SelectRowCell } from '../../components/entries/RowSelection'
+import { DataTable, RowActionButton, type DataColumn } from '../../components/DataTable'
 import { AccountBadge, OwnershipBadges } from '../../components/entries/EntryBadges'
 import { FREQUENCIES } from '../../lib/constants'
-import { monthRangeLabel } from './helpers'
+import { MONTH_SHORT, monthRangeLabel } from './helpers'
 import type { Expense, SortKey } from './types'
 
 interface ExpensesTableProps {
@@ -17,6 +17,9 @@ interface ExpensesTableProps {
   selectedIds: Set<string>
   onToggleSelect: (id: string) => void
   onToggleSelectAll: () => void
+  onOpen: (expense: Expense) => void
+  /** Expense shown in the detail pane. */
+  activeId: string | null
   onEdit: (expense: Expense) => void
   onDelete: (expense: Expense) => void
   isFiltered: boolean
@@ -24,141 +27,122 @@ interface ExpensesTableProps {
   fmt: (v: number | string, suffix?: string) => string
 }
 
-function SortIcon({ col, sortKey, sortAsc }: { col: SortKey; sortKey: SortKey; sortAsc: boolean }) {
-  if (sortKey !== col) return <ChevronsUpDown size={14} className="text-gray-700 ml-1" />
-  return sortAsc
-    ? <ChevronUp size={14} className="text-amber-400 ml-1" />
-    : <ChevronDown size={14} className="text-amber-400 ml-1" />
+export const frequencyLabel = (e: Pick<Expense, 'frequency'>) => FREQUENCIES.find((f) => f.value === e.frequency)?.label ?? e.frequency
+
+/** Jan–Dec: which months the expense is charged in (from the API's `monthSchedule`). */
+export function MonthStrip({ schedule, fmt }: { schedule: (string | null)[]; fmt: (v: number | string) => string }) {
+  return (
+    <span className="inline-grid grid-cols-12 gap-0.5" aria-label="Months charged">
+      {schedule.map((amount, i) => (
+        <span
+          key={i}
+          title={`${MONTH_SHORT[i + 1]}: ${amount ? fmt(amount) : 'nothing due'}`}
+          className={`block w-2.5 h-3.5 rounded-sm ${amount ? 'bg-amber-400/70' : 'bg-gray-800'}`}
+        />
+      ))}
+    </span>
+  )
 }
 
 /** Sortable, selectable expense list with a monthly total footer. */
 export function ExpensesTable({
-  expenses: filtered, isReadOnly, viewedYear: activeYear, sortKey, sortAsc, onSort: handleSort,
-  selectedIds, onToggleSelect: toggleSelect, onToggleSelectAll: toggleSelectAll, onEdit: openEdit, onDelete,
-  isFiltered, totalMonthly, fmt,
+  expenses, isReadOnly, viewedYear, sortKey, sortAsc, onSort, selectedIds, onToggleSelect, onToggleSelectAll,
+  onOpen, activeId, onEdit, onDelete, isFiltered, totalMonthly, fmt,
 }: ExpensesTableProps) {
-  const totalLabelColSpan = isReadOnly ? 4 : 5
-  return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <div className="overflow-x-auto">
-      <table className="w-full text-sm min-w-[700px]">
-        <thead>
-          <tr className="border-b border-gray-800 text-gray-400 text-left select-none">
-            {!isReadOnly && (
-              <SelectAllHeaderCell rows={filtered} selectedIds={selectedIds} onToggleAll={toggleSelectAll} />
+  // An expense has ended if its end month is behind today *in the viewed budget year*
+  const now = new Date()
+  const year = viewedYear ?? now.getFullYear()
+  const isPast = (e: Expense) =>
+    e.endMonth != null && (year < now.getFullYear() || (year === now.getFullYear() && e.endMonth < now.getMonth() + 1))
+
+  const columns: DataColumn<Expense>[] = [
+    {
+      key: 'label', header: 'Label', sortKey: 'label',
+      cell: (e) => {
+        const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
+        return (
+          <span className="flex items-center gap-2 flex-wrap text-white">
+            {e.label}
+            {rangeLabel && (
+              <span className="text-xs bg-gray-700/60 text-gray-400 border border-gray-600/50 px-2 py-0.5 rounded-full">{rangeLabel}</span>
             )}
-            <th className="px-4 py-3 font-medium">
-              <button onClick={() => handleSort('label')} className="hover:text-white flex items-center">
-                Label <SortIcon col="label" sortKey={sortKey} sortAsc={sortAsc} />
-              </button>
-            </th>
-            <th className="px-4 py-3 font-medium">
-              <button onClick={() => handleSort('category')} className="hover:text-white flex items-center">
-                Category <SortIcon col="category" sortKey={sortKey} sortAsc={sortAsc} />
-              </button>
-            </th>
-            <th className="px-4 py-3 font-medium">
-              <button onClick={() => handleSort('frequency')} className="hover:text-white flex items-center">
-                Frequency <SortIcon col="frequency" sortKey={sortKey} sortAsc={sortAsc} />
-              </button>
-            </th>
-            <th className="px-4 py-3 font-medium text-right">
-              <button onClick={() => handleSort('amount')} className="hover:text-white flex items-center ml-auto">
-                Amount <SortIcon col="amount" sortKey={sortKey} sortAsc={sortAsc} />
-              </button>
-            </th>
-            <th className="px-4 py-3 font-medium text-right">
-              <button onClick={() => handleSort('monthly')} className="hover:text-white flex items-center ml-auto">
-                /month <SortIcon col="monthly" sortKey={sortKey} sortAsc={sortAsc} />
-              </button>
-            </th>
-            {!isReadOnly && <th className="relative px-4 py-3"><span className="sr-only">Actions</span></th>}
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((e) => {
-            // An expense has ended if its end month is behind today *in the viewed budget year*
-            const now = new Date()
-            const viewedYear = activeYear ?? now.getFullYear()
-            const isPast = e.endMonth != null && (viewedYear < now.getFullYear() || (viewedYear === now.getFullYear() && e.endMonth < now.getMonth() + 1))
-            const rangeLabel = monthRangeLabel(e.startMonth, e.endMonth)
-            return (
-            <tr key={e.id} className={`border-b border-gray-800 last:border-0 hover:bg-gray-800/40 group${isPast ? ' opacity-50' : ''}${selectedIds.has(e.id) ? ' bg-amber-400/5' : ''}`}>
-              {!isReadOnly && (
-                <SelectRowCell checked={selectedIds.has(e.id)} onToggle={() => toggleSelect(e.id)} label={e.label} />
-              )}
-              <td className="px-4 py-3 text-white">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {e.label}
-                  {rangeLabel && (
-                    <span className="text-xs bg-gray-700/60 text-gray-400 border border-gray-600/50 px-2 py-0.5 rounded-full">
-                      {rangeLabel}
-                    </span>
-                  )}
-                  <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
-                  {e.notes && (
-                    <span className="text-gray-600 text-xs" title={e.notes}>📝</span>
-                  )}
-                  <AccountBadge account={e.account} />
-                </div>
-              </td>
-              <td className="px-4 py-3 text-gray-300">
-                <span className="flex items-center gap-1.5">
-                  {e.category.icon && (
-                    <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />
-                  )}
-                  {e.category.name}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-gray-300">
-                {FREQUENCIES.find((f) => f.value === e.frequency)?.label}
-                {e.frequencyPeriod && (
-                  <span className="text-gray-500 text-xs ml-1">({e.frequencyPeriod})</span>
-                )}
-              </td>
-              <td className="px-4 py-3 text-right text-gray-200 tabular-nums">
-                {fmt(parseFloat(e.originalAmount ?? e.amount), e.currencyCode ? '' : undefined)}
-                {e.currencyCode && (
-                  <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>
-                )}
-              </td>
-              <td className="px-4 py-3 text-right text-amber-400 tabular-nums font-medium">
-                {fmt(parseFloat(e.monthlyWhenActive))}
-              </td>
-              {!isReadOnly && (
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => openEdit(e)}
-                      className="text-xs text-gray-400 hover:text-white transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => onDelete(e)}
-                      className="text-xs text-red-500 hover:text-red-400 transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              )}
-            </tr>
-          )})}
-        </tbody>
-        <tfoot>
-          <tr className="border-t border-gray-700 bg-gray-800/50">
-            <td colSpan={totalLabelColSpan} className="px-4 py-3 text-sm text-gray-400 font-medium">
-              Total{isFiltered ? ' (filtered)' : ''} — {filtered.length} {filtered.length === 1 ? 'expense' : 'expenses'}
-            </td>
-            <td className="px-4 py-3 text-right text-amber-400 font-bold tabular-nums">
-              {fmt(totalMonthly)}
-            </td>
-            {!isReadOnly && <td />}
-          </tr>
-        </tfoot>
-      </table>
-      </div>
-    </div>
+            {e.notes && <span className="text-gray-600 text-xs" title={e.notes}>📝</span>}
+          </span>
+        )
+      },
+      footer: <>Total{isFiltered ? ' (filtered)' : ''} — {expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'}</>,
+    },
+    {
+      key: 'category', header: 'Category', sortKey: 'category', priority: 2,
+      cell: (e) => (
+        <span className="flex items-center gap-1.5 text-gray-300">
+          {e.category.icon && <CategoryIcon name={e.category.icon} size={14} className="text-gray-500 shrink-0" />}
+          {e.category.name}
+        </span>
+      ),
+      summary: (e) => e.category.name,
+    },
+    {
+      key: 'frequency', header: 'Frequency', sortKey: 'frequency', priority: 2,
+      cell: (e) => (
+        <span className="text-gray-300">
+          {frequencyLabel(e)}
+          {e.frequencyPeriod && <span className="text-gray-500 text-xs ml-1">({e.frequencyPeriod})</span>}
+        </span>
+      ),
+      summary: frequencyLabel,
+    },
+    {
+      key: 'owner', header: 'Belongs to', priority: 3,
+      cell: (e) => (
+        <span className="flex items-center gap-1.5 flex-wrap">
+          {e.ownership === 'SHARED' && <span className="text-xs text-gray-500">Shared</span>}
+          <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
+          <AccountBadge account={e.account} />
+        </span>
+      ),
+      summary: (e) => (
+        <>
+          <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
+          <AccountBadge account={e.account} />
+        </>
+      ),
+    },
+    {
+      key: 'amount', header: 'Amount', sortKey: 'amount', priority: 3, align: 'right',
+      cell: (e) => (
+        <span className="text-gray-200 tabular-nums whitespace-nowrap">
+          {fmt(parseFloat(e.originalAmount ?? e.amount), e.currencyCode ? '' : undefined)}
+          {e.currencyCode && <span className="ml-1 text-xs text-blue-400">{e.currencyCode}</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'months', header: 'Jan – Dec', priority: 5,
+      cell: (e) => <MonthStrip schedule={e.monthSchedule} fmt={fmt} />,
+    },
+    {
+      key: 'monthly', header: '/month', sortKey: 'monthly', align: 'right',
+      cell: (e) => <span className="text-amber-400 tabular-nums font-medium whitespace-nowrap">{fmt(parseFloat(e.monthlyWhenActive))}</span>,
+      footer: <span className="text-amber-400 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
+    },
+  ]
+
+  return (
+    <DataTable
+      rows={expenses}
+      columns={columns}
+      sort={{ key: sortKey, asc: sortAsc, onSort: (key) => onSort(key as SortKey) }}
+      selection={isReadOnly ? undefined : { selectedIds, onToggle: onToggleSelect, onToggleAll: onToggleSelectAll, label: (e) => e.label }}
+      onRowClick={onOpen}
+      activeId={activeId}
+      rowActions={isReadOnly ? undefined : (e) => (
+        <>
+          <RowActionButton label={`Edit ${e.label}`} hideWhenNarrow onClick={() => onEdit(e)}><Pencil size={15} /></RowActionButton>
+          <RowActionButton label={`Delete ${e.label}`} tone="danger" onClick={() => onDelete(e)}><Trash2 size={15} /></RowActionButton>
+        </>
+      )}
+      rowClassName={(e) => (isPast(e) ? 'opacity-50' : '')}
+    />
   )
 }

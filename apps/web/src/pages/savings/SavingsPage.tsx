@@ -22,6 +22,8 @@ import { primaryBtnSm } from '../../lib/styles'
 import { useFmt } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { SavingsTable } from './SavingsTable'
+import { SavingsDetail } from './SavingsDetail'
+import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
@@ -197,6 +199,14 @@ export function SavingsPage() {
 
   useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
 
+  // Wide screens show the clicked row in a side pane; elsewhere a click opens the edit form
+  const detail = useDetailSelection()
+  const activeEntry = detail.selectedId ? filteredEntries.find((e) => e.id === detail.selectedId) ?? null : null
+  function openRow(entry: SavingsEntry) {
+    if (detail.showsPane) detail.select(entry.id === detail.selectedId ? null : entry.id)
+    else if (!isReadOnly) openEdit(entry)
+  }
+
   function openEdit(e: SavingsEntry) {
     setForm({
       label: e.label,
@@ -307,12 +317,27 @@ export function SavingsPage() {
               onClear={() => setSelectedIds(new Set())}
             />
           )}
+          <ListWithDetail
+            detail={activeEntry && (
+              <SavingsDetail
+                entry={activeEntry}
+                isReadOnly={isReadOnly}
+                baseCurrency={baseCurrency}
+                onClose={() => detail.select(null)}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                fmt={fmt}
+              />
+            )}
+          >
           <SavingsTable
             entries={filteredEntries}
             isReadOnly={isReadOnly}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={() => toggleSelectAll(filteredEntries)}
+            onOpen={openRow}
+            activeId={activeEntry?.id ?? null}
             onEdit={openEdit}
             onDelete={setDeleteTarget}
             isFiltered={filterAccounts.size > 0}
@@ -320,6 +345,7 @@ export function SavingsPage() {
             baseCurrency={baseCurrency}
             fmt={fmt}
           />
+          </ListWithDetail>
           </>
         )}
       </Page>

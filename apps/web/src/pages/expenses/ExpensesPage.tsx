@@ -25,6 +25,8 @@ import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { emptyForm, filterAndSortExpenses, formFromExpense } from './helpers'
 import { ExpensesTable } from './ExpensesTable'
+import { ExpenseDetail } from './ExpenseDetail'
+import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
 import { ExpenseCalendar } from './ExpenseCalendar'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
@@ -210,6 +212,14 @@ export function ExpensesPage() {
 
   useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
 
+  // Wide screens show the clicked row in a side pane; elsewhere a click opens the edit form
+  const detail = useDetailSelection()
+  const activeExpense = view === 'list' && detail.selectedId ? filtered.find((e) => e.id === detail.selectedId) ?? null : null
+  function openRow(expense: Expense) {
+    if (detail.showsPane) detail.select(expense.id === detail.selectedId ? null : expense.id)
+    else openEdit(expense)
+  }
+
   function openEdit(expense: Expense) {
     if (isReadOnly) return
     setForm(formFromExpense(expense, baseCurrency))
@@ -350,6 +360,19 @@ export function ExpensesPage() {
             ) : view === 'calendar' ? (
               <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (
+              <ListWithDetail
+                detail={activeExpense && (
+                  <ExpenseDetail
+                    expense={activeExpense}
+                    isReadOnly={isReadOnly}
+                    baseCurrency={baseCurrency}
+                    onClose={() => detail.select(null)}
+                    onEdit={openEdit}
+                    onDelete={setDeleteTarget}
+                    fmt={fmt}
+                  />
+                )}
+              >
               <ExpensesTable
                 expenses={filtered}
                 isReadOnly={isReadOnly}
@@ -360,12 +383,15 @@ export function ExpensesPage() {
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={() => toggleSelectAll(filtered)}
+                onOpen={openRow}
+                activeId={activeExpense?.id ?? null}
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
                 isFiltered={filterCategories.size > 0 || filterAccounts.size > 0}
                 totalMonthly={totalMonthly}
                 fmt={fmt}
               />
+              </ListWithDetail>
             )}
           </>
         )}
