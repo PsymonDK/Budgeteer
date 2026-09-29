@@ -6,18 +6,59 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
-      patch-updates:
+      # prisma, @prisma/client and @prisma/adapter-pg must stay on the same
+      # version. Listed first because a dependency joins the first group it matches.
+      prisma:
+        patterns:
+          - prisma
+          - '@prisma/*'
+      # One weekly PR for all non-breaking updates. Majors of other packages
+      # still arrive as their own PRs.
+      minor-and-patch:
         update-types:
+          - minor
           - patch
+    # These majors need migration work and are upgraded deliberately, not by
+    # Dependabot. Remove an entry when starting that upgrade.
+    ignore:
+      - dependency-name: react
+        update-types: ['version-update:semver-major']
+      - dependency-name: react-dom
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/react-dom'
+        update-types: ['version-update:semver-major']
+      - dependency-name: tailwindcss
+        update-types: ['version-update:semver-major']
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      - dependency-name: recharts
+        update-types: ['version-update:semver-major']
+      - dependency-name: lucide-react
+        update-types: ['version-update:semver-major']
 
-  # Workflow actions (e.g. the pinned Trivy action) and base images get updates too
+  # Workflow actions (e.g. the pinned Trivy action), in one weekly PR
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns:
+          - '*'
 
+  # Base images, in one weekly PR
   - package-ecosystem: docker
     directories:
       - /docker
     schedule:
       interval: weekly
+    groups:
+      docker:
+        patterns:
+          - '*'
+    ignore:
+      # Node majors move together with CI (setup-node) once the new line is LTS
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
