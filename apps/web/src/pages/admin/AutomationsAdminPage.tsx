@@ -217,8 +217,8 @@ export function AutomationsAdminPage() {
 
       {/* Run history modal */}
       {runsModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 sm:px-4">
+          <div role="dialog" aria-modal="true" className="bg-gray-900 border border-gray-700 border-b-0 sm:border-b rounded-t-2xl sm:rounded-xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 w-full sm:max-w-2xl max-h-[92dvh] sm:max-h-[80vh] flex flex-col motion-safe:animate-sheet-up sm:motion-safe:animate-none">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-white">
                 Run History — {runsModal.automation.label}

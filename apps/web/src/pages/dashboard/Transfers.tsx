@@ -173,8 +173,8 @@ interface MarkPaidDialogProps {
  */
 export function MarkPaidDialog({ transfer: markPaidTransfer, amount: markPaidAmount, setAmount, loading: markPaidLoading, onConfirm, onClose }: MarkPaidDialogProps) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
-      <div className="bg-gray-900 border border-gray-700 rounded-xl p-6 w-full max-w-sm">
+    <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 sm:px-4">
+      <div role="dialog" aria-modal="true" className="bg-gray-900 border border-gray-700 border-b-0 sm:border-b rounded-t-2xl sm:rounded-xl p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:pb-6 w-full sm:max-w-sm motion-safe:animate-sheet-up sm:motion-safe:animate-none">
         <h3 className="text-lg font-semibold text-white mb-1">Mark Transfer as Paid</h3>
         <p className="text-gray-400 text-sm mb-4">
           {MONTH_NAMES[(markPaidTransfer.month - 1) % 12]} {markPaidTransfer.year}

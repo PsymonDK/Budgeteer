@@ -100,7 +100,7 @@ export function PayslipReviewModal({ extraction, jobName, onClose, onConfirm, is
     <Modal title={`Review payslip — ${jobName}`} onClose={onClose} size="lg">
       <div className="space-y-5">
         {/* Period & employer */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 @sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Year</label>
             <input type="number" value={year} onChange={(e) => setYear(parseInt(e.target.value) || year)}
@@ -126,7 +126,7 @@ export function PayslipReviewModal({ extraction, jobName, onClose, onConfirm, is
         </div>
 
         {/* Gross / net */}
-        <div className="grid grid-cols-3 gap-3 items-end">
+        <div className="grid grid-cols-1 @sm:grid-cols-3 gap-3 items-end">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Gross / month</label>
             <input type="number" value={gross} onChange={(e) => setGross(parseFloat(e.target.value) || 0)}

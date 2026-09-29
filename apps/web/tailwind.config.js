@@ -31,6 +31,16 @@ export default {
           overlay: '#1f2937', // gray-800 — inputs, modals, elevated surfaces
         },
       },
+      // Bottom sheets (phone dialogs) slide up from the screen edge
+      keyframes: {
+        'sheet-up': {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        'sheet-up': 'sheet-up 200ms ease-out',
+      },
     },
   },
   // `@container` + `@[600px]:…` variants: widgets and tables respond to their own width, not the viewport

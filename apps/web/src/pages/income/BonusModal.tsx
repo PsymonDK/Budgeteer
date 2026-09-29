@@ -26,7 +26,7 @@ export function BonusModal({ editor, jobs, currencies, baseCurrency }: BonusModa
           <input type="text" value={bonusForm.label} onChange={(e) => setBonusForm({ ...bonusForm, label: e.target.value })}
             required autoFocus placeholder="e.g. Annual bonus" className={inputClass} />
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 @xl:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Payment date</label>
             <input type="date" value={bonusForm.paymentDate} onChange={(e) => setBonusForm({ ...bonusForm, paymentDate: e.target.value })}
