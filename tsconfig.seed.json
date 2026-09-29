@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "module": "commonjs",
+    // Node's module rules (CommonJS output, since package.json has no "type"),
+    // including resolution; TypeScript 6 otherwise falls back to bundler resolution
+    "module": "node20",
+    "types": ["node"],
     "lib": ["ES2020"],
     "outDir": "./dist-seed",
     "rootDir": ".",
