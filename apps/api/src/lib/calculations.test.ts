@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/client'
-import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus } from './calculations'
+import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus, calcMonthlyInBase, expenseMonthSchedule } from './calculations'
 
 // ── calcMonthlyEquivalent ─────────────────────────────────────────────────────
 
@@ -122,5 +122,45 @@ describe('deriveBudgetStatus', () => {
 
   it('far past year → RETIRED', () => {
     expect(deriveBudgetStatus(currentYear - 10)).toBe('RETIRED')
+  })
+})
+
+// ── calcMonthlyInBase ─────────────────────────────────────────────────────────
+
+describe('calcMonthlyInBase', () => {
+  it('converts, normalises frequency and averages partial years like save-time', () => {
+    // 100 EUR monthly for June–August at 7.46: 746/month active → 186.50 annual average
+    expect(calcMonthlyInBase('100', '7.46', 'MONTHLY', 6, 8).toFixed(2)).toBe('186.50')
+  })
+
+  it('handles full-year entries and non-monthly frequencies', () => {
+    expect(calcMonthlyInBase('1200', '1', 'ANNUAL').toFixed(2)).toBe('100.00')
+    expect(calcMonthlyInBase('300', '2', 'QUARTERLY').toFixed(2)).toBe('200.00')
+  })
+})
+
+// ── expenseMonthSchedule ──────────────────────────────────────────────────────
+
+describe('expenseMonthSchedule', () => {
+  const base = { startMonth: null, endMonth: null, rateUsed: null }
+  const d = (v: string) => new Decimal(v)
+
+  it('spreads recurring expenses over the active months', () => {
+    const s = expenseMonthSchedule({ ...base, frequency: 'MONTHLY', startMonth: 6, endMonth: 8, monthlyEquivalent: d('250'), amount: d('1000') })
+    expect(s).toEqual([null, null, null, null, null, '1000.00', '1000.00', '1000.00', null, null, null, null])
+  })
+
+  it('puts quarterly lump sums on quarter ends at the exact converted amount', () => {
+    const s = expenseMonthSchedule({ ...base, frequency: 'QUARTERLY', monthlyEquivalent: d('333.33'), amount: d('134'), rateUsed: d('7.4627') })
+    expect(s.filter(Boolean)).toEqual(['1000.00', '1000.00', '1000.00', '1000.00'])
+    expect(s[2]).toBe('1000.00')
+    expect(s[0]).toBeNull()
+  })
+
+  it('places annual and biannual amounts in their months', () => {
+    expect(expenseMonthSchedule({ ...base, frequency: 'ANNUAL', endMonth: 10, monthlyEquivalent: d('100'), amount: d('1200') })[9]).toBe('1200.00')
+    const bi = expenseMonthSchedule({ ...base, frequency: 'BIANNUAL', startMonth: 7, monthlyEquivalent: d('50'), amount: d('600') })
+    expect(bi[5]).toBeNull()
+    expect(bi[11]).toBe('600.00')
   })
 })

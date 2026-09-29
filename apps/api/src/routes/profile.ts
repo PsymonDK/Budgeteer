@@ -1,12 +1,59 @@
 import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { getJobMonthlyIncome, calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { Decimal } from '@prisma/client/runtime/client'
+import { calcIncomeForYear, getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
 import { toNum } from '../lib/decimal'
 import { partitionByOwnership } from '../lib/ownership'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
+import {
+  budgetMonthlyIncomeForJob,
+  isJobActiveInMonth,
+  monthlyIncomeForJob,
+  salaryRecordForMonth,
+  yearMonthOfLocalDate,
+} from '../lib/jobIncome'
+import { findOverAllocations, pickReportingYear, summarizeAllocatedIncome } from '../lib/incomeAllocation'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const LIVE_STATUSES = ['ACTIVE', 'FUTURE'] as const
+
+function money(d: Decimal): number {
+  return d.toDecimalPlaces(2).toNumber()
+}
+
+/**
+ * A user's jobs, their monthly income and their household allocations,
+ * evaluated per budget year. The summary figures report on one year (the
+ * earliest ACTIVE year the user is allocated in, else the earliest FUTURE
+ * year, else the current calendar year); over-allocation is checked for
+ * every ACTIVE/FUTURE year separately.
+ */
+async function loadAllocationOverview(userId: string, today: Date) {
+  const jobs = await prisma.job.findMany({ where: { userId }, include: JOB_INCOME_INCLUDE })
+  const allocations = await prisma.householdIncomeAllocation.findMany({
+    where: {
+      jobId: { in: jobs.map((j) => j.id) },
+      budgetYear: { status: { in: [...LIVE_STATUSES] } },
+    },
+    include: { budgetYear: { select: { year: true, status: true } } },
+  })
+
+  const reportingYear = pickReportingYear(allocations)
+  const basis = reportingYear ?? { year: today.getFullYear(), status: 'ACTIVE' as const }
+  const ref = yearMonthOfLocalDate(basis.status === 'ACTIVE' ? today : getIncomeReferenceDate(basis.year, basis.status))
+
+  const incomes = new Map(jobs.map((job) => [job.id, budgetMonthlyIncomeForJob(job, basis, ref)]))
+  const summary = summarizeAllocatedIncome(
+    allocations,
+    basis.year,
+    new Map([...incomes].map(([jobId, income]) => [jobId, income.gross])),
+  )
+  const overAllocations = findOverAllocations(allocations)
+
+  return { jobs, incomes, reportingYear, summary, overAllocations }
+}
 
 function formatYYYYMM(date: Date): string {
   const y = date.getFullYear()
@@ -31,51 +78,23 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // ── GET /users/me/income/summary ─────────────────────────────────────────────
   fastify.get('/users/me/income/summary', { preHandler: authenticate }, async (request, reply) => {
     const { sub: userId } = request.user
-    const today = new Date()
-
-    // Fetch active jobs for current user
-    const jobs = await prisma.job.findMany({
-      where: { userId, endDate: null },
-    })
-
-    // Compute monthly income for each job
-    const jobIncomes = await Promise.all(
-      jobs.map(async (job) => {
-        const { gross } = await getJobMonthlyIncome(job.id, today)
-        return { job, monthly: gross }
-      })
-    )
-
-    const totalMonthly = jobIncomes.reduce((s, { monthly }) => s + monthly, 0)
-    const jobIds = jobs.map((j) => j.id)
-
-    // Fetch allocations for active jobs, only for ACTIVE/FUTURE budget years
-    const allocations = await prisma.householdIncomeAllocation.findMany({
-      where: {
-        jobId: { in: jobIds },
-        budgetYear: { status: { in: ['ACTIVE', 'FUTURE'] } },
-      },
-    })
-
-    // Build a map of jobId -> gross monthly income
-    const jobIncomeMap = new Map(jobIncomes.map(({ job, monthly }) => [job.id, monthly]))
-
-    let totalAllocated = 0
-    for (const alloc of allocations) {
-      const monthly = jobIncomeMap.get(alloc.jobId) ?? 0
-      totalAllocated += monthly * toNum(alloc.allocationPct) / 100
-    }
-
-    const totalUnallocated = totalMonthly - totalAllocated
-    const allocationPct = totalMonthly > 0 ? (totalAllocated / totalMonthly) * 100 : 0
-    const overAllocated = allocationPct > 100
+    const { jobs, reportingYear, summary, overAllocations } = await loadAllocationOverview(userId, new Date())
+    const jobNames = new Map(jobs.map((j) => [j.id, j.name]))
 
     return reply.send({
-      totalMonthly: totalMonthly.toFixed(2),
-      totalAllocated: totalAllocated.toFixed(2),
-      totalUnallocated: totalUnallocated.toFixed(2),
-      allocationPct: allocationPct.toFixed(2),
-      overAllocated,
+      totalMonthly: summary.totalMonthly.toFixed(2),
+      totalAllocated: summary.totalAllocated.toFixed(2),
+      totalUnallocated: summary.totalUnallocated.toFixed(2),
+      allocationPct: summary.allocationPct.toFixed(2),
+      // True when any job is allocated more than 100% within one budget year
+      overAllocated: overAllocations.length > 0,
+      budgetYear: reportingYear ? { year: reportingYear.year, status: reportingYear.status } : null,
+      overAllocatedJobs: overAllocations.map((o) => ({
+        jobId: o.jobId,
+        jobName: jobNames.get(o.jobId) ?? '',
+        year: o.year,
+        allocationPct: o.totalPct.toFixed(2),
+      })),
     })
   })
 
@@ -91,85 +110,30 @@ export async function profileRoutes(fastify: FastifyInstance) {
       months.push(formatYYYYMM(addMonths(start, i)))
     }
 
-    // Fetch all user jobs with salary records and overrides (including ended jobs)
-    const jobs = await prisma.job.findMany({
-      where: { userId },
-      include: {
-        salaryRecords: { orderBy: { effectiveFrom: 'asc' } },
-        overrides: true,
-        bonuses: true,
-      },
-    })
+    // All user jobs (including ended ones — they contribute only in their active months)
+    const jobs = await prisma.job.findMany({ where: { userId }, include: JOB_INCOME_INCLUDE })
 
-    // Collect bonuses within the 12-month window
-    const windowStart = new Date(`${months[0]}-01`)
-    const windowEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-
+    // Income per job per month in base currency: salary (or override) plus every
+    // bonus paid that month at its full amount (a cash view of what was received).
     const bonuses: { jobId: string; month: string; amount: number; amountNet: number; label: string }[] = []
-    // bonus amount maps: "<jobId>::<YYYY-MM>" -> total bonus gross/net for that month
-    const bonusAmountMap = new Map<string, number>()
-    const bonusAmountMapNet = new Map<string, number>()
-    for (const job of jobs) {
-      for (const bonus of job.bonuses) {
-        const pd = bonus.paymentDate
-        if (pd >= windowStart && pd <= windowEnd) {
-          const monthStr = formatYYYYMM(pd)
-          bonuses.push({ jobId: job.id, month: monthStr, amount: toNum(bonus.grossAmount), amountNet: toNum(bonus.netAmount), label: bonus.label })
-          const key = `${job.id}::${monthStr}`
-          bonusAmountMap.set(key, (bonusAmountMap.get(key) ?? 0) + toNum(bonus.grossAmount))
-          bonusAmountMapNet.set(key, (bonusAmountMapNet.get(key) ?? 0) + toNum(bonus.netAmount))
+    const jobTrends = jobs.map((job) => {
+      const monthly: number[] = []
+      const monthlyNet: number[] = []
+      for (const monthStr of months) {
+        const [year, mon] = monthStr.split('-').map(Number)
+        const income = monthlyIncomeForJob(job, year, mon, 'cash')
+        monthly.push(money(income.gross))
+        monthlyNet.push(money(income.net))
+        for (const b of income.bonuses) {
+          bonuses.push({ jobId: job.id, month: monthStr, amount: money(b.gross), amountNet: money(b.net), label: b.label })
         }
       }
-    }
-
-    // Compute monthly income per job per month (salary + any bonuses received that month)
-    const jobTrends = jobs.map((job) => {
-      const monthly: number[] = months.map((monthStr) => {
-        const [year, mon] = monthStr.split('-').map(Number)
-        const refDate = new Date(Date.UTC(year, mon - 1, 1))
-
-        if (job.startDate > new Date(year, mon - 1, 28)) return 0
-        if (job.endDate && job.endDate < refDate) return 0
-
-        const override = job.overrides.find((o) => o.year === year && o.month === mon)
-        const salary = override
-          ? toNum(override.grossAmount)
-          : (() => {
-              const rec = [...job.salaryRecords]
-                .filter((s) => s.effectiveFrom <= refDate)
-                .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
-              return rec ? toNum(rec.grossAmount) : 0
-            })()
-
-        return salary + (bonusAmountMap.get(`${job.id}::${monthStr}`) ?? 0)
-      })
-
-      const monthlyNet: number[] = months.map((monthStr) => {
-        const [year, mon] = monthStr.split('-').map(Number)
-        const refDate = new Date(Date.UTC(year, mon - 1, 1))
-
-        if (job.startDate > new Date(year, mon - 1, 28)) return 0
-        if (job.endDate && job.endDate < refDate) return 0
-
-        const override = job.overrides.find((o) => o.year === year && o.month === mon)
-        const salary = override
-          ? toNum(override.netAmount)
-          : (() => {
-              const rec = [...job.salaryRecords]
-                .filter((s) => s.effectiveFrom <= refDate)
-                .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
-              return rec ? toNum(rec.netAmount) : 0
-            })()
-
-        return salary + (bonusAmountMapNet.get(`${job.id}::${monthStr}`) ?? 0)
-      })
-
       return { id: job.id, name: job.name, monthly, monthlyNet }
     })
 
     // Compute totals per month
-    const total: number[] = months.map((_, i) => jobTrends.reduce((s, j) => s + j.monthly[i], 0))
-    const totalNet: number[] = months.map((_, i) => jobTrends.reduce((s, j) => s + j.monthlyNet[i], 0))
+    const total: number[] = months.map((_, i) => money(jobTrends.reduce((s, j) => s.plus(j.monthly[i]), new Decimal(0))))
+    const totalNet: number[] = months.map((_, i) => money(jobTrends.reduce((s, j) => s.plus(j.monthlyNet[i]), new Decimal(0))))
 
     return reply.send({ months, jobs: jobTrends, total, totalNet, bonuses })
   })
@@ -181,48 +145,46 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const year = today.getFullYear()
     const month = today.getMonth() + 1
 
-    // Fetch active jobs
-    const activeJobs = await prisma.job.findMany({
-      where: { userId, endDate: null },
+    // Jobs employed this month (a job with a future endDate still counts)
+    const activeJobs = (await prisma.job.findMany({ where: { userId }, include: JOB_INCOME_INCLUDE }))
+      .filter((job) => isJobActiveInMonth(job, year, month))
+
+    // This month's salary (or override) per job in base currency, plus the
+    // record it came from for its payslip deduction lines. Bonuses are left
+    // out: the flow is built from the payslip.
+    const jobIncomes = activeJobs.map((job) => {
+      const income = monthlyIncomeForJob(job, year, month, 'none')
+      const gross = income.gross.toNumber()
+      const net = income.net.toNumber()
+
+      const record = income.source === 'override'
+        ? job.overrides.find((o) => o.year === year && o.month === month) ?? null
+        : income.source === 'salary'
+          ? salaryRecordForMonth(job.salaryRecords, year, month)
+          : null
+
+      const hasDeductions = record?.deductionsSource != null
+      const deductions = hasDeductions && record ? (() => {
+        const lines = (record.payslipLines ?? []) as { amount: number; sankeyGroup?: string }[]
+        const byGroup = new Map<string, number>()
+        for (const line of lines) {
+          if (line.sankeyGroup) {
+            byGroup.set(line.sankeyGroup, (byGroup.get(line.sankeyGroup) ?? 0) + line.amount)
+          }
+        }
+        return {
+          amBidrag: byGroup.get('am_bidrag') ?? 0,
+          aSkat: byGroup.get('a_skat') ?? 0,
+          pensionEmployee: byGroup.get('pension_employee') ?? 0,
+          atp: byGroup.get('atp') ?? 0,
+          bruttoDeduction: byGroup.get('brutto_benefits') ?? 0,
+          otherDeductions: byGroup.get('other_deductions') ?? 0,
+        }
+      })() : null
+      const pensionEmployer = record?.pensionEmployerMonthly ? toNum(record.pensionEmployerMonthly) : 0
+
+      return { job, gross, net, deductions, pensionEmployer }
     })
-
-    // Fetch income + active salary/override record (with deduction fields) per job
-    const jobIncomes = await Promise.all(
-      activeJobs.map(async (job) => {
-        const { gross, net } = await getJobMonthlyIncome(job.id, today)
-
-        // Get the active record to check for deduction data
-        const override = await prisma.monthlyIncomeOverride.findUnique({
-          where: { jobId_year_month: { jobId: job.id, year, month } },
-        })
-        const record = override ?? await prisma.salaryRecord.findFirst({
-          where: { jobId: job.id, effectiveFrom: { lte: today } },
-          orderBy: { effectiveFrom: 'desc' },
-        })
-
-        const hasDeductions = record?.deductionsSource != null
-        const deductions = hasDeductions && record ? (() => {
-          const lines = (record.payslipLines ?? []) as { amount: number; sankeyGroup?: string }[]
-          const byGroup = new Map<string, number>()
-          for (const line of lines) {
-            if (line.sankeyGroup) {
-              byGroup.set(line.sankeyGroup, (byGroup.get(line.sankeyGroup) ?? 0) + line.amount)
-            }
-          }
-          return {
-            amBidrag: byGroup.get('am_bidrag') ?? 0,
-            aSkat: byGroup.get('a_skat') ?? 0,
-            pensionEmployee: byGroup.get('pension_employee') ?? 0,
-            atp: byGroup.get('atp') ?? 0,
-            bruttoDeduction: byGroup.get('brutto_benefits') ?? 0,
-            otherDeductions: byGroup.get('other_deductions') ?? 0,
-          }
-        })() : null
-        const pensionEmployer = record?.pensionEmployerMonthly ? toNum(record.pensionEmployerMonthly) : 0
-
-        return { job, gross, net, deductions, pensionEmployer }
-      })
-    )
 
     const totalIncome = jobIncomes.reduce((s, { gross }) => s + gross, 0)
     const jobIds = activeJobs.map((j) => j.id)
@@ -232,20 +194,31 @@ export async function profileRoutes(fastify: FastifyInstance) {
     // Determine layout mode: 3-column if any job has deduction data
     const useGranularLayout = jobIncomes.some(({ deductions }) => deductions !== null)
 
-    // Fetch all allocations for active jobs with ACTIVE/FUTURE budget years
-    const allocations = await prisma.householdIncomeAllocation.findMany({
+    // Allocations in each household's default budget year only (earliest
+    // ACTIVE, else earliest FUTURE). Summing every ACTIVE/FUTURE year would
+    // count a job twice once next year's budget exists.
+    const liveAllocations = await prisma.householdIncomeAllocation.findMany({
       where: {
         jobId: { in: jobIds },
-        budgetYear: { status: { in: ['ACTIVE', 'FUTURE'] } },
+        budgetYear: { status: { in: [...LIVE_STATUSES] } },
       },
       include: {
         budgetYear: {
           include: {
-            household: { select: { id: true, name: true } },
+            household: {
+              select: {
+                id: true,
+                name: true,
+                budgetYears: { where: { status: { in: [...LIVE_STATUSES] } }, select: { id: true, year: true, status: true } },
+              },
+            },
           },
         },
       },
     })
+    const allocations = liveAllocations.filter(
+      (a) => pickDefaultBudgetYear(a.budgetYear.household.budgetYears)?.id === a.budgetYearId
+    )
 
     // Group allocations by household
     const householdMap = new Map<
@@ -285,17 +258,18 @@ export async function profileRoutes(fastify: FastifyInstance) {
         const [expenseRows, savingsRows, allAllocations] = await Promise.all([
           prisma.expense.findMany({ where: { budgetYearId: hh.budgetYearId } }),
           prisma.savingsEntry.findMany({ where: { budgetYearId: hh.budgetYearId } }),
-          prisma.householdIncomeAllocation.findMany({ where: { budgetYearId: hh.budgetYearId } }),
+          prisma.householdIncomeAllocation.findMany({
+            where: { budgetYearId: hh.budgetYearId },
+            include: { job: { include: JOB_INCOME_INCLUDE } },
+          }),
         ])
 
         const totalExpenses = expenseRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
         const totalSavings = savingsRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
 
-        const allAllocGross = await Promise.all(
-          allAllocations.map(async (alloc) => {
-            const { gross } = await getJobMonthlyIncome(alloc.jobId, today)
-            return gross * toNum(alloc.allocationPct) / 100
-          })
+        // Same basis as the user's own jobs above: this month's salary, no bonuses
+        const allAllocGross = allAllocations.map((alloc) =>
+          monthlyIncomeForJob(alloc.job, year, month, 'none').gross.toNumber() * toNum(alloc.allocationPct) / 100
         )
         const totalHouseholdGross = allAllocGross.reduce((s, v) => s + v, 0)
         const userSharePct = totalHouseholdGross > 0 ? hh.allocatedAmount / totalHouseholdGross : 0
@@ -354,7 +328,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
       const aggAmBidrag = jobIncomes.reduce((s, { deductions }) => s + (deductions?.amBidrag ?? 0), 0)
       const aggASkat = jobIncomes.reduce((s, { deductions }) => s + (deductions?.aSkat ?? 0), 0)
       const aggPensionEmployee = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployee ?? 0), 0)
-      const aggPensionEmployer = jobIncomes.reduce((s, { pensionEmployer }) => s + pensionEmployer, 0)
       const aggAtp = jobIncomes.reduce((s, { deductions }) => s + (deductions?.atp ?? 0), 0)
       const aggBrutto = jobIncomes.reduce((s, { deductions }) => s + (deductions?.bruttoDeduction ?? 0), 0)
       const aggOther = jobIncomes.reduce((s, { deductions }) => s + (deductions?.otherDeductions ?? 0), 0)
@@ -453,60 +426,30 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const today = new Date()
 
     // ── Income ────────────────────────────────────────────────────────────────
-    const activeJobs = await prisma.job.findMany({ where: { userId, endDate: null } })
+    // Budget-basis monthly income (salary + yearly-average bonuses) and the
+    // allocated share for one budget year — see loadAllocationOverview.
+    const { jobs: allJobs, incomes, summary } = await loadAllocationOverview(userId, today)
+    const grossMonthly = money([...incomes.values()].reduce((s, i) => s.plus(i.gross), new Decimal(0)))
+    const netMonthly = money([...incomes.values()].reduce((s, i) => s.plus(i.net), new Decimal(0)))
+    const allocatedAmount = money(summary.totalAllocated)
+    const unallocatedAmount = money(summary.totalUnallocated)
+    const allocatedPct = summary.allocationPct.toNumber()
 
-    const jobIncomes = await Promise.all(
-      activeJobs.map(async (job) => {
-        const { gross, net } = await getJobMonthlyIncome(job.id, today)
-        return { jobId: job.id, gross, net }
-      })
-    )
-    const grossMonthly = jobIncomes.reduce((s, j) => s + j.gross, 0)
-    const netMonthly = jobIncomes.reduce((s, j) => s + j.net, 0)
-    const jobIncomeMap = new Map(jobIncomes.map((j) => [j.jobId, j.gross]))
-
-    const allocations = await prisma.householdIncomeAllocation.findMany({
-      where: {
-        jobId: { in: activeJobs.map((j) => j.id) },
-        budgetYear: { status: { in: ['ACTIVE', 'FUTURE'] } },
-      },
-    })
-    let allocatedAmount = 0
-    for (const alloc of allocations) {
-      allocatedAmount += (jobIncomeMap.get(alloc.jobId) ?? 0) * toNum(alloc.allocationPct) / 100
-    }
-    const unallocatedAmount = grossMonthly - allocatedAmount
-    const allocatedPct = grossMonthly > 0 ? (allocatedAmount / grossMonthly) * 100 : 0
-
-    // Income sparkline: last 6 months
+    // Income sparkline: last 6 months, in base currency, bonuses by budget mode
     const incomeSparklineStart = firstDayOfMonth(addMonths(today, -5))
     const incomeSparklineMonths: string[] = []
     for (let i = 0; i < 6; i++) incomeSparklineMonths.push(formatYYYYMM(addMonths(incomeSparklineStart, i)))
 
-    const allJobs = await prisma.job.findMany({
-      where: { userId },
-      include: { salaryRecords: { orderBy: { effectiveFrom: 'asc' } }, overrides: true },
-    })
     const incomeSparkline = incomeSparklineMonths.map((monthStr) => {
       const [year, mon] = monthStr.split('-').map(Number)
-      const refDate = new Date(year, mon - 1, 1)
-      let gross = 0
-      let net = 0
+      let gross = new Decimal(0)
+      let net = new Decimal(0)
       for (const job of allJobs) {
-        if (job.startDate > new Date(year, mon - 1, 28)) continue
-        if (job.endDate && job.endDate < refDate) continue
-        const override = job.overrides.find((o) => o.year === year && o.month === mon)
-        if (override) {
-          gross += toNum(override.grossAmount)
-          net += toNum(override.netAmount)
-        } else {
-          const rec = [...job.salaryRecords]
-            .filter((s) => s.effectiveFrom <= refDate)
-            .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
-          if (rec) { gross += toNum(rec.grossAmount); net += toNum(rec.netAmount) }
-        }
+        const income = monthlyIncomeForJob(job, year, mon, 'budget')
+        gross = gross.plus(income.gross)
+        net = net.plus(income.net)
       }
-      return { month: monthStr, gross, net }
+      return { month: monthStr, gross: money(gross), net: money(net) }
     })
 
     // ── Households the user belongs to (active/future budget years) ──────────

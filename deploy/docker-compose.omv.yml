@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: budgeteer
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the stack .env}
       POSTGRES_DB: budgeteer
       TZ: ${TIME_ZONE_VALUE}
     volumes:
@@ -40,16 +40,40 @@ services:
     environment:
       DATABASE_URL: postgresql://budgeteer:${POSTGRES_PASSWORD}@budgeteer-db:5432/budgeteer
       API_PORT: 3001
-      JWT_SECRET: ${JWT_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the stack .env}
       # PUBLIC_URL: the URL your browser uses to reach the NAS (e.g. http://freedom.local:7272)
       # If you access via a reverse proxy with a custom domain, use that URL instead.
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:7272}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@budgeteer.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in the stack .env}
       ADMIN_NAME: ${ADMIN_NAME:-Admin}
-      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+      # Demo households with demo users (password demo1234) — only for trying it out
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
       TZ: ${TIME_ZONE_VALUE}
+      # ── Optional features (leave unset for defaults; see README) ─────────
+      # AI-assisted payslip import (Anthropic)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Startup schema sync: push (default), migrate, skip, force-push
+      SCHEMA_SYNC_MODE: ${SCHEMA_SYNC_MODE:-}
+      # Proxies trusted for the client IP (default: loopback + private networks)
+      TRUST_PROXY: ${TRUST_PROXY:-}
+      API_RATE_LIMIT_ENABLED: ${API_RATE_LIMIT_ENABLED:-}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-}
+      API_RATE_LIMIT_WINDOW: ${API_RATE_LIMIT_WINDOW:-}
+      # Receipt OCR tuning
+      RECEIPT_OCR_LANG: ${RECEIPT_OCR_LANG:-}
+      RECEIPT_OCR_MAX_PDF_PAGES: ${RECEIPT_OCR_MAX_PDF_PAGES:-}
+      RECEIPT_OCR_PDF_DPI: ${RECEIPT_OCR_PDF_DPI:-}
+      RECEIPT_OCR_PSM: ${RECEIPT_OCR_PSM:-}
+      RECEIPT_OCR_TIMEOUT_MS: ${RECEIPT_OCR_TIMEOUT_MS:-}
+      RECEIPT_OCR_TOTAL_TIMEOUT_MS: ${RECEIPT_OCR_TOTAL_TIMEOUT_MS:-}
+      RECEIPT_OCR_MAX_PIXELS: ${RECEIPT_OCR_MAX_PIXELS:-}
+      RECEIPT_OCR_PREPROCESS: ${RECEIPT_OCR_PREPROCESS:-}
+      # Local/self-hosted AI for receipt cleanup and categorisation
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-}
+      RECEIPT_AI_CATEGORIZE: ${RECEIPT_AI_CATEGORIZE:-}
     volumes:
       - ${PATH_TO_APPDATA}/budgeteer/uploads:/app/uploads
 
@@ -58,7 +82,8 @@ services:
     container_name: budgeteer-web
     restart: unless-stopped
     depends_on:
-      - budgeteer-api
+      budgeteer-api:
+        condition: service_healthy
     ports:
       # Port the web UI is served on — default 7272
       - "${APP_PORT:-7272}:80"

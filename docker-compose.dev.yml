@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -22,6 +20,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.api
+      secrets: [extra_ca]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -37,6 +36,10 @@ services:
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
       API_RATE_LIMIT_ENABLED: ${API_RATE_LIMIT_ENABLED:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LOCAL_AI_BASE_URL: ${LOCAL_AI_BASE_URL:-}
+      LOCAL_AI_MODEL: ${LOCAL_AI_MODEL:-}
+      RECEIPT_AI_CATEGORIZE: ${RECEIPT_AI_CATEGORIZE:-}
     volumes:
       - uploads_data:/app/uploads
 
@@ -44,12 +47,20 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile.web
+      secrets: [extra_ca]
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     ports:
       - "${APP_PORT:-7272}:80"
 
 volumes:
   postgres_data:
   uploads_data:
+
+# Optional root CA for builds behind a TLS-intercepting proxy (see README).
+# The default placeholder is empty, which means "none".
+secrets:
+  extra_ca:
+    file: ${EXTRA_CA_FILE:-./docker/no-extra-ca.pem}

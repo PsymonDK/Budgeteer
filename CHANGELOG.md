@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **API healthcheck** — the API image checks `/health`, and the web container in every compose file waits for a healthy API.
+- **Optional settings in the deploy compose files** — `ANTHROPIC_API_KEY`, `SCHEMA_SYNC_MODE`, `TRUST_PROXY`, the rate-limit, receipt OCR and local-AI variables are now passed to the API container; before, setting them in `.env` had no effect, so AI payslip import and local receipt AI couldn't be enabled in a Docker install.
+- **Dependabot for GitHub Actions and Docker base images.**
+- **Printed receipt total** — the TOTAL read from a receipt is now stored (`printedTotal`, editable) and receipts flag when their line items don't add up to it (`totalMismatch`), the quickest way to spot a missed or misread line. Previously the printed total was discarded and the header's total field was silently ignored.
+- **Single-step receipt confirm** — `POST …/receipts/:id/confirm` accepts the review's header and line edits and saves them with the confirmation in one transaction.
+- **Trash UI** — a household Trash page (sidebar, next to Settings) and a Trash tab on the Income page list deleted items with who deleted them and when, and restore them. Deleting shows a "Moved to trash" toast with Undo.
+- **Trash for financial records** — deleting an expense, savings entry, salary record, monthly override, bonus or tax card now moves it to a trash instead of erasing it (the project rule is never to hard-delete financial data). New endpoints list and restore trashed items per household (`/households/:id/trash`) and per user (`/users/:id/income/trash`). Trashed items are excluded from all totals, transfers and income until restored.
+- **Server-side session revocation** — password changes, admin password resets, role changes, deactivation and conversion to a proxy user now end all of the user's sessions immediately (refresh tokens deleted, older access tokens rejected). Changing your own password returns fresh tokens so the current tab stays signed in.
+- **Refresh token theft detection** — refresh tokens are stored hashed, rotated tokens are kept as revoked, and presenting a rotated token again revokes every session of that user. Expired tokens are purged daily.
+- **`TRUST_PROXY`** and optional **`EXTRA_CA_FILE`** build secret (see README).
+- **Pay/No-pay item checklist** — households on the Pay/No-pay model get an "Items this month" panel on the dashboard: mark each expense and savings item paid on its own or all at once, browse other months, and see what will carry over. New endpoints `GET /budget-years/:id/occurrences`, `PATCH /budget-years/:id/occurrences/:kind/:occurrenceId`, `POST /budget-years/:id/occurrences/mark-all-paid`. Previously nothing could mark an item paid, so every item carried over every month and transfers grew without bound (1000, 2000, 3000 …).
+- **Automatic budget-year lifecycle** — FUTURE years become ACTIVE when their year arrives and past years retire, at startup, daily, and before the monthly automation. Previously statuses only changed on create/copy/promote, so last year stayed ACTIVE after New Year.
+- **CI workflow** (`.github/workflows/ci.yml`) — pull requests, and every push to `main`/version tag before images are published, now run `npm ci`, migrations against a fresh Postgres plus a schema drift check, typecheck (both apps, including API tests), ESLint, Vitest, and full API/web/seed builds. Previously CI only built and pushed images.
+- **ESLint** — root flat config (`eslint.config.mjs`) covering API, web, and seed code with TypeScript and React Hooks rules. The web `lint` script referenced ESLint without it being installed. Root scripts `npm run lint`, `npm run typecheck`, and `npm run test`.
+- **Global API error handler** — Prisma not-found/unique/foreign-key errors now return 404/409 in the `{ error, code }` shape, and unexpected errors return a generic 500 instead of leaking Prisma queries and file paths.
+- **`.dockerignore`** — host `node_modules`, build output, and `.env` files no longer leak into image build contexts.
+- **`.gitattributes`** — shell scripts are always checked out with LF so `docker/entrypoint.sh` works in images built on Windows.
+
+### Changed
+- **One product version** — the repo-root `package.json` version (0.58.1) is the single source; `/health` and the web footer read it (they reported 0.14.1 and a hard-coded value). All workspace package versions are aligned.
+- **Empty environment variables count as unset** in the API, so compose files can pass optional settings through without `""` overriding defaults.
+- **OpenMediaVault compose file** requires its three secrets and no longer seeds demo users (password `demo1234`) by default.
+- **Trivy scans the image the workflow just built** (by digest) instead of `:latest`, which isn't rebuilt on version-tag pushes; the action is pinned to a release instead of `@master`.
+- **Documentation** — CONTRIBUTING rewritten (it described a root compose file, ports, Swagger and a `packages/shared` package that don't exist); architecture, README, deploy notes, CLAUDE.md and AGENTS.md reconciled with the code (public routes, admin routes, error shape, reverse-proxy variable name, migration switch-over).
+- Removed the unused `packages/` placeholder and the obsolete `version` key in `docker-compose.dev.yml`.
+- **Receipts screens restructured** — the 1,500-line receipts page is split into `pages/receipts/` and uses the shared query keys, hooks and types. Review edits are confirmed in one request; a "Printed total" field and a soft warning show when line items don't add up to the receipt's total.
+- **Receipt amounts are labelled in the receipt's own currency** (they were shown with the base currency label).
+- **Frontend structure** — shared API types (`api/types.ts`), a query-key factory and shared query hooks (`api/queryKeys.ts`, `api/queries.ts`), shared components (ConfirmDialog, FormError, StatusBadge, BudgetYearSelector, AccountSelect, OwnershipFields, entry table pieces) and style constants replace code duplicated across pages. The large pages are split into folders (`pages/income`, `expenses`, `savings`, `dashboard`, `household`, `profile`, `budget-years`, `user-dashboard`). `calcDanishDeductions` moved to `lib/danishTaxPreview.ts`.
+- **Route-level code splitting** — the first page load drops from one ~1.1 MB bundle to ~300 kB.
+- **Calculations moved to the API** — the expense calendar's month schedule (`monthSchedule` on expenses), the dashboard savings rate and the per-member income-flow split (`savingsRate`, `incomeFlow` on the household summary) are now server-computed.
+- **One ownership-split implementation** shared by the dashboard, profile and transfer breakdown.
+- Removed dead code (the unrouted `HouseholdsPage`, unused `selectClass`, unused `clsx` dependency).
+- **Login no longer reveals which accounts exist** — unknown, inactive and proxy accounts all answer "Invalid credentials" with the same timing as a wrong password.
+- **Roles are read from the database on every request**, so demoting an admin takes effect immediately instead of after the access token expires.
+- **Docker images no longer disable TLS verification** — the API image had `strict-ssl=false`, `NODE_TLS_REJECT_UNAUTHORIZED=0` and `apk --no-check-certificate` baked into its build. Builds behind TLS-intercepting proxies now pass the proxy's root CA as a BuildKit secret instead, and the API image downloads Prisma's schema engine at build time so containers start without network access.
+- **Prisma migrations squashed into a baseline** — the old migration chain started with `ALTER TABLE` on tables no migration created, so `npm run db:migrate` and `SCHEMA_SYNC_MODE=migrate` failed on a fresh database. `prisma/migrations` is now a single baseline generated from the current schema and is shipped in the API image. Existing `push`-managed databases are unaffected; see `docs/architecture.md` to switch them to `migrate`.
+- **Local development loads `.env`** — the API, Prisma CLI, and seed script now read the repo-root `.env` (existing environment variables win), and the Vite dev proxy strips `/api` like nginx does, so `npm run dev` works without Docker. `VITE_API_URL` was removed from `.env.example` because Vite never read it from the root.
+- **Web image** — Node 22 (matching the API) and `npm ci` for reproducible builds.
+- **Image publishing** is gated on the CI workflow passing.
+
+### Fixed
+- **The seed printed the admin password to the logs** on first boot; it ran the receipt training import twice when demo data was enabled.
+- **Currency rates were stored again on every restart** — the daily sync now keeps one row per currency per day.
+- **Saving one receipt line discarded unsaved edits on the others** — edited drafts are now kept when the receipt refreshes.
+- **Account edits didn't refresh the receipts screens** (they cached accounts under different keys); inactive accounts are no longer offered for new receipts.
+- **Failed uploads never appeared in the receipt list**, and opening a deleted receipt's link showed a spinner forever.
+- **Deleting a receipt, classifier term or learned mapping happened without confirmation.**
+- **Receipt amounts with thousands separators were misread** ("1.234,50" became 4.50, "TOTAL 1 234,50" 234.50), and amounts could start inside longer numbers.
+- **Receipt keywords matched inside words** — "Coffee" was read as a fee, "Taxi" as tax and "Sumatra" as the sum.
+- **Danish "å" broke receipt labels and category rules** — "Blåbær" became "bla bær", so rules and mappings containing å never matched; other accents split words the same way. Stored keys are re-keyed on upgrade.
+- **Learned noise words could make real products disappear** — renaming a line (e.g. "KYLLINGEBRYST" → "Chicken breast") taught the classifier that the product name was noise, and confirming the same receipt repeatedly counted it again. Noise is now learned only from trimmed labels and a receipt can be confirmed once (409 `RECEIPT_ALREADY_CONFIRMED`).
+- **Household receipt mappings were cut off** once system and household mappings together passed 2,000; imported and admin-entered mapping keys weren't normalized (so they never matched), and seeded merchant keys used a different normalization than lookups.
+- **Short category terms matched unrelated words** — "sko" (shoes) matched "skovbær", "bog" (book) "boghvede", "te" (tea) almost anything. Three-letter terms now match compound endings ("hytteost", "rødvin"), two-letter terms whole words.
+- **Impossible receipt dates rolled over** (31.02 → 2 March); ISO dates weren't recognised; an invalid date from a local AI model caused a 500 and an orphaned upload.
+- **A local AI reply without line items wiped the detected lines.**
+- **Receipt consumption used today's exchange rate for past purchases** and float sums; it now uses the rate on the purchase date and exact decimals.
+- **Receipt uploads trusted the declared file type** — content is now verified (PDF/PNG/JPEG), OCR has an overall time budget per receipt, and oversized images are refused instead of exhausting memory.
+- **Seeding reverted admin edits to shipped receipt mappings on every boot.**
+- A line-item subcategory could be kept after clearing its category; the local-AI host check rejected `[::1]`; multi-word noise tokens never matched.
+- **Household admins couldn't add members** — the member picker filtered on fields `GET /users` doesn't return to non-admins, so the list was always empty.
+- **"Proxy" badge and "Manage income" link never showed for proxy members** — the member list now includes `isProxy`.
+- **Editing an expense or savings entry without touching ownership wiped its custom split.**
+- **Items whose owner was removed vanished from dashboard/profile totals** — they now count as shared, as the transfer breakdown already did.
+- **Rate limits applied to the whole instance behind nginx** — the API saw every request as coming from nginx, so ten failed logins by anyone locked everyone out for 15 minutes and normal use could hit the global limit. nginx now forwards the client address and the API trusts it from private-network proxies (`TRUST_PROXY`).
+- **Deactivated households stayed fully usable** through direct API calls — members can no longer read or write them (system admins and the reactivate action excepted).
+- **`mustChangePassword` was only enforced by the frontend** — the API now blocks everything except loading the profile and changing the password until a temporary password is replaced.
+- **Expenses and savings could use another household's category** (or a savings category on an expense, or an inactive one) — categories are now checked for household, type and active status; savings categories were not validated at all.
+- **Deleting a category with a replacement rewrote retired budget years** and accepted a replacement from another household or of another type — only editable years are reassigned, a category still used by retired years is deactivated instead of deleted, and the replacement must match.
+- **Income could be allocated to a household the job's owner isn't in** (e.g. by a bookkeeper managing a proxy user).
+- **Scanned-PDF conversion had no timeout**, and OCR/upload failures stored raw error text (command lines, absolute server paths) on the receipt where users could see it.
+- **Bonuses never reached budget income** — budget-included bonuses now count toward household income (amount ÷ 12 in budget-year figures); income history spreads SPREAD_ANNUALLY bonuses ÷ 12 instead of treating them like one-offs.
+- **Income history, trends and sparklines ignored exchange rates** — foreign-currency salaries and bonuses are converted with their stored rate everywhere, via one shared monthly-income implementation (replacing five diverging copies and their N+1 queries).
+- **Ended jobs kept counting as income** after their end date; quarterly/yearly history buckets held only their first month instead of the period total.
+- **Over-allocation double-counted across years** (100% in 2026 + 100% in 2027 = "200%") — it is now checked per job per year; the summary lists the over-allocated jobs.
+- **Removing an allocation erased it from retired years** — it now only affects the household's current (default) budget year, the same year edits save to.
+- **Salary deductions used today's tax card** instead of the one in effect on the salary's date.
+- **Allocating income could silently create a budget year** — it now returns 409 `NO_BUDGET_YEAR` asking the user to create one.
+- **Member splits lost money to rounding** (three equal earners → 99.9%) and gave everyone 0 when nobody had income; the dashboard and transfer breakdown now share one unrounded split with an equal fallback, over current members only.
+- **Income summary picked the FUTURE year before the ACTIVE one** (enum sort order).
+- **Transfer breakdown ignored paid Pay/No-pay items** — it now matches the month's transfer amount.
+- **Month rollover wiped carry-overs when re-run** — rollover now derives carry from the closed month's rows, so a manual trigger or second API replica gives the same result instead of resetting all carries to 0. A PAID item that receives new carry is reopened.
+- **New Year rollover used the wrong year** — the automation now closes December and auto-marks the December transfer in the budget year that owns it (last year's), instead of looking for December under the new year.
+- **Editing a Pay/No-pay expense didn't change its upcoming months** — pending occurrences now follow the expense's current schedule.
+- **Daily FX sync corrupted partial-year and retired entries** — it skipped the partial-year average (a June–August expense became ~4× too large after the first sync), rewrote RETIRED years, used float math, and never recalculated transfers. It now shares the save-time calculation, leaves retired years alone, and recalculates affected transfers.
+- **Past FX rates were locked at the wrong rate** — entries are now locked at the stored rate on or before their payment period, before today's re-pricing runs (previously the lock captured whatever the latest rate was on the first sync after the period).
+- **Changing currency on a locked entry reused the old currency's rate** — switching currency now unlocks and uses the new currency's latest rate.
+- **Copying a budget year dropped currency, account and period fields** — copied EUR entries turned into DKK on their next edit; copies now keep currency/account/period and are re-priced at today's rate. Copying into the current year now calculates its transfers.
+- **Promoting a future-year simulation retired the live current year** — a simulation now replaces the regular year for its own calendar year (a 2027 simulation becomes the FUTURE 2027 year). Past-year simulations can no longer be promoted.
+- **Budget model change recalculated the wrong year** — the `FUTURE`-before-`ACTIVE` enum sort picked the future year; it now recalculates the ACTIVE year.
+- **`DELETE /households/:id` always failed** on foreign keys with a raw 500; it now deletes budget years, members, automations and unreferenced custom categories in one transaction.
+- **Transfer recalculation raced the response** — writes now wait for the recalculation (failures are still logged, not returned), and concurrent recalculations no longer collide creating occurrence rows.
+- **Retired budget years' transfers could be marked paid/pending** — now rejected as read-only.
+- **Seeded demo households had no monthly automation** — the seed now ensures every household has one.
+ the previous household's page state** — household pages are now remounted on switch. Previously an open rename form could rename the newly selected household to the old name, Expenses offered to create a duplicate budget year, and bulk-edit selections from one household could be sent to another.
+- **Logout left the previous user's data cached** — logout now clears the query cache and the remembered active household, so the next user in the same tab never sees it.
+- **Transient API errors logged users out** — only a 401/403 from `/users/me` ends the session; network errors and API restarts no longer wipe it. Failed logins are no longer routed through the token-refresh flow.
+- **Profile preferred-currency dropdown was empty** — it read `currencyCode` while the API returns `code`.
+- **Header name/avatar stayed stale after profile edits**, and pinning a default household didn't refresh the profile page (and vice versa).
+- **Income allocations** — saving now sends one job's edits sequentially and only clears that job's pending edits (it used to discard every job's unsaved edits after the first response). The over-allocation check counts saved allocations too, and is a soft warning again instead of blocking Save.
+- **Deduction overrides of 0 were ignored** — an explicit 0 (e.g. no pension or ATP) is now kept instead of falling back to the calculated amount.
+- **Income history chart didn't update** after salary, override, bonus, or tax card changes on the same page.
+- **Doubled currency labels** such as "1,000.00 DKK DKK" and "100.00 DKK EUR" on Savings, Expenses, and salary history.
+- **Savings totals row** had one cell too many in edit mode, pushing the total under the Actions column.
+- **Date defaults off by one day in Denmark** — form defaults and dashboard/receipt period filters used UTC dates; they now use the local calendar date.
+- **Silent failures** — deletes, role changes, member removal, budget-year retire/promote/delete, job close, transfer mark-paid/revert, and admin automation actions now show the API error instead of doing nothing.
+- **Ended expenses were dimmed based on today's month even when viewing another budget year.**
+- **Stale default household** after leaving every household is now cleared.
+- **Lint findings** — removed unused imports/variables, replaced statement-position ternaries, and added the missing `height` dependency so the Sankey chart re-lays out when its height prop changes.
+
+---
+
 ## [0.58.1] - 2026-05-24 — Receipt parser and API Docker rebuild fix
 
 ### Changed

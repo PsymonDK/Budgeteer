@@ -62,6 +62,8 @@ docker compose up -d
 
 Open **http://localhost:7272** and log in with your admin credentials.
 
+On OpenMediaVault, use [`deploy/docker-compose.omv.yml`](deploy/docker-compose.omv.yml) instead (see the header of that file).
+
 On first boot Budgeteer automatically sets up the database, creates your admin account, and seeds default categories and currencies. No manual setup required.
 
 ### Updating
@@ -70,7 +72,7 @@ On first boot Budgeteer automatically sets up the database, creates your admin a
 docker compose pull && docker compose up -d
 ```
 
-Schema changes are applied automatically on startup.
+Schema changes are applied automatically on startup. See [deploy/README.md](deploy/README.md#updating) to switch an existing install to versioned migrations.
 
 ### Configuration
 
@@ -84,18 +86,23 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `ADMIN_EMAIL` | No | `admin@budgeteer.local` | Email for the initial admin account |
 | `ADMIN_NAME` | No | `Admin` | Display name for the initial admin account |
 | `APP_PORT` | No | `7272` | Host port the web UI is served on |
-| `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`) |
+| `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`). Used as the allowed CORS origin (`CORS_ORIGIN` is a fallback when it is unset) |
 | `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
 | `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
 | `API_RATE_LIMIT_ENABLED` | No | `true` | Enables global API rate limiting. Local dev compose defaults this to `false` to avoid locking out the web UI during testing |
 | `API_RATE_LIMIT_MAX` | No | `200` | Maximum requests per rate-limit window when rate limiting is enabled |
 | `API_RATE_LIMIT_WINDOW` | No | `15 minutes` | Rate-limit window when rate limiting is enabled |
+| `TRUST_PROXY` | No | `loopback,uniquelocal` | Proxies whose `X-Forwarded-For` the API trusts for the client IP (rate limiting). Default trusts loopback and private networks (the bundled nginx and LAN reverse proxies). Set to a specific address or `false` to tighten |
 | `SCHEMA_SYNC_MODE` | No | `push` | Container startup schema sync mode: `push`, `migrate`, `skip`, or explicit `force-push` for Prisma `--accept-data-loss` |
 | `UPLOAD_DIR` | No | `./uploads` | Local API storage for avatars and receipt originals. Docker deployments mount `/app/uploads` as a persistent volume |
 | `RECEIPT_OCR_LANG` | No | `eng` | Tesseract language code for server-side receipt OCR. Install the matching language data in custom images |
 | `RECEIPT_OCR_MAX_PDF_PAGES` | No | `3` | Maximum scanned PDF pages rendered and OCR'd per receipt upload |
 | `RECEIPT_OCR_PDF_DPI` | No | `200` | DPI used when rendering scanned PDF receipts before OCR |
 | `RECEIPT_OCR_PSM` | No | `6` | Tesseract page segmentation mode for receipt image OCR |
+| `RECEIPT_OCR_TIMEOUT_MS` | No | `45000` | Time limit for a single OCR tool run (tesseract, PDF rendering) |
+| `RECEIPT_OCR_TOTAL_TIMEOUT_MS` | No | `120000` | Time budget for all OCR attempts on one receipt; the best result so far is used when it runs out |
+| `RECEIPT_OCR_MAX_PIXELS` | No | `60000000` | Images larger than this (width × height) are not OCR'd, guarding against decompression bombs |
+| `RECEIPT_OCR_PREPROCESS` / `RECEIPT_OCR_PYTHON` | No | on / `python3` | Set `RECEIPT_OCR_PREPROCESS=false` to skip the Pillow preprocessing step; `RECEIPT_OCR_PYTHON` picks the interpreter |
 | `LOCAL_AI_BASE_URL` | No | — | Optional local/self-hosted model endpoint for receipt cleanup/classification. Hosted AI endpoints are rejected for receipts |
 | `LOCAL_AI_MODEL` | No | — | Optional local model name used with `LOCAL_AI_BASE_URL` for receipt enhancement |
 | `RECEIPT_AI_CATEGORIZE` | No | `false` | Set to `true` to let the configured local model suggest categories for otherwise unclassified receipt lines |
@@ -125,7 +132,7 @@ If the key is not set, the AI import tab is hidden and the endpoint returns `503
 
 ### Requirements
 
-- Node.js 20+
+- Node.js 22+
 - PostgreSQL (or use the Docker Compose dev setup: `docker-compose.dev.yml`)
 
 ### Setup
@@ -172,6 +179,12 @@ ADMIN_NAME=Admin
 SEED_DEMO_DATA=false
 BASE_CURRENCY=DKK
 APP_PORT=7272
+```
+
+**Behind a TLS-intercepting proxy** (e.g. a corporate gateway): point `EXTRA_CA_FILE` at the proxy's root CA (PEM) in `.env`. It is used only while building the images and never ends up in them; certificate checks stay on.
+
+```dotenv
+EXTRA_CA_FILE=/path/to/corporate-root-ca.pem
 ```
 
 **3. Rebuild after code changes**

@@ -4,6 +4,7 @@ import { buildReceiptSummaryDateFilter, summarizeReceiptConsumption } from './re
 const currencyMock = vi.hoisted(() => ({
   BASE_CURRENCY: 'DKK',
   getLatestRate: vi.fn(),
+  getRateOnOrBefore: vi.fn(),
 }))
 
 vi.mock('./currency', () => currencyMock)
@@ -12,6 +13,25 @@ describe('receiptConsumption', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     currencyMock.getLatestRate.mockImplementation(async (code: string) => code === 'EUR' ? 7.5 : null)
+    // No rate history by default: falls back to the latest rate
+    currencyMock.getRateOnOrBefore.mockResolvedValue(null)
+  })
+
+  it('converts a past purchase at the rate on its purchase date', async () => {
+    const { Decimal } = await import('@prisma/client/runtime/client')
+    currencyMock.getRateOnOrBefore.mockImplementation(async (code: string) => (code === 'EUR' ? new Decimal('7.4') : null))
+    const summary = await summarizeReceiptConsumption([
+      {
+        amount: 10,
+        currencyCode: 'EUR',
+        categoryId: 'food',
+        subcategoryId: null,
+        category: { name: 'Food', icon: null },
+        subcategory: null,
+        receipt: { currencyCode: 'EUR', purchaseDate: new Date(Date.UTC(2025, 0, 15)) },
+      },
+    ] as never, { period: 'allTime', filter: null })
+    expect(summary.total).toBe('74.00')
   })
 
   it('builds current, previous, current-year, and custom period filters', () => {

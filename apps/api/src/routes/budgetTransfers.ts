@@ -1,11 +1,12 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertBudgetYearAccess, resolveEffectiveAmount } from '../lib/ownership'
+import { assertBudgetYearAccess, ownershipTarget, resolveEffectiveAmount } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { computeIncomeShares } from '../lib/incomeShare'
 
 const MarkPaidSchema = z.object({
   actualAmount: z.number().positive(),
@@ -35,6 +36,9 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') {
+      return reply.status(400).send({ error: 'Retired budget years are read-only', code: 'BUDGET_YEAR_READ_ONLY' })
+    }
 
     const result = MarkPaidSchema.safeParse(request.body)
     if (!result.success) {
@@ -46,20 +50,19 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'Transfer not found' })
     }
 
-    const { actualAmount } = result.data
-    const calculatedAmount = parseFloat(transfer.calculatedAmount.toString())
-    const status = actualAmount === calculatedAmount ? 'PAID' : 'ADJUSTED'
+    const actualAmount = new Decimal(result.data.actualAmount)
+    const status = actualAmount.eq(new Decimal(transfer.calculatedAmount.toString())) ? 'PAID' : 'ADJUSTED'
 
     const updated = await prisma.budgetTransfer.update({
       where: { id: transferId },
       data: {
-        actualAmount: new Decimal(actualAmount),
+        actualAmount,
         status,
         paidAt: new Date(),
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(updated)
   })
@@ -71,6 +74,9 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
+    if (budgetYear.status === 'RETIRED') {
+      return reply.status(400).send({ error: 'Retired budget years are read-only', code: 'BUDGET_YEAR_READ_ONLY' })
+    }
 
     const transfer = await prisma.budgetTransfer.findUnique({ where: { id: transferId } })
     if (!transfer || transfer.budgetYearId !== id) {
@@ -86,7 +92,7 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
 
     return reply.send(updated)
   })
@@ -145,18 +151,18 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
       }),
     ])
 
-    // Fetch current-month occurrences for PAY_NO_PAY model
+    // PAY_NO_PAY: the target month's obligations (paid or not), matching its transfer amount
     let expOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
     let savOccMap = new Map<string, { scheduledAmount: { toString(): string }; carriedAmount: { toString(): string } }>()
 
     if (budgetModel === 'PAY_NO_PAY') {
       const [expOccs, savOccs] = await Promise.all([
         prisma.expenseOccurrence.findMany({
-          where: { expense: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          where: { expense: { budgetYearId: id, ...notDeleted }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
         }),
         prisma.savingsOccurrence.findMany({
-          where: { savingsEntry: { budgetYearId: id }, year: targetYear, month: targetMonth, status: 'PENDING' },
+          where: { savingsEntry: { budgetYearId: id, ...notDeleted }, year: targetYear, month: targetMonth, status: { not: 'SKIPPED' } },
           select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
         }),
       ])
@@ -171,16 +177,11 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
     // Falls back to equal split if no income is allocated.
     const refDate = getIncomeReferenceDate(budgetYear.year, budgetYear.status)
     const incomeResult = await calcIncomeForYear(id, refDate)
-    const totalGross = incomeResult.totalMonthlyGross
-    const memberShareMap = new Map<string, number>()
-    if (totalGross > 0) {
-      for (const m of incomeResult.members) {
-        memberShareMap.set(m.userId, m.monthlyAllocatedGross / totalGross)
-      }
-    } else {
-      const equalShare = memberCount > 0 ? 1 / memberCount : 0
-      for (const uid of memberIds) memberShareMap.set(uid, equalShare)
-    }
+    const shares = computeIncomeShares(
+      memberIds,
+      new Map(incomeResult.members.map((m) => [m.userId, new Decimal(m.monthlyAllocatedGross)])),
+    )
+    const memberShareMap = new Map([...shares].map(([uid, share]) => [uid, share.toNumber()]))
 
     // Accumulator types
     type AccountKey = string // accountId or '__untagged__'
@@ -222,9 +223,10 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
       addToAccount(accountKey, accountId, accountName, accountType, me)
 
-      if (item.ownership === 'INDIVIDUAL' && item.ownedByUserId) {
-        addToMember(item.ownedByUserId, accountKey, me)
-      } else if (item.customSplits.length > 0) {
+      const target = ownershipTarget(item)
+      if (target === 'individual') {
+        addToMember(item.ownedByUserId!, accountKey, me)
+      } else if (target === 'custom') {
         for (const split of item.customSplits) {
           addToMember(split.userId, accountKey, me * parseFloat(split.pct.toString()) / 100)
         }

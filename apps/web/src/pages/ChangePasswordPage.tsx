@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { api } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
-import { inputClass } from '../lib/styles'
+import { inputClass, primaryBtn, secondaryBtn } from '../lib/styles'
+import { FormError } from '../components/FormError'
 
 export function ChangePasswordPage() {
   const { user, updateUser } = useAuth()
@@ -30,7 +31,13 @@ export function ChangePasswordPage() {
 
     setIsPending(true)
     try {
-      await api.post('/users/me/change-password', { currentPassword, newPassword })
+      const res = await api.post<{ accessToken: string; refreshToken: string }>(
+        '/users/me/change-password',
+        { currentPassword, newPassword },
+      )
+      // Changing the password ends every session; keep this one with the fresh tokens
+      localStorage.setItem('accessToken', res.data.accessToken)
+      localStorage.setItem('refreshToken', res.data.refreshToken)
       updateUser({ mustChangePassword: false })
       navigate('/', { replace: true })
     } catch (err) {
@@ -91,17 +98,13 @@ export function ChangePasswordPage() {
               />
             </div>
 
-            {error && (
-              <div className="bg-red-950 border border-red-800 text-red-300 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+            <FormError message={error} />
 
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
                 disabled={isPending}
-                className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-gray-950 font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
+                className={`flex-1 ${primaryBtn}`}
               >
                 {isPending ? 'Saving…' : 'Change password'}
               </button>
@@ -109,7 +112,7 @@ export function ChangePasswordPage() {
                 <button
                   type="button"
                   onClick={() => navigate(-1)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg px-4 py-2.5 text-sm transition-colors"
+                  className={`flex-1 ${secondaryBtn}`}
                 >
                   Cancel
                 </button>

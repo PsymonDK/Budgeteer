@@ -1,6 +1,21 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import type { ParsedReceipt, ParsedReceiptLineItem, ReceiptConfidence } from './receiptParser'
+import {
+  FALLBACK_CLASSIFIER_CONFIG,
+  FALLBACK_LOW_VALUE_WORDS,
+  FALLBACK_NOISE_TOKENS,
+  FALLBACK_OCR_ALIASES,
+  matchesAnyTerm,
+  parseOcrAlias,
+  normalizeReceiptLabel,
+  merchantMappingKey,
+  receiptWords,
+  type ReceiptClassifierConfig,
+} from './receiptText'
+
+// Normalization lives in the pure receiptText module (shared with the seed script)
+export { fallbackReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel, type ReceiptClassifierConfig } from './receiptText'
 
 interface CategoryCandidate {
   id: string
@@ -27,99 +42,12 @@ interface CategorySuggestion {
   confidence?: ReceiptConfidence
 }
 
-export interface ReceiptClassifierConfig {
-  noiseTokens: Set<string>
-  lowValueWords: Set<string>
-  ocrAliases: Map<string, string>
-}
-
 const FUZZY_MIN_LABEL_SIMILARITY = 0.66
 const FUZZY_MIN_SCORE = 0.82
-const FALLBACK_NOISE_TOKENS = [
-  'stk',
-  'pcs',
-  'pc',
-  'kg',
-  'g',
-  'l',
-  'ml',
-  'cl',
-  'cm',
-  'mm',
-  'ltr',
-  'liter',
-  'gram',
-  'varenr',
-  'vare',
-  'nr',
-  'dk',
-  'kr',
-  'dkk',
-]
-const FALLBACK_LOW_VALUE_WORDS = [
-  'total',
-  'subtotal',
-  'sum',
-  'i alt',
-  'ialt',
-  'at betale',
-  'betale',
-  'til betaling',
-  'betaling',
-  'betalt',
-  'beløb',
-  'belob',
-  'change',
-  'cash',
-  'card',
-  'kort',
-  'kreditkort',
-  'betalingskort',
-  'visa',
-  'mastercard',
-  'dankort',
-  'mobilepay',
-  'kontant',
-  'tax',
-  'vat',
-  'moms',
-  'rabat',
-  'rabatten',
-  'retur',
-]
-const FALLBACK_OCR_ALIASES: Array<[string, string]> = [
-  ['totlet', 'toilet'],
-  ['tollet', 'toilet'],
-  ['toiletpapii', 'toiletpapir'],
-  ['chilt', 'chili'],
-  ['k kkenruller', 'køkkenruller'],
-  ['kokkenruller', 'køkkenruller'],
-  ['k@kkenruller', 'køkkenruller'],
-  ['minimalk', 'minimælk'],
-  ['handsebe', 'handsæbe'],
-  ['handsaebe', 'handsæbe'],
-  ['sonderyjsk', 'sønderjysk'],
-  ['spegopol', 'spegepøl'],
-  ['oksespegepol', 'oksespegepøl'],
-]
-const FALLBACK_CLASSIFIER_CONFIG: ReceiptClassifierConfig = {
-  noiseTokens: new Set(FALLBACK_NOISE_TOKENS),
-  lowValueWords: new Set(FALLBACK_LOW_VALUE_WORDS),
-  ocrAliases: new Map(FALLBACK_OCR_ALIASES),
-}
-
 type ReceiptClassifierTermType = 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS'
 
-export function fallbackReceiptClassifierConfig(): ReceiptClassifierConfig {
-  return {
-    noiseTokens: new Set(FALLBACK_NOISE_TOKENS),
-    lowValueWords: new Set(FALLBACK_LOW_VALUE_WORDS),
-    ocrAliases: new Map(FALLBACK_OCR_ALIASES),
-  }
-}
-
 export async function loadReceiptClassifierConfig(householdId: string): Promise<ReceiptClassifierConfig> {
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (!delegate?.findMany) return FALLBACK_CLASSIFIER_CONFIG
 
   const rows = await delegate.findMany({
@@ -139,7 +67,7 @@ export async function loadReceiptClassifierConfig(householdId: string): Promise<
     const term = normalizeClassifierTerm(row.term)
     if (!term) continue
     if (row.termType === 'OCR_ALIAS') {
-      const alias = parseOcrAliasTerm(term)
+      const alias = parseOcrAlias(term)
       if (!alias) continue
       if (row.scopeKey === householdId && !row.isActive) {
         config.ocrAliases.delete(alias.source)
@@ -161,25 +89,6 @@ export async function loadReceiptClassifierConfig(householdId: string): Promise<
   return config
 }
 
-export function normalizeReceiptLabel(value: string, config: ReceiptClassifierConfig = FALLBACK_CLASSIFIER_CONFIG): string {
-  const normalized = value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/(?:^|\s)[a-z]{0,3}\d{4,}[a-z0-9-]*(?=\s|$)/gi, ' ')
-    .replace(/\b\d+(?:[,.]\d+)?\s*(?:x|stk|pcs?|kg|g|l|ml|cl|cm|mm|ltr|liter|gram)\b/gi, ' ')
-    .replace(/\b(?:x|stk|pcs?)\s*\d+(?:[,.]\d+)?\b/gi, ' ')
-    .replace(/\b\d+[,.]\d{2}\b(?=\s*$)/g, ' ')
-    .replace(/\b\d{2,}\b/g, ' ')
-    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  const withoutNoise = normalized
-    .split(/\s+/)
-    .filter((token) => token.length > 1 && !config.noiseTokens.has(token))
-    .join(' ')
-  return applyOcrAliases(withoutNoise, config.ocrAliases)
-}
-
 export function correctReceiptOcrText(value: string, config: ReceiptClassifierConfig = FALLBACK_CLASSIFIER_CONFIG): string {
   if (!value || config.ocrAliases.size === 0) return value
   const aliases = [...config.ocrAliases.entries()]
@@ -196,14 +105,14 @@ export function correctReceiptOcrText(value: string, config: ReceiptClassifierCo
   return corrected
 }
 
-export function merchantMappingKey(merchantName?: string | null, config?: ReceiptClassifierConfig): string {
-  return normalizeReceiptLabel(merchantName ?? '', config)
-}
-
-export async function applyCategorySuggestions(receipt: ParsedReceipt, householdId: string): Promise<ParsedReceipt> {
+export async function applyCategorySuggestions(
+  receipt: ParsedReceipt,
+  householdId: string,
+  preloadedConfig: ReceiptClassifierConfig | null = null,
+): Promise<ParsedReceipt> {
   if (receipt.lineItems.length === 0) return receipt
 
-  const [categories, rawMappings, classifierConfig] = await Promise.all([
+  const [categories, classifierConfig] = await Promise.all([
     prisma.category.findMany({
       where: {
         categoryType: 'EXPENSE',
@@ -222,21 +131,16 @@ export async function applyCategorySuggestions(receipt: ParsedReceipt, household
         },
       },
     }),
-    prisma.receiptCategoryMapping.findMany({
-      where: { OR: [{ scopeKey: 'system' }, { scopeKey: householdId }] },
-      select: { scopeKey: true, householdId: true, categoryId: true, subcategoryId: true, normalizedLabel: true, merchantKey: true, hitCount: true, lastUsedAt: true },
-      orderBy: [{ hitCount: 'desc' }, { lastUsedAt: 'desc' }],
-      take: 2000,
-    }),
-    loadReceiptClassifierConfig(householdId),
+    preloadedConfig ?? loadReceiptClassifierConfig(householdId),
   ])
 
-  const mappings = rawMappings.filter((mapping) => isValidSuggestion(mapping, categories))
-  const merchantKey = merchantMappingKey(receipt.merchantName, classifierConfig)
   const normalizedItems = receipt.lineItems.map((item) => ({
     ...item,
     normalizedLabel: normalizeReceiptLabel(item.label, classifierConfig),
   }))
+  const rawMappings = await loadMappingCandidates(householdId, normalizedItems.map((item) => item.normalizedLabel))
+  const mappings = rawMappings.filter((mapping) => isValidSuggestion(mapping, categories))
+  const merchantKey = merchantMappingKey(receipt.merchantName, classifierConfig)
   const firstPassItems = normalizedItems.map((item) => classifyWithoutAi(item, receipt.merchantName, merchantKey, categories, mappings, classifierConfig))
   const aiIndexes = firstPassItems
     .map((item, index) => (!item.categoryId ? index : -1))
@@ -265,10 +169,36 @@ export async function applyCategorySuggestions(receipt: ParsedReceipt, household
   }
 }
 
+const MAPPING_SELECT = { scopeKey: true, householdId: true, categoryId: true, subcategoryId: true, normalizedLabel: true, merchantKey: true, hitCount: true, lastUsedAt: true } as const
+const FUZZY_POOL_PER_SCOPE = 2000
+
+/**
+ * Mappings to classify a receipt with: every exact match for its labels (no cap),
+ * plus the most-used mappings of the household and the system defaults as fuzzy
+ * candidates, capped per scope. One shared cap used to let a large system set push
+ * all of a household's own mappings out.
+ */
+async function loadMappingCandidates(householdId: string, labels: string[]) {
+  const scopes = { OR: [{ scopeKey: 'system' }, { scopeKey: householdId }] }
+  const byUsage = [{ hitCount: 'desc' as const }, { lastUsedAt: 'desc' as const }]
+  const [exact, householdPool, systemPool] = await Promise.all([
+    prisma.receiptCategoryMapping.findMany({ where: { ...scopes, normalizedLabel: { in: [...new Set(labels.filter(Boolean))] } }, select: MAPPING_SELECT }),
+    prisma.receiptCategoryMapping.findMany({ where: { scopeKey: householdId }, select: MAPPING_SELECT, orderBy: byUsage, take: FUZZY_POOL_PER_SCOPE }),
+    prisma.receiptCategoryMapping.findMany({ where: { scopeKey: 'system' }, select: MAPPING_SELECT, orderBy: byUsage, take: FUZZY_POOL_PER_SCOPE }),
+  ])
+  const seen = new Set<string>()
+  return [...exact, ...householdPool, ...systemPool].filter((mapping) => {
+    const key = `${mapping.scopeKey}|${mapping.normalizedLabel}|${mapping.merchantKey}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export async function learnReceiptMappings(args: {
   householdId: string
   merchantName?: string | null
-  items: Array<{ originalText?: string; label?: string; normalizedLabel: string; categoryId?: string | null; subcategoryId?: string | null; isIgnored?: boolean }>
+  items: Array<{ originalText?: string; label?: string; normalizedLabel: string; categoryId?: string | null; subcategoryId?: string | null; isIgnored?: boolean; confidence?: ReceiptConfidence }>
 }) {
   const classifierConfig = await loadReceiptClassifierConfig(args.householdId)
   const merchantKey = merchantMappingKey(args.merchantName, classifierConfig)
@@ -627,6 +557,7 @@ export function suggestCategory(
   classifierConfig: ReceiptClassifierConfig = FALLBACK_CLASSIFIER_CONFIG,
 ): CategorySuggestion | null {
   const haystack = `${label} ${normalizeReceiptLabel(merchantName ?? '', classifierConfig)}`
+  const has = (terms: string) => matchesAnyTerm(haystack, terms)
   const find = (names: string[], subcategoryNames: string[] = []) => {
     const category = names
       .map((name) => categories.find((c) => c.name.toLowerCase().includes(name)))
@@ -638,124 +569,128 @@ export function suggestCategory(
     return { categoryId: category.id, subcategoryId: subcategory?.id ?? null, confidence: 'MEDIUM' as const }
   }
 
-  if (/(håndsæbe|handsæbe|shampoo|balsam|tandpasta|tandbørste|deodorant|barber|bind|tampon|vatpind|vatrondel|bodylotion|læbepomade|creme)/i.test(haystack)) {
-    if (/(shampoo|balsam)/i.test(haystack)) return find(['shared household', 'personal care'], ['hair'])
-    if (/(tandpasta|tandbørste)/i.test(haystack)) return find(['shared household', 'personal care'], ['dental'])
-    if (/(barber)/i.test(haystack)) return find(['shared household', 'personal care'], ['shaving'])
-    if (/(deodorant)/i.test(haystack)) return find(['shared household', 'personal care'], ['deodorant'])
-    if (/(creme|bodylotion|læbepomade)/i.test(haystack)) return find(['shared household', 'personal care'], ['skin'])
+  if (has('håndsæbe|handsæbe|shampoo|balsam|tandpasta|tandbørste|deodorant|barber|bind|tampon|vatpind|vatrondel|bodylotion|læbepomade|creme')) {
+    if (has('shampoo|balsam')) return find(['shared household', 'personal care'], ['hair'])
+    if (has('tandpasta|tandbørste')) return find(['shared household', 'personal care'], ['dental'])
+    if (has('barber')) return find(['shared household', 'personal care'], ['shaving'])
+    if (has('deodorant')) return find(['shared household', 'personal care'], ['deodorant'])
+    if (has('creme|bodylotion|læbepomade')) return find(['shared household', 'personal care'], ['skin'])
     return find(['shared household', 'personal care'], ['hygiene'])
   }
-  if (/(køkkenrulle|køkkenruller|toiletpapir|toilet papir|toilet|totlet|serviet|lommetørklæde|opvask|rengøring|rengoering|toiletrens|afkalker|klorin|skuresvamp|svamp|karklud|vaskemiddel|vaskepulver|skyllemiddel|bagepapir|madpapir|frysepose|affaldspose|affaldssæk|stanniol|folie|husholdningsfilm|batteri|elpære)/i.test(haystack)) {
-    if (/(køkkenrulle|køkkenruller|toiletpapir|toilet papir|toilet|totlet|serviet|lommetørklæde)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['paper'])
-    if (/(opvask|rengøring|rengoering|toiletrens|afkalker|klorin|skuresvamp|svamp|karklud)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['cleaning'])
-    if (/(vaskemiddel|vaskepulver|skyllemiddel)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['laundry'])
-    if (/(frysepose|affaldspose|affaldssæk|stanniol|folie|husholdningsfilm)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['bags'])
-    if (/(batteri)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['batter'])
-    if (/(elpære)/i.test(haystack)) return find(['shared household', 'household supplies', 'household'], ['light'])
+  if (has('køkkenrulle|køkkenruller|toiletpapir|toilet papir|toilet|totlet|serviet|lommetørklæde|opvask|rengøring|rengoering|toiletrens|afkalker|klorin|skuresvamp|svamp|karklud|vaskemiddel|vaskepulver|skyllemiddel|bagepapir|madpapir|frysepose|affaldspose|affaldssæk|stanniol|folie|husholdningsfilm|batteri|elpære')) {
+    if (has('køkkenrulle|køkkenruller|toiletpapir|toilet papir|toilet|totlet|serviet|lommetørklæde')) return find(['shared household', 'household supplies', 'household'], ['paper'])
+    if (has('opvask|rengøring|rengoering|toiletrens|afkalker|klorin|skuresvamp|svamp|karklud')) return find(['shared household', 'household supplies', 'household'], ['cleaning'])
+    if (has('vaskemiddel|vaskepulver|skyllemiddel')) return find(['shared household', 'household supplies', 'household'], ['laundry'])
+    if (has('frysepose|affaldspose|affaldssæk|stanniol|folie|husholdningsfilm')) return find(['shared household', 'household supplies', 'household'], ['bags'])
+    if (has('batteri')) return find(['shared household', 'household supplies', 'household'], ['batter'])
+    if (has('elpære')) return find(['shared household', 'household supplies', 'household'], ['light'])
     return find(['shared household', 'household supplies', 'household'])
   }
-  if (/(bleer|vådserviet|babymad|modermælkserstatning|sutter|bamse|lego)/i.test(haystack)) {
-    if (/(bleer)/i.test(haystack)) return find(['shared household', 'children', 'baby'], ['diaper'])
-    if (/(babymad|modermælkserstatning)/i.test(haystack)) return find(['shared household', 'children', 'baby'], ['baby food'])
-    if (/(lego|bamse)/i.test(haystack)) return find(['shared household', 'children', 'baby'], ['toy'])
+  if (has('bleer|vådserviet|babymad|modermælkserstatning|sutter|bamse|lego')) {
+    if (has('bleer')) return find(['shared household', 'children', 'baby'], ['diaper'])
+    if (has('babymad|modermælkserstatning')) return find(['shared household', 'children', 'baby'], ['baby food'])
+    if (has('lego|bamse')) return find(['shared household', 'children', 'baby'], ['toy'])
     return find(['shared household', 'children', 'baby'], ['baby care'])
   }
-  if (/(hundemad|kattemad|kattegrus|godbidder)/i.test(haystack)) {
-    if (/(hundemad|kattemad)/i.test(haystack)) return find(['shared household', 'pets'], ['pet food', 'food'])
+  if (has('hundemad|kattemad|kattegrus|godbidder')) {
+    if (has('hundemad|kattemad')) return find(['shared household', 'pets'], ['pet food', 'food'])
     return find(['shared household', 'pets'], ['pet supplies', 'supplies'])
   }
-  if (/(strømper|t shirt|bukser|sko)/i.test(haystack)) {
-    if (/(sko)/i.test(haystack)) return find(['shared household', 'clothing'], ['shoe'])
+  if (has('strømper|t shirt|bukser|sko')) {
+    if (has('sko')) return find(['shared household', 'clothing'], ['shoe'])
     return find(['shared household', 'clothing'], ['clothing'])
   }
-  if (/(bog|bøger|blomster|gave)/i.test(haystack)) {
-    if (/(bog|bøger)/i.test(haystack)) return find(['shared household', 'leisure', 'gift'], ['book'])
-    if (/(blomster)/i.test(haystack)) return find(['shared household', 'leisure', 'gift'], ['flower'])
+  if (has('bog|bøger|blomster|gave')) {
+    if (has('bog|bøger')) return find(['shared household', 'leisure', 'gift'], ['book'])
+    if (has('blomster')) return find(['shared household', 'leisure', 'gift'], ['flower'])
     return find(['shared household', 'leisure', 'gift'], ['gift'])
   }
-  if (/(panodil|ipren|næsespray|hostesaft|vitamin|plaster|medicin)/i.test(haystack)) {
+  if (has('panodil|ipren|næsespray|hostesaft|vitamin|plaster|medicin')) {
     return find(['shared household', 'healthcare'], ['pharmacy', 'medicine'])
   }
-  if (/(milk|bread|cheese|egg|fruit|vegetable|grocery|grocer|supermarket|netto|rema|føtex|bilka|lidl|aldi|meny|coop)/i.test(haystack)) {
-    if (/(mælk|maelk|yoghurt|skyr|fløde|floede|ost|smør|smoer|dairy|milk|cheese)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['dairy', 'food'])
-    if (/(rugbrød|broed|brød|boller|toast|knækbrød|bread|bakery)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['bakery', 'food'])
-    if (/(vegetable|carrot|potato|tomato|salad|onion|pepper|broccoli|fruit|apple|banana|orange|agurk|tomat|kartof|løg|gulerød|salat|peberfrugt|æble|banan|appelsin|pære|vindrue|jordbær|blåbær)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['vegetable'])
-    if (/(beef|pork|chicken|meat|fish|bacon|sausage|oksekød|svinekød|kylling|frikadelle|pølse|bacon|spegepølse|hamburgerryg|roastbeef|filet|leverpostej|tun|makrel|laks|rejer|sild)/i.test(haystack)) {
-      if (/(fish|tun|makrel|laks|rejer|sild|fisk)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['fish', 'seafood', 'meat'])
+  if (has('milk|bread|cheese|egg|fruit|vegetable|grocery|grocer|supermarket|netto|rema|føtex|bilka|lidl|aldi|meny|coop')) {
+    if (has('mælk|maelk|yoghurt|skyr|fløde|floede|ost|smør|smoer|dairy|milk|cheese')) return find(['shared household', 'food', 'grocer'], ['dairy', 'food'])
+    if (has('rugbrød|broed|brød|boller|toast|knækbrød|bread|bakery')) return find(['shared household', 'food', 'grocer'], ['bakery', 'food'])
+    if (has('vegetable|carrot|potato|tomato|salad|onion|pepper|broccoli|fruit|apple|banana|orange|agurk|tomat|kartof|løg|gulerød|salat|peberfrugt|æble|banan|appelsin|pære|vindrue|jordbær|blåbær')) return find(['shared household', 'food', 'grocer'], ['vegetable'])
+    if (has('beef|pork|chicken|meat|fish|bacon|sausage|oksekød|svinekød|kylling|frikadelle|pølse|bacon|spegepølse|hamburgerryg|roastbeef|filet|leverpostej|tun|makrel|laks|rejer|sild')) {
+      if (has('fish|tun|makrel|laks|rejer|sild|fisk')) return find(['shared household', 'food', 'grocer'], ['fish', 'seafood', 'meat'])
       return find(['shared household', 'food', 'grocer'], ['meat'])
     }
-    if (/(remoulade|mayonnaise|ketchup|sennep|chili sauce|dressing|pesto|salsa)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['condiment', 'food'])
-    if (/(kaffe|coffee|te|tea)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['coffee', 'tea', 'food'])
-    if (/(cola|sodavand|soda|juice|saft|danskvand|energidrik|kakao)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['soda', 'drinks', 'food'])
-    if (/(candy|sweets|chocolate|snack|chips|slik|chokolade|lakrids|vingummi|kiks|popcorn|nødder)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['candy', 'snacks'])
-    if (/(beer|øl)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['beer'])
-    if (/(wine|vin)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['wine'])
-    if (/(alcohol|vodka|rum|gin|whisky|whiskey)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['alcohol'])
-    if (/(toy|lego|game|doll)/i.test(haystack)) return find(['shared household', 'food', 'grocer'], ['toy'])
-    if (/(soap|detergent|cleaner|toilet|kitchen|household|laundry)/i.test(haystack)) return find(['shared household', 'household supplies', 'household', 'food'], ['household'])
+    if (has('remoulade|mayonnaise|ketchup|sennep|chili sauce|dressing|pesto|salsa')) return find(['shared household', 'food', 'grocer'], ['condiment', 'food'])
+    if (has('kaffe|coffee|te|tea')) return find(['shared household', 'food', 'grocer'], ['coffee', 'tea', 'food'])
+    if (has('cola|sodavand|soda|juice|saft|danskvand|energidrik|kakao')) return find(['shared household', 'food', 'grocer'], ['soda', 'drinks', 'food'])
+    if (has('candy|sweets|chocolate|snack|chips|slik|chokolade|lakrids|vingummi|kiks|popcorn|nødder')) return find(['shared household', 'food', 'grocer'], ['candy', 'snacks'])
+    if (has('beer|øl')) return find(['shared household', 'food', 'grocer'], ['beer'])
+    if (has('wine|vin')) return find(['shared household', 'food', 'grocer'], ['wine'])
+    if (has('alcohol|vodka|rum|gin|whisky|whiskey')) return find(['shared household', 'food', 'grocer'], ['alcohol'])
+    if (has('toy|lego|game|doll')) return find(['shared household', 'food', 'grocer'], ['toy'])
+    if (has('soap|detergent|cleaner|toilet|kitchen|household|laundry')) return find(['shared household', 'household supplies', 'household', 'food'], ['household'])
     return find(['shared household', 'food', 'grocer'], ['groceries', 'food'])
   }
-  if (/(bus|train|metro|fuel|gas|parking|taxi|uber|transport|diesel|petrol|benzin)/i.test(haystack)) {
-    if (/(fuel|gas|diesel|petrol|benzin)/i.test(haystack)) return find(['transport'], ['fuel'])
-    if (/(bus|train|metro)/i.test(haystack)) return find(['transport'], ['public'])
-    if (/parking/i.test(haystack)) return find(['transport'], ['parking'])
-    if (/(taxi|uber)/i.test(haystack)) return find(['transport'], ['taxi'])
+  if (has('bus|train|metro|fuel|gas|parking|taxi|uber|transport|diesel|petrol|benzin')) {
+    if (has('fuel|gas|diesel|petrol|benzin')) return find(['transport'], ['fuel'])
+    if (has('bus|train|metro')) return find(['transport'], ['public'])
+    if (has('parking')) return find(['transport'], ['parking'])
+    if (has('taxi|uber')) return find(['transport'], ['taxi'])
     return find(['transport'])
   }
-  if (/(restaurant|cafe|coffee|burger|pizza|takeaway|dining|bar)/i.test(haystack)) {
+  if (has('restaurant|cafe|coffee|burger|pizza|takeaway|dining|bar')) {
     return find(['dining', 'food'], ['food'])
   }
-  if (/(netflix|spotify|subscription|membership|icloud|google|apple)/i.test(haystack)) {
-    if (/(netflix|spotify|stream)/i.test(haystack)) return find(['subscription'], ['stream'])
-    if (/(software|icloud|google|apple)/i.test(haystack)) return find(['subscription'], ['software'])
+  if (has('netflix|spotify|subscription|membership|icloud|google|apple')) {
+    if (has('netflix|spotify|stream')) return find(['subscription'], ['stream'])
+    if (has('software|icloud|google|apple')) return find(['subscription'], ['software'])
     return find(['subscription'], ['membership'])
   }
-  if (/(soap|detergent|cleaner|toilet|kitchen|household|laundry)/i.test(haystack)) {
+  if (has('soap|detergent|cleaner|toilet|kitchen|household|laundry')) {
     return find(['household', 'home', 'food'], ['household'])
   }
   if ([...classifierConfig.lowValueWords].some((word) => label.includes(word))) return null
   return null
 }
 
-async function learnReceiptClassifierTerms(
-  householdId: string,
-  items: Array<{ originalText?: string; label?: string; normalizedLabel: string; isIgnored?: boolean }>,
-  classifierConfig: ReceiptClassifierConfig,
-) {
-  const delegate = (prisma as any).receiptClassifierTerm
-  if (!delegate?.upsert) return
+type LearnItem = { originalText?: string; label?: string; normalizedLabel: string; isIgnored?: boolean }
 
-  const noiseCandidates = new Set<string>()
-  const lowValueCandidates = new Set<string>()
+/**
+ * Classifier terms a confirmed receipt suggests. Noise tokens are OCR words the user
+ * trimmed away, taken only from lines that were trimmed rather than renamed (every
+ * kept word appears in the OCR text): a renamed line ("KYLLINGEBRYST" → "Chicken
+ * breast") says nothing about noise, and learning from it used to make real product
+ * names vanish from later receipts. Ignored lines suggest low-value words.
+ */
+export function classifierTermCandidates(items: LearnItem[], classifierConfig: ReceiptClassifierConfig): { noise: Set<string>; lowValue: Set<string> } {
+  const noise = new Set<string>()
+  const lowValue = new Set<string>()
   const ocrAliasSourceTokens = new Set(
     [...classifierConfig.ocrAliases.keys()].flatMap((source) => tokenizeClassifierTerms(source)),
   )
   for (const item of items) {
-    const sourceText = item.originalText || item.label || item.normalizedLabel
-    const sourceTokens = tokenizeClassifierTerms(sourceText)
+    const sourceTokens = tokenizeClassifierTerms(item.originalText || item.label || item.normalizedLabel)
     const normalizedTokens = new Set(tokenizeClassifierTerms(item.normalizedLabel))
-    for (const token of sourceTokens) {
-      if (!normalizedTokens.has(token) && !classifierConfig.noiseTokens.has(token) && !ocrAliasSourceTokens.has(token)) {
-        noiseCandidates.add(token)
-      }
-    }
     if (item.isIgnored) {
-      for (const token of normalizedTokens) {
-        if (!classifierConfig.lowValueWords.has(token)) lowValueCandidates.add(token)
-      }
+      for (const token of normalizedTokens) if (!classifierConfig.lowValueWords.has(token)) lowValue.add(token)
+    }
+    const sourceSet = new Set(sourceTokens)
+    const trimmedNotRenamed = normalizedTokens.size > 0 && [...normalizedTokens].every((token) => sourceSet.has(token))
+    if (!trimmedNotRenamed) continue
+    for (const token of sourceTokens) {
+      if (!normalizedTokens.has(token) && !classifierConfig.noiseTokens.has(token) && !ocrAliasSourceTokens.has(token)) noise.add(token)
     }
   }
+  return { noise, lowValue }
+}
 
+async function learnReceiptClassifierTerms(householdId: string, items: LearnItem[], classifierConfig: ReceiptClassifierConfig) {
+  const { noise, lowValue } = classifierTermCandidates(items, classifierConfig)
   await Promise.all([
-    ...[...noiseCandidates].map((term) => observeClassifierTerm(householdId, 'NOISE_TOKEN', term, 3)),
-    ...[...lowValueCandidates].map((term) => observeClassifierTerm(householdId, 'LOW_VALUE_WORD', term, 3)),
+    ...[...noise].map((term) => observeClassifierTerm(householdId, 'NOISE_TOKEN', term, 3)),
+    ...[...lowValue].map((term) => observeClassifierTerm(householdId, 'LOW_VALUE_WORD', term, 3)),
   ])
 }
 
 async function observeClassifierTerm(householdId: string, termType: ReceiptClassifierTermType, rawTerm: string, activationThreshold: number) {
   const term = normalizeClassifierTerm(rawTerm)
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (!term || !delegate?.upsert) return
   await delegate.upsert({
     where: { scopeKey_termType_term: { scopeKey: householdId, termType, term } },
@@ -781,11 +716,7 @@ async function observeClassifierTerm(householdId: string, termType: ReceiptClass
 }
 
 function tokenizeClassifierTerms(value: string): string[] {
-  return value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
-    .split(/\s+/)
+  return receiptWords(value)
     .map(normalizeClassifierTerm)
     .filter((term): term is string => Boolean(term))
 }
@@ -797,52 +728,7 @@ function normalizeClassifierTerm(value: string): string | null {
   return term
 }
 
-function parseOcrAliasTerm(term: string): { source: string; target: string } | null {
-  const match = term.match(/^(.+?)(?:=>|->)(.+)$/)
-  if (!match) return null
-  const source = normalizeAliasSide(match[1])
-  const target = normalizeAliasSide(match[2])
-  if (!source || !target || source === target) return null
-  return { source, target }
-}
 
-function normalizeAliasSide(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function applyOcrAliases(label: string, aliases: Map<string, string>): string {
-  if (!label || aliases.size === 0) return label
-  const tokens = label.split(/\s+/).filter(Boolean)
-  const aliasEntries = [...aliases.entries()]
-    .map(([source, target]) => ({
-      sourceTokens: source.split(/\s+/).filter(Boolean),
-      targetTokens: target.split(/\s+/).filter(Boolean),
-    }))
-    .filter((alias) => alias.sourceTokens.length > 0 && alias.targetTokens.length > 0)
-    .sort((a, b) => b.sourceTokens.length - a.sourceTokens.length)
-
-  const output: string[] = []
-  for (let index = 0; index < tokens.length;) {
-    const alias = aliasEntries.find((candidate) =>
-      candidate.sourceTokens.every((token, offset) => tokens[index + offset] === token),
-    )
-    if (alias) {
-      output.push(...alias.targetTokens)
-      index += alias.sourceTokens.length
-    } else {
-      output.push(tokens[index])
-      index += 1
-    }
-  }
-
-  return output.join(' ')
-}
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -859,6 +745,7 @@ export function isAllowedLocalAiHost(hostname: string): boolean {
     hostname === '127.0.0.1' ||
     hostname === '0.0.0.0' ||
     hostname === '::1' ||
+    hostname === '[::1]' ||
     hostname === 'host.docker.internal' ||
     hostname === 'ollama' ||
     hostname === 'local-ai' ||

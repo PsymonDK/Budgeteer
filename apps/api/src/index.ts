@@ -1,3 +1,4 @@
+import './env'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import jwt from '@fastify/jwt'
@@ -26,13 +27,39 @@ import { automationRoutes } from './routes/automations'
 import { payslipRoutes } from './routes/payslips'
 import { receiptRoutes } from './routes/receipts'
 import { receiptTrainingRoutes } from './routes/receiptTraining'
+import { occurrenceRoutes } from './routes/occurrences'
+import { trashRoutes } from './routes/trash'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
+import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
+import { purgeRefreshTokens } from './lib/sessions'
 import { prisma } from './lib/prisma'
+import { toErrorResponse } from './lib/errors'
 
-const VERSION = process.env.npm_package_version ?? '0.14.1'
+// The product version lives in the repo-root package.json (copied into the image)
+const VERSION = readProductVersion()
 
-const app = Fastify({ logger: true })
+function readProductVersion(): string {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../../package.json'), 'utf8')) as { version?: string }
+    return pkg.version ?? 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+// The API normally sits behind nginx. Trust X-Forwarded-For only from loopback and
+// private networks (the Docker network) so request.ip — and with it rate limiting —
+// is the real client, while a directly exposed API can't have its IP spoofed.
+const trustProxy = process.env.TRUST_PROXY ?? 'loopback,uniquelocal'
+const app = Fastify({ logger: true, trustProxy: trustProxy === 'false' ? false : trustProxy })
+
+app.setErrorHandler((error, request, reply) => {
+  const { statusCode, body } = toErrorResponse(error)
+  if (statusCode >= 500) request.log.error({ err: error }, 'Unhandled error')
+  return reply.status(statusCode).send(body)
+})
+
 const rateLimitEnabled = process.env.API_RATE_LIMIT_ENABLED !== 'false'
 const rateLimitMax = Number(process.env.API_RATE_LIMIT_MAX ?? 200)
 const rateLimitWindow = process.env.API_RATE_LIMIT_WINDOW ?? '15 minutes'
@@ -40,7 +67,6 @@ const rateLimitWindow = process.env.API_RATE_LIMIT_WINDOW ?? '15 minutes'
 // Plugins
 app.register(cors, {
   origin: process.env.PUBLIC_URL ?? process.env.CORS_ORIGIN ?? 'http://localhost:5173',
-  credentials: true,
 })
 
 const jwtSecret = process.env.JWT_SECRET
@@ -88,6 +114,8 @@ app.register(savingsRoutes)
 app.register(currencyRoutes)
 app.register(profileRoutes)
 app.register(budgetTransferRoutes)
+app.register(occurrenceRoutes)
+app.register(trashRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
 app.register(receiptRoutes)
@@ -120,6 +148,23 @@ const start = async () => {
         app.log.warn({ err }, 'Initial currency sync failed — rates will load on next daily sync')
       }
     }
+
+    // Budget-year statuses follow the calendar (FUTURE → ACTIVE → RETIRED). Run now in
+    // case the server was down over New Year, and daily after midnight.
+    const runLifecycle = () =>
+      runBudgetYearLifecycle()
+        .then((n) => { if (n > 0) app.log.info(`Budget-year lifecycle: ${n} year(s) activated`) })
+        .catch((err) => app.log.error({ err }, 'Budget-year lifecycle failed'))
+    await runLifecycle()
+    cron.schedule('5 0 * * *', runLifecycle)
+
+    // Expired refresh tokens are never used again; keep the table small
+    const purgeTokens = () =>
+      purgeRefreshTokens()
+        .then((n) => { if (n > 0) app.log.info(`Purged ${n} expired refresh token(s)`) })
+        .catch((err) => app.log.error({ err }, 'Refresh token purge failed'))
+    await purgeTokens()
+    cron.schedule('10 0 * * *', purgeTokens)
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00
     cron.schedule('0 0 1 * *', () => {

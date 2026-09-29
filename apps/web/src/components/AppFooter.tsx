@@ -1,4 +1,4 @@
-const VERSION = '0.58.1'
+const VERSION = __APP_VERSION__
 
 export function AppFooter() {
   return (

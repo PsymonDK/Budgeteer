@@ -1,12 +1,12 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcMonthlyEquivalent } from '../lib/calculations'
-import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
+import { calcMonthlyInBase } from '../lib/calculations'
+import { resolveSaveRate, BASE_CURRENCY } from '../lib/currency'
 import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
-import { assertBudgetYearAccess, assertHouseholdAccess, validateOwnership } from '../lib/ownership'
+import { assertBudgetYearAccess, assertHouseholdAccess, findUsableCategory, validateAccountAccess, validateOwnership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
@@ -89,22 +89,25 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
 
+    if (categoryId) {
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const ownershipError = await validateOwnership(ownership, ownedByUserId, customSplits, budgetYear.householdId)
     if (ownershipError) return reply.status(400).send({ error: ownershipError })
 
     const currency = currencyCode ? currencyCode.toUpperCase() : BASE_CURRENCY
-    const rate = currency === BASE_CURRENCY ? 1 : await getLatestRate(currency)
-    if (rate === null) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    const resolved = await resolveSaveRate(currency)
+    if (!resolved) return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
+    const { rate } = resolved
 
-    const amountInBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
-    const monthlyEquivalent = calcMonthlyEquivalent(amountInBase, frequency)
+    const monthlyEquivalent = calcMonthlyInBase(amount, rate, frequency)
 
     const entry = await prisma.$transaction(async (tx) => {
       const created = await tx.savingsEntry.create({
@@ -117,7 +120,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           notes,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
           originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
-          rateUsed: currency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          rateUsed: currency !== BASE_CURRENCY ? rate : null,
           ownership,
           ownedByUserId: ownership === 'INDIVIDUAL' ? (ownedByUserId ?? null) : null,
           categoryId: categoryId ?? null,
@@ -140,7 +143,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return created
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(201).send(entry)
   })
 
@@ -163,11 +166,14 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const { ownership, ownedByUserId, categoryId, customSplits, accountId, ...data } = result.data
 
+    if (categoryId) {
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS', existing.categoryId)
+      if (!category) return reply.status(400).send({ error: 'Category not found' })
+    }
+
     if (accountId) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const newOwnership = ownership ?? existing.ownership
@@ -183,37 +189,33 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const newCurrency = data.currencyCode ? data.currencyCode.toUpperCase()
       : (existing.currencyCode ?? BASE_CURRENCY)
-    let rate: number
-    if (newCurrency === BASE_CURRENCY) {
-      rate = 1
-    } else if (existing.rateDate && existing.rateUsed) {
-      rate = toNum(existing.rateUsed)
-    } else {
-      const fetched = await getLatestRate(newCurrency)
-      if (fetched === null) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
-      rate = fetched
-    }
+    // A locked rate is kept only while the currency is unchanged
+    const resolved = await resolveSaveRate(newCurrency, existing)
+    if (!resolved) return reply.status(400).send({ error: `No exchange rate found for ${newCurrency}` })
+    const { rate } = resolved
 
-    const newAmount = data.amount !== undefined ? data.amount : toNum(existing.amount)
+    const newAmount = data.amount !== undefined ? new Decimal(data.amount) : new Decimal(existing.amount.toString())
     const newFrequency = data.frequency ?? existing.frequency
-    const amountInBase = newAmount * rate
-    const monthlyEquivalent = calcMonthlyEquivalent(new Decimal(amountInBase), newFrequency)
+    const monthlyEquivalent = calcMonthlyInBase(newAmount, rate, newFrequency)
 
     const updated = await prisma.$transaction(async (tx) => {
-      // Always replace custom splits when ownership fields are touched
-      await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: entryId } })
+      // Replace custom splits only when the request touches ownership; a label-only
+      // edit must not wipe an existing custom split
+      const touchesOwnership = ownership !== undefined || customSplits !== undefined
+      if (touchesOwnership) await tx.savingsCustomSplit.deleteMany({ where: { savingsEntryId: entryId } })
 
       const savedEntry = await tx.savingsEntry.update({
         where: { id: entryId },
         data: {
           label: data.label,
-          amount: new Decimal(newAmount),
+          amount: newAmount,
           frequency: newFrequency,
           monthlyEquivalent,
           notes: data.notes,
           currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
-          originalAmount: newCurrency !== BASE_CURRENCY ? new Decimal(newAmount) : null,
-          rateUsed: newCurrency !== BASE_CURRENCY ? new Decimal(rate) : null,
+          originalAmount: newCurrency !== BASE_CURRENCY ? newAmount : null,
+          rateUsed: newCurrency !== BASE_CURRENCY ? rate : null,
+          rateDate: newCurrency !== BASE_CURRENCY ? resolved.rateDate : null,
           ownership: newOwnership,
           ownedByUserId: newOwnership === 'INDIVIDUAL' ? (newOwnedByUserId ?? null) : null,
           ...(categoryId !== undefined && { categoryId: categoryId ?? null }),
@@ -222,7 +224,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
         include: savingsInclude,
       })
 
-      if (newOwnership === 'CUSTOM' && customSplits?.length) {
+      if (touchesOwnership && newOwnership === 'CUSTOM' && customSplits?.length) {
         await tx.savingsCustomSplit.createMany({
           data: customSplits.map((s) => ({
             savingsEntryId: entryId,
@@ -236,7 +238,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return savedEntry
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send(updated)
   })
 
@@ -257,15 +259,13 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const { ids, categoryId, accountId } = result.data
 
     if (categoryId !== undefined && categoryId !== null) {
-      const category = await prisma.category.findUnique({ where: { id: categoryId } })
+      const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
       if (!category) return reply.status(400).send({ error: 'Category not found' })
     }
 
     if (accountId !== undefined && accountId !== null) {
-      const acct = await prisma.account.findUnique({ where: { id: accountId } })
-      if (!acct || !acct.isActive) return reply.status(400).send({ error: 'Account not found' })
-      if (acct.ownedByUserId !== userId && acct.householdId !== budgetYear.householdId)
-        return reply.status(400).send({ error: 'Account not accessible' })
+      const accountError = await validateAccountAccess(accountId, budgetYear.householdId, userId)
+      if (accountError) return reply.status(400).send({ error: accountError })
     }
 
     const { count } = await prisma.savingsEntry.updateMany({
@@ -276,7 +276,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       },
     })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.send({ updated: count })
   })
 
@@ -292,9 +292,10 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     const existing = await prisma.savingsEntry.findFirst({ where: { id: entryId, budgetYearId: id } })
     if (!existing) return reply.status(404).send({ error: 'Savings entry not found' })
 
-    await prisma.savingsEntry.delete({ where: { id: entryId } })
+    // Moves to the household trash (restorable); never hard-deleted
+    await prisma.savingsEntry.update({ where: { id: entryId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
 
-    recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+    await recalculateTransfer(id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     return reply.status(204).send()
   })
 
@@ -307,7 +308,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
-      include: { savingsEntries: true },
+      include: { savingsEntries: { where: notDeleted } },
       orderBy: { year: 'asc' },
     })
 

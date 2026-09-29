@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Plus, RefreshCw, Pencil } from 'lucide-react'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 
@@ -35,7 +36,7 @@ export function CurrenciesAdminPage() {
   const [editRate, setEditRate] = useState('')
 
   const { data: currencies = [], isLoading } = useQuery<AdminCurrency[]>({
-    queryKey: ['admin', 'currencies'],
+    queryKey: qk.adminCurrencies(),
     queryFn: async () => (await api.get<AdminCurrency[]>('/admin/currencies')).data,
   })
 
@@ -43,7 +44,7 @@ export function CurrenciesAdminPage() {
     mutationFn: (body: { code: string; name: string; rate: number }) =>
       api.post('/admin/currencies', body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'currencies'] })
+      queryClient.invalidateQueries({ queryKey: qk.adminCurrencies() })
       toast.success('Currency added')
       setAddOpen(false)
       setAddCode('')
@@ -59,7 +60,7 @@ export function CurrenciesAdminPage() {
     mutationFn: ({ code, body }: { code: string; body: { name?: string; rate?: number; isEnabled?: boolean } }) =>
       api.patch(`/admin/currencies/${code}`, body),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'currencies'] })
+      queryClient.invalidateQueries({ queryKey: qk.adminCurrencies() })
       toast.success('Currency updated')
       setEditTarget(null)
     },
@@ -71,8 +72,8 @@ export function CurrenciesAdminPage() {
   const refreshMutation = useMutation({
     mutationFn: () => api.post<{ updated: number }>('/admin/currencies/refresh'),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'currencies'] })
-      queryClient.invalidateQueries({ queryKey: ['currencies'] })
+      queryClient.invalidateQueries({ queryKey: qk.adminCurrencies() })
+      queryClient.invalidateQueries({ queryKey: qk.currencies() })
       toast.success(`Rates synced — ${res.data.updated} currencies updated`)
     },
     onError: () => toast.error('Rate sync failed'),

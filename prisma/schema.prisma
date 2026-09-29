@@ -120,6 +120,8 @@ model User {
   mustChangePassword        Boolean                    @default(true)
   failedLoginAttempts       Int                        @default(0)
   lockedUntil               DateTime?
+  // Tokens issued before this instant are rejected (password change/reset, role change)
+  sessionsValidAfter        DateTime?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
 
@@ -233,6 +235,9 @@ model SalaryRecord {
   payslipLines           Json?
   pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
   deductionsSource       String?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt      DateTime @default(now())
 
   @@index([jobId, effectiveFrom])
@@ -251,6 +256,9 @@ model MonthlyIncomeOverride {
   payslipLines           Json?
   pensionEmployerMonthly Decimal? @db.Decimal(10, 2)
   deductionsSource       String?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -269,8 +277,13 @@ model Bonus {
   budgetMode       BudgetMode?
   currencyCode     String?
   rateUsed         Decimal?    @db.Decimal(18, 6)
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  @@index([jobId])
 }
 
 model HouseholdIncomeAllocation {
@@ -296,6 +309,9 @@ model TaxCardSettings {
   pensionEmployerPct   Decimal? @db.Decimal(5, 2)
   atpAmount            Decimal? @db.Decimal(10, 2)
   bruttoItems          Json?
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt            DateTime @default(now())
 
   @@index([jobId, effectiveFrom])
@@ -348,7 +364,10 @@ model Receipt {
   account          Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
   merchantName     String?
   purchaseDate     DateTime?
+  // Sum of the non-ignored line items (kept in sync by the API)
   totalAmount      Decimal?          @db.Decimal(10, 2)
+  // TOTAL printed on the receipt (OCR, user-correctable) — used to flag missed or misread lines
+  printedTotal     Decimal?          @db.Decimal(10, 2)
   taxAmount        Decimal?          @db.Decimal(10, 2)
   feeAmount        Decimal?          @db.Decimal(10, 2)
   currencyCode     String            @default("DKK")
@@ -485,8 +504,13 @@ model Expense {
   account           Account?         @relation(fields: [accountId], references: [id], onDelete: SetNull)
   customSplits      ExpenseCustomSplit[]
   occurrences       ExpenseOccurrence[]
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@index([budgetYearId])
 }
 
 model ExpenseCustomSplit {
@@ -524,8 +548,13 @@ model SavingsEntry {
   category          Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   customSplits      SavingsCustomSplit[]
   occurrences       SavingsOccurrence[]
+  // Soft delete (trash): hidden from normal queries, restorable
+  deletedAt       DateTime?
+  deletedByUserId String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
+
+  @@index([budgetYearId])
 }
 
 model SavingsCustomSplit {
@@ -560,12 +589,17 @@ model Currency {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
-  user      User     @relation(fields: [userId], references: [id])
+  id        String    @id @default(cuid())
+  // SHA-256 of the token handed to the client (older rows may hold the raw token)
+  token     String    @unique
+  user      User      @relation(fields: [userId], references: [id])
   userId    String
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  // Set when the token is rotated; presenting a revoked token again signals theft
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Automation {

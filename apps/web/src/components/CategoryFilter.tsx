@@ -1,13 +1,14 @@
 import { CategoryIcon } from './CategoryIcon'
 
-interface Category {
+/** Minimal category shape the filter needs; callers pass API categories or derived ones. */
+interface CategoryFilterItem {
   id: string
   name: string
   icon?: string | null
 }
 
 interface CategoryFilterProps {
-  categories: Category[]
+  categories: CategoryFilterItem[]
   selected: Set<string>
   onChange: (next: Set<string>) => void
 }

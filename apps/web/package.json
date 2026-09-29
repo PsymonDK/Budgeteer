@@ -1,17 +1,16 @@
 {
   "name": "@budgeteer/web",
-  "version": "0.1.0",
+  "version": "0.58.1",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "lint": "eslint src --ext ts,tsx"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.20.0",
     "axios": "^1.15.0",
-    "clsx": "^2.1.0",
     "d3-sankey": "^0.12.3",
     "lucide-react": "^0.330.0",
     "react": "^18.2.0",

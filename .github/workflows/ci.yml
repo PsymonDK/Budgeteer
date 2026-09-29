@@ -1,0 +1,60 @@
+name: CI
+
+# Pushes to main and version tags run this via docker-publish.yml, which only
+# publishes images once it passes.
+on:
+  pull_request:
+  workflow_call:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: budgeteer
+          POSTGRES_PASSWORD: budgeteer
+          POSTGRES_DB: budgeteer
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U budgeteer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://budgeteer:budgeteer@localhost:5432/budgeteer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Migrations apply cleanly and match the schema
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        run: npm run build && npm run build:seed

@@ -1,11 +1,14 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { calcIncomeForYear, getIncomeReferenceDate } from '../lib/incomeCalc'
-import { assertHouseholdAccess, partitionByEffectiveAmount, resolveEffectiveAmount } from '../lib/ownership'
+import { Decimal } from '@prisma/client/runtime/client'
+import { calcIncomeForYear, calcIncomeForYearDetailed, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { assertHouseholdAccess, partitionByOwnership, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
+import { computeIncomeShares, formatSharePct, splitByShares } from '../lib/incomeShare'
+import { buildIncomeFlow } from '../lib/incomeFlow'
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   // ── GET /me/summary ──────────────────────────────────────────────────────────
@@ -188,14 +191,16 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
 
     // ── Income ──────────────────────────────────────────────────────────────
     const referenceDate = getIncomeReferenceDate(activeBudgetYear.year, activeBudgetYear.status)
-    const incomeResult = await calcIncomeForYear(activeBudgetYear.id, referenceDate)
-    const totalMonthlyGross = incomeResult.totalMonthlyGross
-    const totalMonthlyIncome = incomeResult.totalMonthlyNet
+    const incomeResult = await calcIncomeForYearDetailed(activeBudgetYear.id, referenceDate)
+    const totalMonthlyIncome = incomeResult.totalMonthlyNet.toNumber()
     const memberGrossMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedGross]))
     const memberNetMap = new Map(incomeResult.members.map((m) => [m.userId, m.monthlyAllocatedNet]))
+    // Unrounded income shares (equal split when no income is allocated, like
+    // /transfers/breakdown); sharePct is rounded for display only.
+    const memberShares = computeIncomeShares(household.members.map((m) => m.userId), memberGrossMap)
     const incomeMembers = household.members.map((m) => {
-      const allocatedGross = memberGrossMap.get(m.userId) ?? 0
-      const allocatedNet = memberNetMap.get(m.userId) ?? 0
+      const allocatedGross = memberGrossMap.get(m.userId) ?? new Decimal(0)
+      const allocatedNet = memberNetMap.get(m.userId) ?? new Decimal(0)
       return {
         userId: m.userId,
         name: m.user.name,
@@ -203,9 +208,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlyAllocated: allocatedNet.toFixed(2),
         monthlyAllocatedGross: allocatedGross.toFixed(2),
         monthlyAllocatedNet: allocatedNet.toFixed(2),
-        sharePct: totalMonthlyGross > 0
-          ? ((allocatedGross / totalMonthlyGross) * 100).toFixed(1)
-          : '0.0',
+        sharePct: formatSharePct(memberShares.get(m.userId)),
       }
     })
 
@@ -269,11 +272,11 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     if (budgetModel === 'PAY_NO_PAY') {
       const [expOccs, savOccs] = await Promise.all([
         prisma.expenseOccurrence.findMany({
-          where: { expense: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          where: { expense: { budgetYearId: activeBudgetYear.id, ...notDeleted }, year: currentYear, month: currentMonth, status: 'PENDING' },
           select: { expenseId: true, scheduledAmount: true, carriedAmount: true },
         }),
         prisma.savingsOccurrence.findMany({
-          where: { savingsEntry: { budgetYearId: activeBudgetYear.id }, year: currentYear, month: currentMonth, status: 'PENDING' },
+          where: { savingsEntry: { budgetYearId: activeBudgetYear.id, ...notDeleted }, year: currentYear, month: currentMonth, status: 'PENDING' },
           select: { savingsEntryId: true, scheduledAmount: true, carriedAmount: true },
         }),
       ])
@@ -290,19 +293,23 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       effectiveAmount: resolveEffectiveAmount(s, budgetModel, savOccMap.get(s.id)),
     }))
 
-    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByEffectiveAmount(expensesWithEffective)
-    const { shared: sharedSavingsPoolEff, individual: individualSavingsMapEff, custom: customSavingsMapEff } = partitionByEffectiveAmount(savingsWithEffective)
+    const { shared: sharedPool, individual: individualOwedMap, custom: customExpensesMap } = partitionByOwnership(expensesWithEffective, (e) => e.effectiveAmount)
+    const { shared: sharedSavingsPoolEff, individual: individualSavingsMapEff, custom: customSavingsMapEff } = partitionByOwnership(savingsWithEffective, (s) => s.effectiveAmount)
 
     // ── Surplus + splits ─────────────────────────────────────────────────────
     const surplus = totalMonthlyIncome - totalMonthlyExpenses - totalMonthlySavings
+    // Shared pools split by unrounded share into cents that add up to the pool
+    const sharedOwedMap = splitByShares(sharedPool, memberShares)
+    const sharedSavingsOwedMap = splitByShares(sharedSavingsPoolEff, memberShares)
+    const cents = (v: number) => new Decimal(v).toDecimalPlaces(2)
     const memberSplits = incomeMembers.map((m) => {
-      const sharedOwed = sharedPool * parseFloat(m.sharePct) / 100
-      const individualOwed = individualOwedMap.get(m.userId) ?? 0
-      const customOwed = customExpensesMap.get(m.userId) ?? 0
-      const sharedSavingsOwed = sharedSavingsPoolEff * parseFloat(m.sharePct) / 100
-      const individualSavingsOwed = individualSavingsMapEff.get(m.userId) ?? 0
-      const customSavingsOwed = customSavingsMapEff.get(m.userId) ?? 0
-      const totalSavingsOwed = sharedSavingsOwed + individualSavingsOwed + customSavingsOwed
+      const sharedOwed = sharedOwedMap.get(m.userId) ?? new Decimal(0)
+      const individualOwed = cents(individualOwedMap.get(m.userId) ?? 0)
+      const customOwed = cents(customExpensesMap.get(m.userId) ?? 0)
+      const sharedSavingsOwed = sharedSavingsOwedMap.get(m.userId) ?? new Decimal(0)
+      const individualSavingsOwed = cents(individualSavingsMapEff.get(m.userId) ?? 0)
+      const customSavingsOwed = cents(customSavingsMapEff.get(m.userId) ?? 0)
+      const totalSavingsOwed = sharedSavingsOwed.plus(individualSavingsOwed).plus(customSavingsOwed)
       return {
         userId: m.userId,
         name: m.name,
@@ -311,7 +318,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         monthlySharedOwed: sharedOwed.toFixed(2),
         monthlyIndividualOwed: individualOwed.toFixed(2),
         monthlyCustomOwed: customOwed.toFixed(2),
-        monthlyTotalOwed: (sharedOwed + individualOwed + customOwed + sharedSavingsOwed + individualSavingsOwed + customSavingsOwed).toFixed(2),
+        monthlyTotalOwed: sharedOwed.plus(individualOwed).plus(customOwed).plus(totalSavingsOwed).toFixed(2),
         monthlySavingsSharedOwed: sharedSavingsOwed.toFixed(2),
         monthlySavingsIndividualOwed: individualSavingsOwed.toFixed(2),
         monthlySavingsCustomOwed: customSavingsOwed.toFixed(2),
@@ -347,6 +354,14 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       },
       savings: { totalMonthly: totalMonthlySavings.toFixed(2) },
       surplus: surplus.toFixed(2),
+      // Savings as a percentage of net income (null without income)
+      savingsRate: totalMonthlyIncome > 0 ? ((totalMonthlySavings / totalMonthlyIncome) * 100).toFixed(1) : null,
+      incomeFlow: buildIncomeFlow(
+        incomeMembers.map((m) => ({ userId: m.userId, name: m.name, net: memberNetMap.get(m.userId) ?? new Decimal(0) })),
+        byCategory.map((c) => ({ categoryId: c.categoryId, categoryName: c.categoryName, total: new Decimal(c.totalMonthly) })),
+        new Decimal(totalMonthlySavings.toFixed(2)),
+        new Decimal(surplus.toFixed(2)),
+      ),
       memberSplits,
       warnings,
     })
@@ -369,8 +384,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
     const years = await prisma.budgetYear.findMany({
       where: { householdId, status: { not: 'SIMULATION' } },
       include: {
-        expenses: { include: { category: { select: { id: true, name: true, icon: true } } } },
-        savingsEntries: true,
+        expenses: { where: notDeleted, include: { category: { select: { id: true, name: true, icon: true } } } },
+        savingsEntries: { where: notDeleted },
       },
       orderBy: { year: 'asc' },
     })

@@ -26,18 +26,23 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
-- **node-cron** — daily currency rate sync (06:00)
+- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
 
 ### Infrastructure
-- **Docker + Docker Compose** — single-command self-hosted setup; the API image uses a multi-stage build so TypeScript compilation, Prisma generation, and build-only dependencies stay out of the runtime image.
-- **Bare metal** — setup script for direct server installs
+- **Docker + Docker Compose** — single-command self-hosted setup (`deploy/`) with published images; the API image uses a multi-stage build so TypeScript compilation, Prisma generation, and build-only dependencies stay out of the runtime image, and has a `/health` healthcheck the web container waits for.
+- **CI** (`.github/workflows/ci.yml`) — typecheck, lint, tests, builds, and migrations against an empty Postgres on every PR; `docker-publish.yml` runs it before building, pushing and Trivy-scanning the images.
+- **Versioning** — the product version is the `version` in the repo-root `package.json`; the API's `/health` and the web footer read it. Bump it (and the `CHANGELOG.md` heading) when releasing.
 
 ### Runtime Configuration
 - **API rate limiting** — Fastify global rate limiting is enabled by default and controlled by `API_RATE_LIMIT_ENABLED`, `API_RATE_LIMIT_MAX`, and `API_RATE_LIMIT_WINDOW`. The Docker development stack sets `API_RATE_LIMIT_ENABLED=false` because local browser traffic can produce many same-origin API calls through one proxy/client address.
-- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations, `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
+- **Container schema sync** — the API entrypoint uses `SCHEMA_SYNC_MODE` on startup. `push` runs non-destructive Prisma schema sync, `migrate` runs committed migrations (the image ships `prisma/migrations`), `skip` leaves the database untouched, and `force-push` is the explicit opt-in for Prisma `--accept-data-loss`. The Docker image runs the precompiled seed script at startup instead of keeping `ts-node` and TypeScript in the runtime layer.
+- **Migration history** — `prisma/migrations/` starts from a single `20260928000000_baseline` migration generated from the full schema (earlier incremental migrations could not build a fresh database). CI applies all migrations to an empty Postgres and fails if they drift from `schema.prisma`. An existing database that was kept in sync with `push` can switch to `migrate` by marking the baseline as applied once: `npx prisma migrate resolve --applied 20260928000000_baseline`.
+- **Client IP / proxies** — Fastify trusts `X-Forwarded-For` from `TRUST_PROXY` (default `loopback,uniquelocal`: loopback and private networks, i.e. the nginx container and any LAN reverse proxy in front of it). nginx forwards `X-Forwarded-For`/`X-Real-IP`, so rate limits apply per real client instead of to the whole instance. Clients on private networks can set the header themselves; set `TRUST_PROXY` to the proxy's exact address (or `false`) to rule that out.
+- **Image builds behind TLS-intercepting proxies** — both Dockerfiles accept an optional BuildKit secret `extra_ca` (a PEM root CA) used only during `npm ci`, `apk add` and Prisma engine downloads; it is never written to an image layer. Certificate verification is never disabled. The API image fetches Prisma's schema engine at build time, so container start needs no network access.
+- **API error responses** — a global Fastify error handler (`apps/api/src/lib/errors.ts`) maps Prisma not-found/unique/foreign-key errors to 404/409, keeps 4xx framework errors (validation, rate limit, body parsing), and returns a generic `{ error, code: "INTERNAL_ERROR" }` for anything else so internals never reach the client.
 
 ---
 
@@ -46,17 +51,22 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 ```
 budgeteer/
 ├── apps/
-│   ├── web/          # React frontend (Vite)
-│   └── api/          # Fastify backend
-├── docker/
-│   ├── Dockerfile.web
-│   ├── Dockerfile.api
-│   ├── nginx.conf
-│   └── docker-compose.yml
-├── prisma/
-│   └── schema.prisma
-├── scripts/
-└── docs/
+│   ├── web/                 # React frontend (Vite)
+│   │   └── src/
+│   │       ├── api/         # Axios client, shared API types, query keys and query hooks
+│   │       ├── pages/       # route screens, larger ones as folders (income/, expenses/, receipts/, …)
+│   │       ├── components/  # shared UI (Modal, ConfirmDialog, AccountSelect, …)
+│   │       ├── contexts/ hooks/ layouts/ lib/
+│   └── api/                 # Fastify backend
+│       ├── src/routes/      # REST route modules
+│       ├── src/lib/         # domain logic (calculations, income, transfers, receipts, sessions, …)
+│       ├── src/plugins/     # authenticate / requireAdmin
+│       └── scripts/         # receipt image preprocessing (Python/Pillow)
+├── prisma/                  # schema.prisma, migrations/, seed.ts, receipt training CSV
+├── docker/                  # Dockerfile.api, Dockerfile.web, nginx.conf, entrypoint.sh
+├── deploy/                  # docker-compose.yml, docker-compose.omv.yml (published images)
+├── docs/                    # this file, review notes
+└── docker-compose.dev.yml   # full stack from source
 ```
 
 ---
@@ -66,7 +76,7 @@ budgeteer/
 ### Entities
 
 **users** — system accounts
-- id, email, name, passwordHash, role (`SYSTEM_ADMIN` | `BOOKKEEPER` | `USER`), isActive, isProxy, mustChangePassword, avatarUrl, failedLoginAttempts, lockedUntil
+- id, email, name, passwordHash, role (`SYSTEM_ADMIN` | `BOOKKEEPER` | `USER`), isActive, isProxy, mustChangePassword, avatarUrl, failedLoginAttempts, lockedUntil, sessionsValidAfter
 
 **user_preferences** — per-user settings (1:1 with user)
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
@@ -130,7 +140,7 @@ budgeteer/
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **receipts** — actual consumption imports from scanned receipts/photos
-- householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount, taxAmount, feeAmount, currencyCode
+- householdId, uploadedByUserId, accountId (nullable), merchantName, purchaseDate, totalAmount (sum of line items), printedTotal (TOTAL printed on the receipt), taxAmount, feeAmount, currencyCode
 - sourceMimeType, sourceFileName, sourceStoragePath, sourceFileSize, rawText, status (`DRAFT` | `CONFIRMED` | `FAILED`), confidence (`LOW` | `MEDIUM` | `HIGH`), notes, confirmedAt, deletedAt
 - Receipts are actual consumption data and must not create or update planned `expenses`
 - Receipt parsing uses the currency found in OCR/AI output when present and falls back to the configured household/base currency
@@ -175,7 +185,14 @@ budgeteer/
 **budget_transfers** — monthly inter-member transfer snapshots
 - budgetYearId, year, month, calculatedAmount, actualAmount (nullable), status (`PENDING` | `PAID` | `ADJUSTED`)
 - calculatedAt, paidAt (nullable), automationRunId (nullable)
-- One record per budget year per month; recalculated when income or expenses change
+- One record per budget year per month; recalculated (awaited) when income, expenses, savings or FX rates change
+- PAY_NO_PAY: a month's amount is everything due that month (scheduled + carried) across PENDING and PAID occurrences, so paying items doesn't shrink it; closed months keep their recorded amount
+
+**Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
+- Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
+- Members mark items PAID one by one or all at once for a month (`actualAmount` = amount due)
+- Month rollover (1st of the month automation) closes the previous month: PENDING → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent
+- At the year boundary December is closed without carry — the new year's expenses are separate rows
 
 **currencies** — admin-managed catalog of available currencies
 - code (PK), name, isEnabled
@@ -184,7 +201,8 @@ budgeteer/
 **currency_rates** — time-series exchange rates fetched from Danmarks Nationalbank
 - currencyCode, rate (relative to BASE_CURRENCY), baseCurrency, fetchedDate
 - New rows appended daily; queries use `DISTINCT ON` to get the latest rate per currency
-- Past expense/savings rates are locked at `rateDate`; future ones recalculate on sync
+- Past expense/savings rates are locked at `rateDate` using the stored rate on or before the payment period (`frequencyPeriod`); unlocked ones are re-priced at the latest rate on each daily sync, using the same `calcMonthlyInBase` as save-time (partial-year average included). RETIRED years are never rewritten
+- A locked rate is kept on edit only while the currency is unchanged; switching currency unlocks and uses the latest rate
 
 **automations** — scheduled or manually-triggered household jobs
 - householdId, key (unique per household), label, description, schedule (cron), isEnabled
@@ -194,8 +212,25 @@ budgeteer/
 - automationId, triggeredBy (`SCHEDULE` | `MANUAL`), triggeredByUserId (nullable)
 - startedAt, finishedAt, status (`SUCCESS` | `ERROR` | `SKIPPED`), message (nullable)
 
-**refresh_tokens** — JWT refresh token store
-- token, userId, expiresAt
+**refresh_tokens** — refresh token store
+- token (SHA-256 of the client's token; rows from before hashing may hold the raw value until rotated), userId, expiresAt, revokedAt
+- Rotated tokens are marked `revokedAt` instead of deleted. Presenting one again after a 30-second grace window (concurrent tabs) is treated as theft and revokes all of the user's sessions. Expired tokens are purged daily
+
+**Sessions**
+- `users.sessionsValidAfter`: access tokens issued before it are rejected. Set (and all refresh tokens deleted) on password change, admin password reset, role change, deactivation, and conversion to a proxy user. `POST /users/me/change-password` returns a fresh `accessToken`/`refreshToken` so the current client stays signed in
+- `authenticate` reads the user on every request: role comes from the database (demotions apply immediately), deactivated users are rejected, and `mustChangePassword` blocks everything except `GET /users/me` and `POST /users/me/change-password` (403 `PASSWORD_CHANGE_REQUIRED`)
+- Login answers unknown, inactive and proxy accounts exactly like a wrong password (including timing)
+
+**Trash (soft delete)**
+- Expenses, savings entries, salary records, monthly overrides, bonuses and tax cards have `deletedAt` / `deletedByUserId`. Their DELETE routes set these instead of removing the row; the item then appears in the household trash (expenses, savings) or the user's income trash, and can be restored. There is no "empty trash" — financial data is never hard-deleted by users
+- Trashed rows are invisible to every calculation: the Prisma client extension filters top-level reads/`updateMany`, and nested includes, `_count` and occurrence relation filters use `notDeleted`
+- Items in RETIRED years can't be restored (read-only). A new override for a month whose override is in the trash replaces it (one override per job and month)
+- Hard deletes remain only for admin/system cascades: deleting a budget year (simulations, current/future retired years) or a household
+
+**Household access**
+- `getActiveMembership` (`lib/ownership.ts`) is the membership check for household data: deactivated households are closed to members (system admins excepted). The household settings routes keep working so an admin can reactivate
+- Expense/savings categories must be system-wide or the household's own, active, and of the right type (`findUsableCategory`); an entry may keep a category deactivated after it was assigned
+- Income can only be allocated to a household the job's owner belongs to
 
 ---
 
@@ -224,12 +259,25 @@ Shared expense €1,000/month → A owes €600, B owes €400
 
 Individual and custom-split expenses bypass the proportional calculation.
 
+- Shares come from `lib/incomeShare.ts`: unrounded, over current members only, equal split when nobody has allocated income. Shared amounts are split with the largest-remainder method so the cents add up
+- Monthly job income comes from one pure implementation, `lib/jobIncome.ts` (salary record or month override, FX via `rateUsed`, job start/end months, bonuses). Budget-year income adds budget-included bonuses paid that year as amount ÷ 12; month views put ONE_OFF bonuses in their payment month and spread SPREAD_ANNUALLY ÷ 12 across the year. RETIRED years use the average of their twelve months
+- Tax cards are picked by the salary record's `effectiveFrom` (or the override's month), not today's date
+- Over-allocation is evaluated per job per calendar year (summed across households)
+
 Informational only — system calculates and displays, never enforces.
 
 ### Receipt Consumption
 Receipt imports represent actual purchases, not planned budget allocations. Confirmed receipt line items are summarized separately by category/month for consumption insight. They do not affect `monthlyEquivalent`, planned expense totals, occurrence schedules, or budget transfer recalculation.
 
 Receipt category is two-level: top-level category uses the existing Budgeteer `EXPENSE` category; receipt subcategory captures more granular consumption detail within that category.
+
+Receipt text handling:
+- All stored keys (line-item `normalizedLabel`, mapping `normalizedLabel`/`merchantKey`, classifier terms) come from `apps/api/src/lib/receiptText.ts`, which the classifier, CSV import, admin training routes and seed share. Folding lowercases and strips accents (é → e) but keeps å/æ/ø
+- Amounts need two decimals and respect thousands separators (1.234,50 / 1,234.50; "1 234,50" only on TOTAL/MOMS-style summary lines, where quantities don't appear). Summary keywords (total, moms, gebyr, …) match whole words
+- `totalAmount` is the sum of non-ignored line items; `printedTotal` is the TOTAL read from the receipt (editable), and `totalMismatch` flags a difference so missed or misread lines are noticed
+- Confirming saves the review's edits and confirms in one transaction and happens once per receipt; it teaches the classifier: category mappings, and noise words only from labels the user trimmed (not renamed)
+- A local AI model (optional) enhances the deterministic parse; its values win only where usable
+- Uploads are checked by their bytes (PDF/PNG/JPEG magic numbers). OCR has a per-receipt time budget and refuses images above `RECEIPT_OCR_MAX_PIXELS`
 
 Receipt upload and parsing run server-side. The browser sends the original image/PDF file to the API, the API stores it locally, runs local OCR, and the receipt review UI loads the protected file beside extracted line items for validation. Pasted OCR text remains supported for manual imports, and failed or empty OCR still leaves a draft where line items can be added manually.
 
@@ -252,19 +300,22 @@ Optional AI enhancement may call only a local/self-hosted HTTP model endpoint co
 3. A-skat: bottom tax + top-skat (both truncated to whole DKK)
 4. Net = gross − preAmTotal − amBidrag − aSkat
 
-The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-implemented in the frontend (`apps/web/src/pages/IncomePage.tsx`) for live preview before submission.
+The shared calculation engine (`apps/api/src/lib/taxCalcDK.ts`) is also re-implemented in the frontend (`apps/web/src/lib/danishTaxPreview.ts`) for live preview before submission.
 
 ---
 
 ## Budget Lifecycle
 
 ```
-[FUTURE] → (year arrives or manual promotion) → [ACTIVE]
-[ACTIVE] → (new year or manual action) → [RETIRED]
+[FUTURE] → (its year arrives — automatic) → [ACTIVE]
+[ACTIVE] → (year ends — automatic, or manual action) → [RETIRED]
 [ACTIVE | FUTURE] → (copy) → [SIMULATION]
-[SIMULATION] → (promote) → becomes ACTIVE, previous ACTIVE → RETIRED
+[SIMULATION] → (promote) → takes the place of the regular year for its own year (date-derived ACTIVE or FUTURE; that year's existing regular year → RETIRED). Past-year simulations can't be promoted
 [RETIRED current/future regular year] → (restore) → date-derived ACTIVE or FUTURE
 ```
+
+- Calendar transitions run in `lib/budgetYearLifecycle.ts` at API startup, daily at 00:05, and before the monthly automations. RETIRED years are never auto-restored
+- Copying a year carries currency, account and period fields; foreign-currency entries are re-priced (unlocked) at today's rate
 
 - New regular-year status is date-derived: year < current = RETIRED, year = current = ACTIVE, year > current = FUTURE
 - Manually retired current/future regular years can be restored to their date-derived status or hard-deleted; past retired regular years remain protected history
@@ -343,6 +394,8 @@ GET    /jobs/:id/bonuses
 POST   /jobs/:id/bonuses
 PUT    /jobs/:id/bonuses/:bonusId
 DELETE /jobs/:id/bonuses/:bonusId
+GET    /users/:id/income/trash                          # trashed salary records, overrides, bonuses, tax cards
+POST   /users/:id/income/trash/:kind/:itemId/restore    # kind = salary | override | bonus | taxcard
 POST   /jobs/:id/payslips/parse
 
 PUT    /income/:id/allocations/:householdId
@@ -357,13 +410,14 @@ PUT    /households/:id
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)
-GET    /households/:id/members
 POST   /households/:id/members
 PUT    /households/:id/members/:memberId
 DELETE /households/:id/members/:memberId
 GET    /households/:id/budget-years
 POST   /households/:id/budget-years
 GET    /households/:id/summary
+GET    /households/:id/trash                            # trashed expenses and savings entries
+POST   /households/:id/trash/:kind/:itemId/restore      # kind = expense | savings (not in RETIRED years)
 GET    /households/:id/income-summary
 GET    /households/:id/savings-history
 GET    /households/:id/trends
@@ -383,7 +437,7 @@ POST   /households/:id/receipt-mappings/import-confirm
 GET    /households/:id/receipts/:receiptId
 GET    /households/:id/receipts/:receiptId/file
 PUT    /households/:id/receipts/:receiptId
-POST   /households/:id/receipts/:receiptId/confirm
+POST   /households/:id/receipts/:receiptId/confirm      # optional { receipt, lineItems } saved in the same transaction; 409 when already confirmed
 POST   /households/:id/receipts/:receiptId/line-items
 PUT    /households/:id/receipts/:receiptId/line-items/:lineItemId
 DELETE /households/:id/receipts/:receiptId
@@ -413,6 +467,9 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
+GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY items for a month (default: current)
+PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month }
 
 GET    /categories
 POST   /categories

@@ -1,13 +1,16 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/client'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { getJobMonthlyIncome, getIncomeReferenceDate } from '../lib/incomeCalc'
+import { calcIncomeForYearDetailed, getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
 import { getLatestRate, BASE_CURRENCY } from '../lib/currency'
-import { assertHouseholdAccess } from '../lib/ownership'
+import { assertHouseholdAccess, getActiveMembership } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
 import { calcDanishDeductions, PayslipLine } from '../lib/taxCalcDK'
+import { buildIncomeHistory, monthStartUTC, pickTaxCardAt, taxCardToInput, yearMonthOfLocalDate } from '../lib/jobIncome'
+import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
+import { computeIncomeShares, formatSharePct } from '../lib/incomeShare'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -125,16 +128,21 @@ const AllocationSchema = z.object({
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-async function getOrCreateActiveBudgetYear(householdId: string) {
-  const year = new Date().getFullYear()
-  const existing = await prisma.budgetYear.findFirst({
+/**
+ * The budget year income allocations are edited in: the household's earliest
+ * ACTIVE year, else its earliest FUTURE year. Returns null when the household
+ * has neither — allocating income never creates a budget year.
+ */
+async function findDefaultBudgetYear(householdId: string) {
+  const years = await prisma.budgetYear.findMany({
     where: { householdId, status: { in: ['ACTIVE', 'FUTURE'] } },
-    orderBy: { year: 'asc' },
   })
-  if (existing) return existing
-  return prisma.budgetYear.create({
-    data: { householdId, year, status: 'ACTIVE' },
-  })
+  return pickDefaultBudgetYear(years)
+}
+
+const NO_BUDGET_YEAR_ERROR = {
+  error: 'This household has no active or future budget year. Create a budget year before allocating income.',
+  code: 'NO_BUDGET_YEAR',
 }
 
 async function assertJobOwnership(jobId: string, requesterId: string, requesterRole: string) {
@@ -151,13 +159,18 @@ async function assertJobOwnership(jobId: string, requesterId: string, requesterR
  *
  * Priority:
  *   1. Explicit payslipLines in request → store verbatim, source = MANUAL
- *   2. Job is DK + active tax card exists → auto-calculate, source = CALCULATED
+ *   2. Job is DK + a tax card effective at atDate → auto-calculate, source = CALCULATED
  *   3. Fallback → all null (legacy behaviour, no deduction data stored)
+ *
+ * atDate is the date the pay applies to — the salary record's effectiveFrom or
+ * the first day of the override's month — never today's date, so a record
+ * dated in another tax year uses that year's tax card.
  */
 async function resolveDeductions(
   jobId: string,
   jobCountry: string,
   gross: number,
+  atDate: Date,
   requestPayslipLines?: PayslipLine[]
 ): Promise<{
   payslipLines: PayslipLine[] | null
@@ -179,19 +192,10 @@ async function resolveDeductions(
   }
 
   if (jobCountry === 'DK') {
-    const taxCard = await prisma.taxCardSettings.findFirst({
-      where: { jobId, effectiveFrom: { lte: new Date() } },
-      orderBy: { effectiveFrom: 'desc' },
-    })
+    const taxCards = await prisma.taxCardSettings.findMany({ where: { jobId } })
+    const taxCard = pickTaxCardAt(taxCards, atDate)
     if (taxCard) {
-      const calc = calcDanishDeductions(gross, {
-        traekprocent: toNum(taxCard.traekprocent),
-        personfradragMonthly: toNum(taxCard.personfradragMonthly),
-        pensionEmployeePct: taxCard.pensionEmployeePct != null ? toNum(taxCard.pensionEmployeePct) : null,
-        pensionEmployerPct: taxCard.pensionEmployerPct != null ? toNum(taxCard.pensionEmployerPct) : null,
-        atpAmount: taxCard.atpAmount != null ? toNum(taxCard.atpAmount) : null,
-        bruttoItems: taxCard.bruttoItems as { label: string; monthlyAmount: number }[] | null,
-      })
+      const calc = calcDanishDeductions(gross, taxCardToInput(taxCard))
       return {
         payslipLines: calc.lines,
         pensionEmployerMonthly: calc.pensionEmployer > 0 ? new Decimal(calc.pensionEmployer) : null,
@@ -220,34 +224,19 @@ async function resolveDeductions(
  * effectiveFrom ≤ the record date.  Records with no applicable card are
  * skipped (deductionsSource stays null until a card is added for that period).
  */
-async function recalculateSalaryDeductions(jobId: string, jobCountry: string): Promise<void> {
+export async function recalculateSalaryDeductions(jobId: string, jobCountry: string): Promise<void> {
   if (jobCountry !== 'DK') return
 
-  const taxCards = await prisma.taxCardSettings.findMany({
-    where: { jobId },
-    orderBy: { effectiveFrom: 'asc' },
-  })
+  const taxCards = await prisma.taxCardSettings.findMany({ where: { jobId } })
   if (taxCards.length === 0) return
-
-  function getCard(date: Date) {
-    const applicable = taxCards.filter((c) => c.effectiveFrom <= date)
-    return applicable[applicable.length - 1] ?? null
-  }
 
   const salaryRecords = await prisma.salaryRecord.findMany({
     where: { jobId, NOT: { deductionsSource: 'MANUAL' } },
   })
   for (const record of salaryRecords) {
-    const card = getCard(record.effectiveFrom)
+    const card = pickTaxCardAt(taxCards, record.effectiveFrom)
     if (!card) continue
-    const calc = calcDanishDeductions(toNum(record.grossAmount), {
-      traekprocent: toNum(card.traekprocent),
-      personfradragMonthly: toNum(card.personfradragMonthly),
-      pensionEmployeePct: card.pensionEmployeePct != null ? toNum(card.pensionEmployeePct) : null,
-      pensionEmployerPct: card.pensionEmployerPct != null ? toNum(card.pensionEmployerPct) : null,
-      atpAmount: card.atpAmount != null ? toNum(card.atpAmount) : null,
-      bruttoItems: card.bruttoItems as { label: string; monthlyAmount: number }[] | null,
-    })
+    const calc = calcDanishDeductions(toNum(record.grossAmount), taxCardToInput(card))
     await prisma.salaryRecord.update({
       where: { id: record.id },
       data: {
@@ -264,17 +253,10 @@ async function recalculateSalaryDeductions(jobId: string, jobCountry: string): P
     where: { jobId, NOT: { deductionsSource: 'MANUAL' } },
   })
   for (const override of overrides) {
-    const overrideDate = new Date(override.year, override.month - 1, 1)
-    const card = getCard(overrideDate)
+    // UTC month start: comparable with effectiveFrom stored as UTC midnight
+    const card = pickTaxCardAt(taxCards, monthStartUTC(override.year, override.month))
     if (!card) continue
-    const calc = calcDanishDeductions(toNum(override.grossAmount), {
-      traekprocent: toNum(card.traekprocent),
-      personfradragMonthly: toNum(card.personfradragMonthly),
-      pensionEmployeePct: card.pensionEmployeePct != null ? toNum(card.pensionEmployeePct) : null,
-      pensionEmployerPct: card.pensionEmployerPct != null ? toNum(card.pensionEmployerPct) : null,
-      atpAmount: card.atpAmount != null ? toNum(card.atpAmount) : null,
-      bruttoItems: card.bruttoItems as { label: string; monthlyAmount: number }[] | null,
-    })
+    const calc = calcDanishDeductions(toNum(override.grossAmount), taxCardToInput(card))
     await prisma.monthlyIncomeOverride.update({
       where: { id: override.id },
       data: {
@@ -311,8 +293,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const jobs = await prisma.job.findMany({
       where: { userId: targetUserId },
       include: {
-        salaryRecords: { orderBy: { effectiveFrom: 'desc' }, take: 1 },
-        bonuses: { where: { paymentDate: { gte: new Date() } }, select: { id: true } },
+        salaryRecords: { where: notDeleted, orderBy: { effectiveFrom: 'desc' }, take: 1 },
+        bonuses: { where: { ...notDeleted, paymentDate: { gte: new Date() } }, select: { id: true } },
         allocations: {
           include: {
             budgetYear: { select: { id: true, year: true, status: true, household: { select: { id: true, name: true } } } },
@@ -321,6 +303,21 @@ export async function jobRoutes(fastify: FastifyInstance) {
       },
       orderBy: { startDate: 'asc' },
     })
+
+    // The budget year each household's allocations are edited in (what
+    // PUT/DELETE /income/:id/allocations/:householdId target).
+    const householdIds = [...new Set(jobs.flatMap((j) => j.allocations.map((a) => a.budgetYear.household.id)))]
+    const liveYears = householdIds.length > 0
+      ? await prisma.budgetYear.findMany({
+          where: { householdId: { in: householdIds }, status: { in: ['ACTIVE', 'FUTURE'] } },
+          select: { id: true, householdId: true, year: true, status: true },
+        })
+      : []
+    const defaultYearIds = new Set(
+      householdIds
+        .map((hid) => pickDefaultBudgetYear(liveYears.filter((y) => y.householdId === hid))?.id)
+        .filter((id): id is string => id !== undefined)
+    )
 
     const result = jobs.map((j) => ({
       id: j.id,
@@ -332,11 +329,16 @@ export async function jobRoutes(fastify: FastifyInstance) {
       isActive: j.endDate === null || j.endDate > new Date(),
       latestSalary: j.salaryRecords[0] ?? null,
       upcomingBonusCount: j.bonuses.length,
-      allocations: j.allocations.map((a) => ({
-        budgetYearId: a.budgetYearId,
-        allocationPct: a.allocationPct,
-        budgetYear: a.budgetYear,
-      })),
+      // Default-year allocations first, then newest year first, so a
+      // per-household lookup finds the editable year before historical ones.
+      allocations: j.allocations
+        .map((a) => ({
+          budgetYearId: a.budgetYearId,
+          allocationPct: a.allocationPct,
+          budgetYear: a.budgetYear,
+          isDefaultYear: defaultYearIds.has(a.budgetYearId),
+        }))
+        .sort((a, b) => Number(b.isDefaultYear) - Number(a.isDefaultYear) || b.budgetYear.year - a.budgetYear.year),
     }))
 
     return reply.send(result)
@@ -458,7 +460,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, new Date(effectiveFrom), payslipLines as PayslipLine[] | undefined)
 
     const record = await prisma.salaryRecord.create({
       data: {
@@ -501,7 +503,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: `No exchange rate found for ${currency}` })
     }
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, new Date(effectiveFrom), payslipLines as PayslipLine[] | undefined)
 
     const record = await prisma.salaryRecord.update({
       where: { id: salaryId },
@@ -532,7 +534,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Salary record not found' })
 
-    await prisma.salaryRecord.delete({ where: { id: salaryId } })
+    // Moves to the income trash (restorable); never hard-deleted
+    await prisma.salaryRecord.update({ where: { id: salaryId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
 
     return reply.status(204).send()
   })
@@ -574,7 +577,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const { year, month, grossAmount, netAmount, note, payslipLines } = result.data
 
-    const deductions = await resolveDeductions(jobId, job.country, grossAmount, payslipLines as PayslipLine[] | undefined)
+    const deductions = await resolveDeductions(jobId, job.country, grossAmount, monthStartUTC(year, month), payslipLines as PayslipLine[] | undefined)
 
     const resolvedNet = deductions.netAmount ?? new Decimal(netAmount)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -587,7 +590,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const override = await prisma.monthlyIncomeOverride.upsert({
       where: { jobId_year_month: { jobId, year, month } },
       create: { jobId, year, month, grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
-      update: { grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData },
+      // A trashed override for the same month is replaced (the month is unique per job)
+      update: { grossAmount: new Decimal(grossAmount), netAmount: resolvedNet, note, ...deductionData, deletedAt: null, deletedByUserId: null },
     })
 
     return reply.status(201).send(override)
@@ -604,7 +608,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.monthlyIncomeOverride.findFirst({ where: { id: overrideId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Override not found' })
 
-    await prisma.monthlyIncomeOverride.delete({ where: { id: overrideId } })
+    await prisma.monthlyIncomeOverride.update({ where: { id: overrideId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
     return reply.status(204).send()
   })
 
@@ -710,7 +714,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.taxCardSettings.findFirst({ where: { id: settingsId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Tax card settings not found' })
 
-    await prisma.taxCardSettings.delete({ where: { id: settingsId } })
+    await prisma.taxCardSettings.update({ where: { id: settingsId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
+    // Deductions calculated from this card fall back to the remaining cards
+    await recalculateSalaryDeductions(jobId, job.country)
     return reply.status(204).send()
   })
 
@@ -828,7 +834,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const existing = await prisma.bonus.findFirst({ where: { id: bonusId, jobId } })
     if (!existing) return reply.status(404).send({ error: 'Bonus not found' })
 
-    await prisma.bonus.delete({ where: { id: bonusId } })
+    await prisma.bonus.update({ where: { id: bonusId }, data: { deletedAt: new Date(), deletedByUserId: userId } })
     return reply.status(204).send()
   })
 
@@ -847,12 +853,13 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
-    const membership = await prisma.householdMember.findUnique({
-      where: { householdId_userId: { householdId, userId } },
-    })
-    if (!membership) return reply.status(403).send({ error: 'You are not a member of this household' })
+    // The job's owner must belong to the household — a bookkeeper or admin managing
+    // someone's income can't route it into a household that person isn't part of
+    const ownerMembership = await getActiveMembership(householdId, job.userId)
+    if (!ownerMembership) return reply.status(403).send({ error: 'The job owner is not a member of this household' })
 
-    const budgetYear = await getOrCreateActiveBudgetYear(householdId)
+    const budgetYear = await findDefaultBudgetYear(householdId)
+    if (!budgetYear) return reply.status(409).send(NO_BUDGET_YEAR_ERROR)
 
     const allocation = await prisma.householdIncomeAllocation.upsert({
       where: { jobId_budgetYearId: { jobId, budgetYearId: budgetYear.id } },
@@ -864,6 +871,9 @@ export async function jobRoutes(fastify: FastifyInstance) {
   })
 
   // DELETE /income/:id/allocations/:householdId
+  // Removes the allocation from the same budget year PUT writes to (the
+  // household's default ACTIVE/FUTURE year). Retired years are history and
+  // simulations are edited separately, so both keep their allocations.
   fastify.delete('/income/:id/allocations/:householdId', { preHandler: authenticate }, async (request, reply) => {
     const { id: jobId, householdId } = request.params as { id: string; householdId: string }
     const { sub: userId, role } = request.user
@@ -871,9 +881,12 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const job = await assertJobOwnership(jobId, userId, role)
     if (!job) return reply.status(404).send({ error: 'Job not found' })
 
-    await prisma.householdIncomeAllocation.deleteMany({
-      where: { jobId, budgetYear: { householdId } },
-    })
+    const budgetYear = await findDefaultBudgetYear(householdId)
+    if (budgetYear) {
+      await prisma.householdIncomeAllocation.deleteMany({
+        where: { jobId, budgetYearId: budgetYear.id },
+      })
+    }
 
     return reply.status(204).send()
   })
@@ -885,8 +898,8 @@ export async function jobRoutes(fastify: FastifyInstance) {
     const { id: targetUserId } = request.params as { id: string }
     const queryResult = z.object({
       granularity: z.enum(['monthly', 'quarterly', 'yearly']).default('monthly'),
-      from: z.string().regex(/^\d{4}-\d{2}$/).optional(),
-      to: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+      from: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
+      to: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional(),
     }).safeParse(request.query)
     if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
     const { from, to, granularity } = queryResult.data
@@ -902,121 +915,21 @@ export async function jobRoutes(fastify: FastifyInstance) {
     }
 
     const now = new Date()
-    const fromDate = from ? new Date(`${from}-01`) : new Date(now.getFullYear(), 0, 1)
-    const toDate = to ? new Date(`${to}-01`) : now
+    const parseYearMonth = (v: string) => {
+      const [year, month] = v.split('-').map(Number)
+      return { year, month }
+    }
+    const fromYM = from ? parseYearMonth(from) : { year: now.getFullYear(), month: 1 }
+    const toYM = to ? parseYearMonth(to) : yearMonthOfLocalDate(now)
 
     const jobs = await prisma.job.findMany({
       where: { userId: targetUserId },
-      include: {
-        salaryRecords: { orderBy: { effectiveFrom: 'asc' } },
-        overrides: true,
-        bonuses: true,
-      },
+      include: JOB_INCOME_INCLUDE,
     })
 
-    // Build time buckets
-    type Bucket = {
-      period: string
-      gross: number
-      net: number
-      total: number
-      perJob: { jobId: string; jobName: string; gross: number; net: number }[]
-      bonuses: { jobId: string; label: string; gross: number; net: number }[]
-    }
-
-    const buckets: Bucket[] = []
-    const cursor = new Date(fromDate.getFullYear(), fromDate.getMonth(), 1)
-
-    while (cursor <= toDate) {
-      const year = cursor.getFullYear()
-      const month = cursor.getMonth() + 1
-      let period: string
-
-      if (granularity === 'monthly') {
-        period = `${year}-${String(month).padStart(2, '0')}`
-      } else if (granularity === 'quarterly') {
-        const q = Math.ceil(month / 3)
-        period = `${year}-Q${q}`
-      } else {
-        period = `${year}`
-      }
-
-      // Avoid duplicate buckets for quarterly/yearly granularity
-      if (buckets.length > 0 && buckets[buckets.length - 1].period === period) {
-        cursor.setMonth(cursor.getMonth() + 1)
-        continue
-      }
-
-      const refDate = new Date(year, month - 1, 15) // mid-month reference
-      const perJob: Bucket['perJob'] = []
-      const bonusList: Bucket['bonuses'] = []
-
-      for (const job of jobs) {
-        // Skip jobs not yet started or ended before this month
-        const jobStart = job.startDate
-        const jobEnd = job.endDate
-        const monthEnd = new Date(year, month - 1, 31)
-        const monthStart = new Date(year, month - 1, 1)
-        if (jobStart > monthEnd) continue
-        if (jobEnd && jobEnd < monthStart) continue
-
-        // Salary (net)
-        const override = job.overrides.find((o) => o.year === year && o.month === month)
-        let netMonthly: number
-        let grossMonthly: number
-
-        if (override) {
-          netMonthly = toNum(override.netAmount)
-          grossMonthly = toNum(override.grossAmount)
-        } else {
-          const salary = job.salaryRecords
-            .filter((s) => s.effectiveFrom <= refDate)
-            .sort((a, b) => b.effectiveFrom.getTime() - a.effectiveFrom.getTime())[0]
-          netMonthly = toNum(salary?.netAmount)
-          grossMonthly = toNum(salary?.grossAmount)
-        }
-
-        perJob.push({ jobId: job.id, jobName: job.name, gross: grossMonthly, net: netMonthly })
-
-        // Bonuses in this month
-        for (const bonus of job.bonuses) {
-          if (!bonus.includeInBudget) continue
-          const bd = bonus.paymentDate
-          let addNet = 0
-          let addGross = 0
-
-          if (bonus.budgetMode === 'ONE_OFF') {
-            if (bd.getFullYear() === year && bd.getMonth() + 1 === month) {
-              addNet = toNum(bonus.netAmount)
-              addGross = toNum(bonus.grossAmount)
-            }
-          } else if (bonus.budgetMode === 'SPREAD_ANNUALLY') {
-            if (bd.getFullYear() === year && bd.getMonth() + 1 === month) {
-              addNet = toNum(bonus.netAmount)
-              addGross = toNum(bonus.grossAmount)
-            }
-          }
-
-          if (addNet > 0 || addGross > 0) {
-            bonusList.push({ jobId: job.id, label: bonus.label, gross: addGross, net: addNet })
-          }
-        }
-      }
-
-      const grossTotal = perJob.reduce((s, j) => s + j.gross, 0) + bonusList.reduce((s, b) => s + b.gross, 0)
-      const netTotal = perJob.reduce((s, j) => s + j.net, 0) + bonusList.reduce((s, b) => s + b.net, 0)
-
-      buckets.push({
-        period,
-        gross: grossTotal,
-        net: netTotal,
-        total: netTotal,
-        perJob,
-        bonuses: bonusList,
-      })
-
-      cursor.setMonth(cursor.getMonth() + 1)
-    }
+    // Salary/overrides converted to base currency, jobs limited to their
+    // start/end months, bonuses by budget mode (SPREAD_ANNUALLY ÷12 per month).
+    const buckets = buildIncomeHistory(jobs, fromYM, toYM, granularity)
 
     return reply.send({ buckets })
   })
@@ -1037,70 +950,58 @@ export async function jobRoutes(fastify: FastifyInstance) {
           include: { user: { select: { id: true, name: true, email: true } } },
           orderBy: { joinedAt: 'asc' },
         },
+        // No orderBy on status: Postgres sorts enums in declaration order
+        // (FUTURE before ACTIVE). pickDefaultBudgetYear prefers ACTIVE.
         budgetYears: {
           where: { status: { in: ['ACTIVE', 'FUTURE'] } },
-          orderBy: [{ status: 'asc' }, { year: 'asc' }],
-          take: 1,
         },
       },
     })
 
     if (!household) return reply.status(404).send({ error: 'Household not found' })
 
-    const activeBudgetYear = household.budgetYears[0] ?? null
+    const activeBudgetYear = pickDefaultBudgetYear(household.budgetYears)
     if (!activeBudgetYear) {
       return reply.send({ budgetYear: null, members: [], totalMonthly: '0.00' })
     }
 
     const referenceDate = getIncomeReferenceDate(activeBudgetYear.year, activeBudgetYear.status)
+    const income = await calcIncomeForYearDetailed(activeBudgetYear.id, referenceDate)
+    const ZERO = new Decimal(0)
 
-    const memberSummaries = await Promise.all(
-      household.members.map(async (m) => {
-        const allocations = await prisma.householdIncomeAllocation.findMany({
-          where: { budgetYearId: activeBudgetYear.id, job: { userId: m.userId } },
-          include: { job: true },
-        })
+    const memberSummaries = household.members.map((m) => {
+      const allocations = income.allocations.filter((a) => a.userId === m.userId)
+      return {
+        userId: m.userId,
+        name: m.user.name,
+        email: m.user.email,
+        role: m.role,
+        allocatedNet: allocations.reduce((s, a) => s.plus(a.allocatedNet), ZERO),
+        allocatedGross: allocations.reduce((s, a) => s.plus(a.allocatedGross), ZERO),
+        entries: allocations.map((a) => ({
+          id: a.job.id,
+          label: a.job.name,
+          employer: a.job.employer,
+          monthlyGross: a.monthlyGross.toDecimalPlaces(2).toNumber(),
+          monthlyNet: a.monthlyNet.toDecimalPlaces(2).toNumber(),
+          allocationPct: a.allocationPct.toNumber(),
+          monthlyAllocatedGross: a.allocatedGross.toFixed(2),
+          monthlyAllocated: a.allocatedNet.toFixed(2),
+        })),
+      }
+    })
 
-        const entries = await Promise.all(
-          allocations.map(async (alloc) => {
-            const pct = toNum(alloc.allocationPct)
-            const { gross, net } = await getJobMonthlyIncome(alloc.jobId, referenceDate)
-            return {
-              id: alloc.jobId,
-              label: alloc.job.name,
-              employer: alloc.job.employer,
-              monthlyGross: gross,
-              monthlyNet: net,
-              allocationPct: pct,
-              monthlyAllocatedGross: (gross * pct / 100).toFixed(2),
-              monthlyAllocated: (net * pct / 100).toFixed(2),
-            }
-          })
-        )
-
-        const monthlyAllocatedNet = entries.reduce((s, e) => s + parseFloat(e.monthlyAllocated), 0)
-        const monthlyAllocatedGross = entries.reduce((s, e) => s + parseFloat(e.monthlyAllocatedGross), 0)
-
-        return {
-          userId: m.userId,
-          name: m.user.name,
-          email: m.user.email,
-          role: m.role,
-          monthlyAllocated: monthlyAllocatedNet.toFixed(2),
-          monthlyAllocatedGross: monthlyAllocatedGross.toFixed(2),
-          entries,
-        }
-      })
+    const totalMonthly = memberSummaries.reduce((s, m) => s.plus(m.allocatedNet), ZERO)
+    const shares = computeIncomeShares(
+      memberSummaries.map((m) => m.userId),
+      new Map(memberSummaries.map((m) => [m.userId, m.allocatedGross])),
     )
 
-    const totalMonthly = memberSummaries.reduce((s, m) => s + parseFloat(m.monthlyAllocated), 0)
-    const grossTotalMonthly = memberSummaries.reduce((s, m) => s + parseFloat(m.monthlyAllocatedGross), 0)
-
-    const membersWithShare = memberSummaries.map((m) => ({
+    const membersWithShare = memberSummaries.map(({ allocatedNet, allocatedGross, ...m }) => ({
       ...m,
-      sharePct: grossTotalMonthly > 0
-        ? ((parseFloat(m.monthlyAllocatedGross) / grossTotalMonthly) * 100).toFixed(1)
-        : '0.0',
+      monthlyAllocated: allocatedNet.toFixed(2),
+      monthlyAllocatedGross: allocatedGross.toFixed(2),
+      sharePct: formatSharePct(shares.get(m.userId)),
     }))
 
     return reply.send({

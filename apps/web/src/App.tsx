@@ -1,35 +1,51 @@
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'sonner'
 import { AuthProvider } from './contexts/AuthContext'
 import { HouseholdProvider } from './contexts/HouseholdContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { PageLoader } from './components/LoadingSpinner'
 import { LoginPage } from './pages/LoginPage'
-import { UserDashboardPage } from './pages/UserDashboardPage'
-import { HouseholdPage } from './pages/HouseholdPage'
-import { DashboardPage } from './pages/DashboardPage'
-import { AdminUsersPage } from './pages/admin/UsersPage'
-import { HouseholdsAdminPage } from './pages/admin/HouseholdsAdminPage'
-import { CategoriesPage } from './pages/CategoriesPage'
-import { CategoriesAdminPage } from './pages/admin/CategoriesAdminPage'
-import { CurrenciesAdminPage } from './pages/admin/CurrenciesAdminPage'
-import { AutomationsAdminPage } from './pages/admin/AutomationsAdminPage'
-import { ReceiptTrainingAdminPage } from './pages/admin/ReceiptTrainingAdminPage'
 import { ForbiddenPage } from './pages/ForbiddenPage'
-import { ExpensesPage } from './pages/ExpensesPage'
-import { IncomePage } from './pages/IncomePage'
-import { HouseholdIncomePage } from './pages/HouseholdIncomePage'
-import { BudgetYearsPage } from './pages/BudgetYearsPage'
-import { ComparePage } from './pages/ComparePage'
-import { SavingsPage } from './pages/SavingsPage'
-import { NewReceiptPage, ReceiptsPage } from './pages/ReceiptsPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { ChangePasswordPage } from './pages/ChangePasswordPage'
-import { ProfilePage } from './pages/ProfilePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { HouseholdLayout } from './layouts/HouseholdLayout'
 import { GlobalLayout } from './layouts/GlobalLayout'
 import { AdminLayout } from './layouts/AdminLayout'
+
+// Route pages load on demand (one chunk each) so the initial bundle only holds
+// the shell: layouts, auth, login and the error pages.
+function lazyNamed<M, K extends keyof M>(load: () => Promise<M>, name: K) {
+  return lazy(() => load().then((m) => ({ default: m[name] as ComponentType })))
+}
+
+const UserDashboardPage = lazyNamed(() => import('./pages/user-dashboard/UserDashboardPage'), 'UserDashboardPage')
+const HouseholdPage = lazyNamed(() => import('./pages/household/HouseholdPage'), 'HouseholdPage')
+const TrashPage = lazyNamed(() => import('./pages/trash/TrashPage'), 'TrashPage')
+const DashboardPage = lazyNamed(() => import('./pages/dashboard/DashboardPage'), 'DashboardPage')
+const AdminUsersPage = lazyNamed(() => import('./pages/admin/UsersPage'), 'AdminUsersPage')
+const HouseholdsAdminPage = lazyNamed(() => import('./pages/admin/HouseholdsAdminPage'), 'HouseholdsAdminPage')
+const CategoriesPage = lazyNamed(() => import('./pages/CategoriesPage'), 'CategoriesPage')
+const CategoriesAdminPage = lazyNamed(() => import('./pages/admin/CategoriesAdminPage'), 'CategoriesAdminPage')
+const CurrenciesAdminPage = lazyNamed(() => import('./pages/admin/CurrenciesAdminPage'), 'CurrenciesAdminPage')
+const AutomationsAdminPage = lazyNamed(() => import('./pages/admin/AutomationsAdminPage'), 'AutomationsAdminPage')
+const ReceiptTrainingAdminPage = lazyNamed(() => import('./pages/admin/ReceiptTrainingAdminPage'), 'ReceiptTrainingAdminPage')
+const ExpensesPage = lazyNamed(() => import('./pages/expenses/ExpensesPage'), 'ExpensesPage')
+const IncomePage = lazyNamed(() => import('./pages/income/IncomePage'), 'IncomePage')
+const HouseholdIncomePage = lazyNamed(() => import('./pages/HouseholdIncomePage'), 'HouseholdIncomePage')
+const BudgetYearsPage = lazyNamed(() => import('./pages/budget-years/BudgetYearsPage'), 'BudgetYearsPage')
+const ComparePage = lazyNamed(() => import('./pages/ComparePage'), 'ComparePage')
+const SavingsPage = lazyNamed(() => import('./pages/savings/SavingsPage'), 'SavingsPage')
+const NewReceiptPage = lazyNamed(() => import('./pages/receipts/NewReceiptPage'), 'NewReceiptPage')
+const ReceiptsPage = lazyNamed(() => import('./pages/receipts/ReceiptsPage'), 'ReceiptsPage')
+const HistoryPage = lazyNamed(() => import('./pages/HistoryPage'), 'HistoryPage')
+const ChangePasswordPage = lazyNamed(() => import('./pages/ChangePasswordPage'), 'ChangePasswordPage')
+const ProfilePage = lazyNamed(() => import('./pages/profile/ProfilePage'), 'ProfilePage')
+
+/** Suspense boundary per route, inside the layout, so the header/sidebar stay put while a page chunk loads. */
+function page(element: ReactNode) {
+  return <Suspense fallback={<PageLoader />}>{element}</Suspense>
+}
 
 const queryClient = new QueryClient()
 
@@ -50,17 +66,18 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route index element={<DashboardPage />} />
-              <Route path="income" element={<HouseholdIncomePage />} />
-              <Route path="savings" element={<SavingsPage />} />
-              <Route path="expenses" element={<ExpensesPage />} />
-              <Route path="receipts/new" element={<NewReceiptPage />} />
-              <Route path="receipts" element={<ReceiptsPage />} />
-              <Route path="categories" element={<CategoriesPage />} />
-              <Route path="budget-years" element={<BudgetYearsPage />} />
-              <Route path="history" element={<HistoryPage />} />
-              <Route path="compare" element={<ComparePage />} />
-              <Route path="settings" element={<HouseholdPage />} />
+              <Route index element={page(<DashboardPage />)} />
+              <Route path="income" element={page(<HouseholdIncomePage />)} />
+              <Route path="savings" element={page(<SavingsPage />)} />
+              <Route path="expenses" element={page(<ExpensesPage />)} />
+              <Route path="receipts/new" element={page(<NewReceiptPage />)} />
+              <Route path="receipts" element={page(<ReceiptsPage />)} />
+              <Route path="categories" element={page(<CategoriesPage />)} />
+              <Route path="budget-years" element={page(<BudgetYearsPage />)} />
+              <Route path="history" element={page(<HistoryPage />)} />
+              <Route path="compare" element={page(<ComparePage />)} />
+              <Route path="settings" element={page(<HouseholdPage />)} />
+              <Route path="trash" element={page(<TrashPage />)} />
             </Route>
             {/* Admin routes — shared AdminLayout */}
             <Route
@@ -71,12 +88,12 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route path="users" element={<AdminUsersPage />} />
-              <Route path="households" element={<HouseholdsAdminPage />} />
-              <Route path="currencies" element={<CurrenciesAdminPage />} />
-              <Route path="categories" element={<CategoriesAdminPage />} />
-              <Route path="receipt-training" element={<ReceiptTrainingAdminPage />} />
-              <Route path="automations" element={<AutomationsAdminPage />} />
+              <Route path="users" element={page(<AdminUsersPage />)} />
+              <Route path="households" element={page(<HouseholdsAdminPage />)} />
+              <Route path="currencies" element={page(<CurrenciesAdminPage />)} />
+              <Route path="categories" element={page(<CategoriesAdminPage />)} />
+              <Route path="receipt-training" element={page(<ReceiptTrainingAdminPage />)} />
+              <Route path="automations" element={page(<AutomationsAdminPage />)} />
             </Route>
 
             {/* Standalone personal routes — shared GlobalLayout */}
@@ -87,10 +104,10 @@ function App() {
                 </ProtectedRoute>
               }
             >
-              <Route path="/" element={<UserDashboardPage />} />
-              <Route path="/income" element={<IncomePage />} />
-              <Route path="/change-password" element={<ChangePasswordPage />} />
-              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/" element={page(<UserDashboardPage />)} />
+              <Route path="/income" element={page(<IncomePage />)} />
+              <Route path="/change-password" element={page(<ChangePasswordPage />)} />
+              <Route path="/profile" element={page(<ProfilePage />)} />
             </Route>
 
             <Route path="/403" element={<ForbiddenPage />} />

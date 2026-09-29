@@ -1,12 +1,15 @@
 import { useRef, useEffect, useState } from 'react'
 import { ChevronDown, Pin, PinOff, Plus } from 'lucide-react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
+import { qk } from '../api/queryKeys'
+import { useHouseholds, usePreferences } from '../api/queries'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useAuth } from '../contexts/AuthContext'
-
-interface Household { id: string; name: string; myRole: 'ADMIN' | 'MEMBER' | null }
+import { toast } from 'sonner'
+import { getApiError } from '../lib/apiError'
+import type { Household } from '../api/types'
 
 interface Props { currentHouseholdId: string }
 
@@ -21,27 +24,24 @@ export default function HouseholdSwitcher({ currentHouseholdId }: Props) {
   const [newName, setNewName] = useState('')
   const ref = useRef<HTMLDivElement>(null)
 
-  const { data: households = [] } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-    enabled: !!user,
-  })
+  const { data: households = [] } = useHouseholds({ enabled: !!user })
 
-  const { data: preferences } = useQuery({
-    queryKey: ['preferences'],
-    queryFn: async () => (await api.get('/users/me')).data.preferences,
-    enabled: !!user,
-  })
+  const { data: preferences } = usePreferences({ enabled: !!user })
 
   const pinMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to pin household')),
     mutationFn: (id: string) => api.put('/users/me/preferences', { defaultHouseholdId: id }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['preferences'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.preferences() })
+      queryClient.invalidateQueries({ queryKey: qk.me() })
+    },
   })
 
   const createMutation = useMutation({
+    onError: (err) => toast.error(getApiError(err, 'Failed to create household')),
     mutationFn: (name: string) => api.post<Household>('/households', { name }),
     onSuccess: (res) => {
-      queryClient.invalidateQueries({ queryKey: ['households'] })
+      queryClient.invalidateQueries({ queryKey: qk.households() })
       setShowCreate(false)
       setNewName('')
       setActiveHousehold(res.data.id)

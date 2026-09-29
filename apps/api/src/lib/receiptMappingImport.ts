@@ -1,7 +1,8 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma } from './prisma'
 import { parseCsvRows, stringifyCsv } from './csv'
-import { loadReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel, type ReceiptClassifierConfig } from './receiptClassifier'
+import { loadReceiptClassifierConfig, merchantMappingKey, normalizeReceiptLabel } from './receiptClassifier'
+import { normalizeClassifierTerm, parseOcrAlias } from './receiptText'
 
 export const RECEIPT_MAPPING_CSV_HEADERS = [
   'merchantName',
@@ -185,8 +186,9 @@ export async function previewReceiptMappingImport(householdId: string, csvText: 
     const isTermRow = Boolean(termType || term)
     const merchantName = field(record, 'merchantName')
     const originalLabel = field(record, 'originalLabel')
-    const merchantKey = field(record, 'merchantKey') || merchantMappingKey(merchantName, classifierConfig)
-    const normalizedLabel = field(record, 'normalizedLabel') || normalizeReceiptLabel(originalLabel, classifierConfig)
+    // Provided keys are normalized too: a hand-written "Organic Milk" must still match
+    const merchantKey = merchantMappingKey(field(record, 'merchantKey') || merchantName, classifierConfig)
+    const normalizedLabel = normalizeReceiptLabel(field(record, 'normalizedLabel') || originalLabel, classifierConfig)
     let categoryId = field(record, 'categoryId')
     let subcategoryId = field(record, 'subcategoryId') || null
     const confidence = parseConfidence(field(record, 'confidence'))
@@ -196,7 +198,7 @@ export async function previewReceiptMappingImport(householdId: string, csvText: 
     if (isTermRow) {
       if (!termType) errors.push('termType must be NOISE_TOKEN, LOW_VALUE_WORD, or OCR_ALIAS')
       if (!term) errors.push('term is required')
-      if (termType === 'OCR_ALIAS' && !parseOcrAliasImportTerm(term)) errors.push('OCR_ALIAS term must use source=>target format')
+      if (termType === 'OCR_ALIAS' && !parseOcrAlias(term)) errors.push('OCR_ALIAS term must use source=>target format')
       if (categoryId || subcategoryId || originalLabel || normalizedLabel) errors.push('classifier term rows must not include mapping labels or category IDs')
     } else {
       if (!originalLabel && !normalizedLabel) errors.push('originalLabel or normalizedLabel is required')
@@ -289,7 +291,11 @@ export async function previewReceiptMappingImport(householdId: string, csvText: 
 export async function confirmReceiptMappingImport(householdId: string, csvText: string): Promise<ReceiptMappingImportPreview> {
   const preview = await previewReceiptMappingImport(householdId, csvText)
   const writableRows = preview.rows.filter((row) => row.kind === 'mapping' && (row.status === 'create' || row.status === 'update'))
-  const writableTermRows = preview.rows.filter((row) => row.kind === 'term' && (row.status === 'create' || row.status === 'update'))
+  // Rows that passed validation always carry a term type
+  const writableTermRows = preview.rows.filter(
+    (row): row is typeof row & { termType: ImportTermType } =>
+      row.kind === 'term' && row.termType !== '' && (row.status === 'create' || row.status === 'update'),
+  )
 
   for (const row of writableRows) {
     await prisma.receiptCategoryMapping.upsert({
@@ -318,7 +324,7 @@ export async function confirmReceiptMappingImport(householdId: string, csvText: 
     })
   }
 
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (delegate?.upsert) {
     for (const row of writableTermRows) {
       await delegate.upsert({
@@ -391,7 +397,7 @@ async function loadExistingMappings(householdId: string, options: { includeGloba
 }
 
 async function loadExistingClassifierTerms(householdId: string): Promise<ExistingClassifierTerm[]> {
-  const delegate = (prisma as any).receiptClassifierTerm
+  const delegate = (prisma as Partial<typeof prisma>).receiptClassifierTerm
   if (!delegate?.findMany) return []
   return delegate.findMany({
     where: {
@@ -455,37 +461,8 @@ function normalizeTermType(value: string): ImportTermType | null {
   return normalized === 'NOISE_TOKEN' || normalized === 'LOW_VALUE_WORD' || normalized === 'OCR_ALIAS' ? normalized : null
 }
 
-function normalizeClassifierImportTerm(value: string, termType?: ImportTermType | null): string {
-  if (termType === 'OCR_ALIAS') {
-    const alias = parseOcrAliasImportTerm(value)
-    return alias ? `${alias.source}=>${alias.target}` : value.trim().toLowerCase()
-  }
-  return value
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}]+/gu, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
-}
 
-function parseOcrAliasImportTerm(value: string): { source: string; target: string } | null {
-  const match = value.trim().toLowerCase().match(/^(.+?)(?:=>|->)(.+)$/)
-  if (!match) return null
-  const source = normalizeOcrAliasSide(match[1])
-  const target = normalizeOcrAliasSide(match[2])
-  if (!source || !target || source === target) return null
-  return { source, target }
-}
 
-function normalizeOcrAliasSide(value: string): string {
-  return value
-    .trim()
-    .normalize('NFKD')
-    .replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ')
-    .trim()
-    .replace(/\s+/g, ' ')
-}
 
 function parseBoolean(value: string, fallback: boolean): boolean {
   const normalized = value.trim().toLowerCase()
@@ -514,4 +491,9 @@ function summarizeRows(rows: ReceiptMappingImportRow[]): ReceiptMappingImportPre
     if (row.status === 'create' || row.status === 'update' || row.status === 'unchanged') counts.valid += 1
   }
   return { counts, rows }
+}
+
+// Invalid aliases keep their raw text so validation can report the format error
+function normalizeClassifierImportTerm(value: string, termType?: ImportTermType | null): string {
+  return normalizeClassifierTerm(termType, value) ?? (termType === 'OCR_ALIAS' ? value.trim().toLowerCase() : '')
 }

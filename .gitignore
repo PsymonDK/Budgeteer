@@ -151,4 +151,7 @@ prisma/dev.db
 
 # OS
 .DS_Store
-Thumbs.db.claude/worktrees/
+Thumbs.db
+
+# Claude Code
+.claude/worktrees/

@@ -1,11 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../api/client'
 import { useAuth } from './AuthContext'
-
-const LS_KEY = 'budgeteer_active_household'
-
-interface Household { id: string; name: string }
+import { ACTIVE_HOUSEHOLD_KEY as LS_KEY } from '../lib/storageKeys'
+import { useHouseholds } from '../api/queries'
 
 interface HouseholdCtx {
   activeHouseholdId: string | null
@@ -22,12 +18,7 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
     () => localStorage.getItem(LS_KEY)
   )
 
-  const { data: households } = useQuery<Household[]>({
-    queryKey: ['households'],
-    queryFn: async () => (await api.get<Household[]>('/households')).data,
-    enabled: !!user,
-    retry: false,
-  })
+  const { data: households } = useHouseholds({ enabled: !!user, retry: false })
 
   // Validate stored ID on load; fall back if no longer member
   useEffect(() => {
@@ -39,6 +30,10 @@ export function HouseholdProvider({ children }: { children: React.ReactNode }) {
       const fallback = households[0].id
       setActiveHouseholdId(fallback)
       localStorage.setItem(LS_KEY, fallback)
+    } else {
+      // No memberships (left or removed from every household): forget the stale ID
+      setActiveHouseholdId(null)
+      localStorage.removeItem(LS_KEY)
     }
   }, [households])
 

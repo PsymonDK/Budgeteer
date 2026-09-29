@@ -1,8 +1,8 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { prisma } from '../lib/prisma'
+import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { assertBudgetYearAccess } from '../lib/ownership'
+import { assertBudgetYearAccess, getActiveMembership } from '../lib/ownership'
 
 const AccountTypeEnum = z.enum(['BANK', 'CREDIT_CARD', 'MOBILE_PAY'])
 
@@ -18,14 +18,10 @@ const UpdateAccountSchema = z.object({
 }).refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' })
 
 const accountInclude = {
-  _count: { select: { expenses: true, savingsEntries: true } },
+  _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } },
 } as const
 
-async function getHouseholdMembership(householdId: string, userId: string) {
-  return prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
-}
+const getHouseholdMembership = getActiveMembership
 
 export async function accountRoutes(fastify: FastifyInstance) {
   // ── Personal accounts ─────────────────────────────────────────────────────

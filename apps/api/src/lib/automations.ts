@@ -1,11 +1,19 @@
 import { AutomationTrigger } from '@prisma/client'
 import { prisma } from './prisma'
-import { recalculateTransfer, rolloverPayNoPayOccurrences } from './budgetTransfer'
+import { closePayNoPayMonth, recalculateTransfer, rolloverPayNoPayOccurrences } from './budgetTransfer'
+import { advanceBudgetYearStatuses } from './budgetYearLifecycle'
+
+/** Previous calendar month (1-12) and its year, relative to now. */
+export function previousMonth(now: Date): { year: number; month: number } {
+  const month = now.getMonth() + 1
+  return month === 1 ? { year: now.getFullYear() - 1, month: 12 } : { year: now.getFullYear(), month: month - 1 }
+}
 
 export async function runAutomation(
   automationId: string,
   triggeredBy: AutomationTrigger,
   userId?: string,
+  options: { skipLifecycle?: boolean } = {},
 ): Promise<void> {
   const startedAt = new Date()
 
@@ -25,10 +33,43 @@ export async function runAutomation(
   }
 
   try {
-    const [activeBudgetYear, household] = await Promise.all([
-      prisma.budgetYear.findFirst({ where: { householdId: automation.householdId, status: 'ACTIVE' } }),
-      prisma.household.findUnique({ where: { id: automation.householdId }, select: { autoMarkTransferPaid: true, budgetModel: true } }),
-    ])
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1
+    const prev = previousMonth(now)
+
+    const household = await prisma.household.findUnique({
+      where: { id: automation.householdId },
+      select: { autoMarkTransferPaid: true, budgetModel: true },
+    })
+
+    // Finalize last month in the budget year that owns it. On January 1st that is
+    // last year's budget year, not the one that is ACTIVE now.
+    const prevBudgetYear = await prisma.budgetYear.findFirst({
+      where: { householdId: automation.householdId, year: prev.year, status: { not: 'SIMULATION' } },
+    })
+    if (prevBudgetYear && household?.autoMarkTransferPaid) {
+      const prevTransfer = await prisma.budgetTransfer.findUnique({
+        where: { budgetYearId_month_year: { budgetYearId: prevBudgetYear.id, month: prev.month, year: prev.year } },
+      })
+      if (prevTransfer && prevTransfer.status === 'PENDING') {
+        await prisma.budgetTransfer.update({
+          where: { id: prevTransfer.id },
+          data: { status: 'PAID', actualAmount: prevTransfer.calculatedAmount, paidAt: now },
+        })
+      }
+    }
+    if (prevBudgetYear && household?.budgetModel === 'PAY_NO_PAY' && prev.year !== currentYear) {
+      // Year boundary: close December. Unpaid items can't carry into the new year
+      // because its expenses are separate rows (copies), so they end here.
+      await closePayNoPayMonth(prevBudgetYear.id, prev.year, prev.month)
+    }
+
+    if (!options.skipLifecycle) await advanceBudgetYearStatuses(now)
+
+    const activeBudgetYear = await prisma.budgetYear.findFirst({
+      where: { householdId: automation.householdId, status: 'ACTIVE' },
+    })
 
     if (!activeBudgetYear) {
       const finishedAt = new Date()
@@ -42,26 +83,8 @@ export async function runAutomation(
       return
     }
 
-    const now = new Date()
-    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth() // getMonth() is 0-indexed; prev month is 1-indexed
-    const currentMonth = now.getMonth() + 1
-    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear()
-    const currentYear = now.getFullYear()
-
-    if (household?.autoMarkTransferPaid) {
-      const prevTransfer = await prisma.budgetTransfer.findUnique({
-        where: { budgetYearId_month_year: { budgetYearId: activeBudgetYear.id, month: prevMonth, year: prevYear } },
-      })
-      if (prevTransfer && prevTransfer.status === 'PENDING') {
-        await prisma.budgetTransfer.update({
-          where: { id: prevTransfer.id },
-          data: { status: 'PAID', actualAmount: prevTransfer.calculatedAmount, paidAt: now },
-        })
-      }
-    }
-
-    if (household?.budgetModel === 'PAY_NO_PAY') {
-      await rolloverPayNoPayOccurrences(activeBudgetYear.id, currentYear, prevMonth, currentMonth)
+    if (household?.budgetModel === 'PAY_NO_PAY' && prev.year === currentYear && activeBudgetYear.year === currentYear) {
+      await rolloverPayNoPayOccurrences(activeBudgetYear.id, currentYear, prev.month, currentMonth)
     }
 
     await recalculateTransfer(activeBudgetYear.id)
@@ -92,6 +115,8 @@ export async function runAllEnabledAutomations(
   userId?: string,
 ): Promise<number> {
   const automations = await prisma.automation.findMany({ where: { isEnabled: true } })
-  await Promise.all(automations.map((a) => runAutomation(a.id, triggeredBy, userId)))
+  // Advance budget-year statuses once up front instead of once per household
+  await advanceBudgetYearStatuses()
+  await Promise.all(automations.map((a) => runAutomation(a.id, triggeredBy, userId, { skipLifecycle: true })))
   return automations.length
 }

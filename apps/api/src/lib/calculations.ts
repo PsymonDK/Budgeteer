@@ -84,3 +84,63 @@ export function deriveBudgetStatus(year: number): 'ACTIVE' | 'FUTURE' | 'RETIRED
   if (year === current) return 'ACTIVE'
   return 'FUTURE'
 }
+
+/**
+ * The stored monthlyEquivalent in base currency: amount × rate, normalised to a month
+ * by frequency, then averaged over the active months of the year. Used on save and
+ * by the daily FX sync so both always agree.
+ */
+export function calcMonthlyInBase(
+  amount: Decimal | number | string,
+  rate: Decimal | number | string,
+  frequency: Frequency,
+  startMonth: number | null = null,
+  endMonth: number | null = null,
+): Decimal {
+  const inBase = new Decimal(amount.toString()).mul(new Decimal(rate.toString()))
+  return calcAnnualAverage(calcMonthlyEquivalent(inBase, frequency), startMonth, endMonth)
+}
+
+/**
+ * The amount an expense falls due in each month of the year (index 0 = January),
+ * or null when nothing is due. Recurring frequencies spread the per-active-month
+ * amount over the active months; lump sums land on quarter ends (QUARTERLY), June
+ * and December (BIANNUAL), or the last active month (ANNUAL), using the exact
+ * base-currency occurrence amount so e.g. 1000/quarter doesn't show as 999.99.
+ */
+export function expenseMonthSchedule(expense: {
+  frequency: Frequency
+  startMonth: number | null
+  endMonth: number | null
+  monthlyEquivalent: Decimal
+  amount: Decimal
+  rateUsed: Decimal | null
+}): (string | null)[] {
+  const start = expense.startMonth ?? 1
+  const end = expense.endMonth ?? 12
+  const months = activeMonthCount(expense.startMonth, expense.endMonth)
+  const perMonth = months > 0
+    ? new Decimal(expense.monthlyEquivalent.toString()).mul(12).div(months).toDecimalPlaces(2).toFixed(2)
+    : '0.00'
+  const perOccurrence = new Decimal(expense.amount.toString())
+    .mul(new Decimal(expense.rateUsed?.toString() ?? '1'))
+    .toDecimalPlaces(2)
+    .toFixed(2)
+
+  const schedule: (string | null)[] = Array(12).fill(null)
+  const inRange = (m: number) => m >= start && m <= end
+  switch (expense.frequency) {
+    case 'QUARTERLY':
+      for (const m of [3, 6, 9, 12]) if (inRange(m)) schedule[m - 1] = perOccurrence
+      break
+    case 'BIANNUAL':
+      for (const m of [6, 12]) if (inRange(m)) schedule[m - 1] = perOccurrence
+      break
+    case 'ANNUAL':
+      schedule[end - 1] = perOccurrence
+      break
+    default: // WEEKLY, FORTNIGHTLY, MONTHLY
+      for (let m = start; m <= end; m++) schedule[m - 1] = perMonth
+  }
+  return schedule
+}

@@ -2,7 +2,7 @@ import { Link, Outlet, useParams, useLocation } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, TrendingUp, PiggyBank, Receipt, ScanLine, Tag,
-  Calendar, Clock, BarChart2, Settings, Menu, X,
+  Calendar, Clock, BarChart2, Settings, Trash2, Menu, X,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { AppFooter } from '../components/AppFooter'
@@ -71,24 +71,25 @@ export function HouseholdLayout() {
           })}
         </div>
 
-        {/* Settings pinned at bottom */}
+        {/* Trash and Settings pinned at bottom */}
         <div className="px-3 pt-3 border-t border-gray-800 mt-3">
-          {(() => {
-            const active = isActive('settings')
+          {([['trash', 'Trash', Trash2], ['settings', 'Settings', Settings]] as const).map(([path, label, Icon]) => {
+            const active = isActive(path)
             return (
               <Link
-                to={`/households/${householdId}/settings`}
+                key={path}
+                to={`/households/${householdId}/${path}`}
                 className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                   active
                     ? 'bg-gray-800 text-white font-medium'
                     : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
                 }`}
               >
-                <Settings size={16} className={active ? 'text-amber-400' : 'text-gray-500'} />
-                Settings
+                <Icon size={16} className={active ? 'text-amber-400' : 'text-gray-500'} />
+                {label}
               </Link>
             )
-          })()}
+          })}
         </div>
       </>
     )
@@ -151,7 +152,8 @@ export function HouseholdLayout() {
         {/* Main content */}
         <div className="flex-1 overflow-auto flex flex-col">
           <div className="flex-1">
-            <Outlet />
+            {/* Keyed so switching household remounts the page and drops the previous household's form, filter and selection state */}
+            <Outlet key={householdId} />
           </div>
           <AppFooter />
         </div>

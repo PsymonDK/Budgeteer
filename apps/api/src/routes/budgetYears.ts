@@ -1,10 +1,11 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { BudgetStatus, Prisma } from '@prisma/client'
-import { prisma } from '../lib/prisma'
+import { prisma, type PrismaTx, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
-import { deriveBudgetStatus } from '../lib/calculations'
-import { assertHouseholdAccess } from '../lib/ownership'
+import { calcMonthlyInBase, deriveBudgetStatus } from '../lib/calculations'
+import { BASE_CURRENCY, getLatestRate } from '../lib/currency'
+import { assertHouseholdAccess, getActiveMembership } from '../lib/ownership'
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -26,9 +27,7 @@ const RenameSimulationSchema = z.object({
 
 async function assertHouseholdAdmin(householdId: string, userId: string, role: string) {
   if (role === 'SYSTEM_ADMIN') return true
-  const member = await prisma.householdMember.findUnique({
-    where: { householdId_userId: { householdId, userId } },
-  })
+  const member = await getActiveMembership(householdId, userId)
   return member?.role === 'ADMIN'
 }
 
@@ -58,11 +57,63 @@ export function canDeleteBudgetYear(
   return target.status === 'SIMULATION' || (target.status === 'RETIRED' && target.year >= currentYear)
 }
 
+type CopyRates = Map<string, Prisma.Decimal | null>
+
+/** Latest rate for every foreign currency used in the source year (null when unknown). */
+export async function loadCopyRates(source: SourceBudgetYear): Promise<CopyRates> {
+  const codes = new Set(
+    [...source.expenses, ...source.savingsEntries]
+      .map((e) => e.currencyCode)
+      .filter((c): c is string => !!c && c !== BASE_CURRENCY),
+  )
+  const rates: CopyRates = new Map()
+  for (const code of codes) {
+    const rate = await getLatestRate(code)
+    rates.set(code, rate === null ? null : new Prisma.Decimal(rate))
+  }
+  return rates
+}
+
+/**
+ * Currency fields for a copied entry. A copy is a new, unlocked entry: foreign
+ * amounts are re-priced at today's rate (or keep the source's rate when none is
+ * available) so the copy doesn't silently turn into base currency.
+ */
+export function copiedCurrencyFields(
+  e: {
+    currencyCode: string | null
+    originalAmount: Prisma.Decimal | null
+    amount: Prisma.Decimal
+    rateUsed: Prisma.Decimal | null
+    monthlyEquivalent: Prisma.Decimal
+    frequency: Parameters<typeof calcMonthlyInBase>[2]
+    startMonth?: number | null
+    endMonth?: number | null
+  },
+  rates: CopyRates,
+) {
+  if (!e.currencyCode || e.currencyCode === BASE_CURRENCY) {
+    return { currencyCode: null, originalAmount: null, rateUsed: null, rateDate: null, monthlyEquivalent: e.monthlyEquivalent }
+  }
+  const original = e.originalAmount ?? e.amount
+  const rate = rates.get(e.currencyCode) ?? e.rateUsed
+  return {
+    currencyCode: e.currencyCode,
+    originalAmount: original,
+    rateUsed: rate,
+    rateDate: null,
+    monthlyEquivalent: rate
+      ? calcMonthlyInBase(original, rate, e.frequency, e.startMonth ?? null, e.endMonth ?? null)
+      : e.monthlyEquivalent,
+  }
+}
+
 async function copyBudgetYearContent(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   source: SourceBudgetYear,
   targetId: string,
   memberIds: Set<string>,
+  rates: CopyRates,
 ) {
   for (const e of source.expenses) {
     const newExpense = await tx.expense.create({
@@ -74,11 +125,12 @@ async function copyBudgetYearContent(
         frequencyPeriod: e.frequencyPeriod,
         startMonth: e.startMonth,
         endMonth: e.endMonth,
-        monthlyEquivalent: e.monthlyEquivalent,
         notes: e.notes,
         categoryId: e.categoryId,
         ownership: e.ownership,
         ownedByUserId: e.ownedByUserId,
+        accountId: e.accountId,
+        ...copiedCurrencyFields(e, rates),
       },
     })
     const validExpenseSplits = e.customSplits.filter((s) => memberIds.has(s.userId))
@@ -95,11 +147,13 @@ async function copyBudgetYearContent(
         label: s.label,
         amount: s.amount,
         frequency: s.frequency,
-        monthlyEquivalent: s.monthlyEquivalent,
+        frequencyPeriod: s.frequencyPeriod,
         notes: s.notes,
         ownership: s.ownership,
         ownedByUserId: s.ownedByUserId,
         categoryId: s.categoryId,
+        accountId: s.accountId,
+        ...copiedCurrencyFields(s, rates),
       },
     })
     const validSavingsSplits = s.customSplits.filter((sp) => memberIds.has(sp.userId))
@@ -112,7 +166,7 @@ async function copyBudgetYearContent(
 }
 
 export async function deleteBudgetYearWithDependencies(
-  tx: Prisma.TransactionClient,
+  tx: PrismaTx,
   yearId: string,
 ) {
   const expenses = await tx.expense.findMany({ where: { budgetYearId: yearId }, select: { id: true } })
@@ -150,7 +204,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const years = await prisma.budgetYear.findMany({
       where: { householdId },
       include: {
-        _count: { select: { expenses: true, savingsEntries: true } },
+        _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } },
       },
       orderBy: [{ year: 'desc' }, { createdAt: 'asc' }],
     })
@@ -184,11 +238,11 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const budgetYear = await prisma.budgetYear.create({
       data: { householdId, year, status },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     if (status === 'ACTIVE') {
-      recalculateTransfer(budgetYear.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+      await recalculateTransfer(budgetYear.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     }
 
     return reply.status(201).send(budgetYear)
@@ -211,8 +265,8 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       prisma.budgetYear.findFirst({
         where: { id: yearId, householdId },
         include: {
-          expenses: { include: { customSplits: true } },
-          savingsEntries: { include: { customSplits: true } },
+          expenses: { where: notDeleted, include: { customSplits: true } },
+          savingsEntries: { where: notDeleted, include: { customSplits: true } },
         },
       }),
       prisma.householdMember.findMany({ where: { householdId }, select: { userId: true } }),
@@ -221,6 +275,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const memberIds = new Set(householdMembers.map((m) => m.userId))
     const data = result.data
+    const rates = await loadCopyRates(source)
 
     if ('year' in data) {
       const existing = await prisma.budgetYear.findFirst({
@@ -234,12 +289,14 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
         const created = await tx.budgetYear.create({
           data: { householdId, year: data.year, status: deriveBudgetStatus(data.year), copiedFromId: source.id },
         })
-        await copyBudgetYearContent(tx, source, created.id, memberIds)
+        await copyBudgetYearContent(tx, source, created.id, memberIds, rates)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
+
+      if (newYear?.status === 'ACTIVE') await recalculateTransfer(newYear.id)
 
       return reply.status(201).send(newYear)
     } else {
@@ -253,10 +310,10 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
             copiedFromId: source.id,
           },
         })
-        await copyBudgetYearContent(tx, source, created.id, memberIds)
+        await copyBudgetYearContent(tx, source, created.id, memberIds, rates)
         return tx.budgetYear.findUnique({
           where: { id: created.id },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
 
@@ -284,7 +341,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const updated = await prisma.budgetYear.update({
       where: { id: yearId },
       data: { simulationName: result.data.simulationName },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     return reply.send(updated)
@@ -307,7 +364,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     const updated = await prisma.budgetYear.update({
       where: { id: yearId },
       data: { status: 'RETIRED' },
-      include: { _count: { select: { expenses: true, savingsEntries: true } } },
+      include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
     })
 
     return reply.send(updated)
@@ -325,20 +382,30 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
     if (!target) return reply.status(404).send({ error: 'Budget year not found' })
 
     if (target.status === 'SIMULATION') {
+      // A simulation replaces the regular budget year for its own calendar year: a
+      // 2027 simulation becomes the FUTURE 2027 year and leaves the live 2026 alone.
+      const promotedStatus = deriveBudgetStatus(target.year)
+      if (promotedStatus === 'RETIRED') {
+        return reply.status(400).send({
+          error: 'Simulations of past years cannot be promoted',
+          code: 'BUDGET_YEAR_NOT_PROMOTABLE',
+        })
+      }
+
       const promoted = await prisma.$transaction(async (tx) => {
         await tx.budgetYear.updateMany({
-          where: { householdId, status: 'ACTIVE' },
+          where: { householdId, year: target.year, status: { in: ['ACTIVE', 'FUTURE'] } },
           data: { status: 'RETIRED' },
         })
 
         return tx.budgetYear.update({
           where: { id: yearId },
-          data: { status: 'ACTIVE', simulationName: null },
-          include: { _count: { select: { expenses: true, savingsEntries: true } } },
+          data: { status: promotedStatus, simulationName: null },
+          include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
         })
       })
 
-      recalculateTransfer(promoted.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+      if (promotedStatus === 'ACTIVE') await recalculateTransfer(promoted.id)
 
       return reply.send(promoted)
     }
@@ -362,12 +429,12 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
       return tx.budgetYear.update({
         where: { id: yearId },
         data: { status: restoredStatus },
-        include: { _count: { select: { expenses: true, savingsEntries: true } } },
+        include: { _count: { select: { expenses: { where: notDeleted }, savingsEntries: { where: notDeleted } } } },
       })
     })
 
     if (restoredStatus === 'ACTIVE') {
-      recalculateTransfer(restored.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
+      await recalculateTransfer(restored.id).catch((err) => fastify.log.error({ err }, 'recalculateTransfer failed'))
     }
 
     return reply.send(restored)

@@ -3,26 +3,22 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
+import type { Category, Household } from '../../api/types'
 import { Modal } from '../../components/Modal'
+import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { getApiError } from '../../lib/apiError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 
 type Tab = 'terms' | 'mappings' | 'subcategories'
 type Scope = 'system' | 'household'
 type TermType = 'NOISE_TOKEN' | 'LOW_VALUE_WORD' | 'OCR_ALIAS'
 
-interface HouseholdOption {
-  id: string
-  name: string
-  isActive: boolean
-}
+// GET /admin/receipt-training (apps/api/src/routes/receiptTraining.ts)
 
-interface CategoryOption {
-  id: string
-  name: string
-  isSystemWide: boolean
-  isActive: boolean
-  householdId: string | null
-}
+type HouseholdOption = Pick<Household, 'id' | 'name' | 'isActive'>
+
+type CategoryOption = Pick<Category, 'id' | 'name' | 'isSystemWide' | 'isActive' | 'householdId'>
 
 interface TrainingTerm {
   id: string
@@ -87,9 +83,11 @@ export function ReceiptTrainingAdminPage() {
   const [editTerm, setEditTerm] = useState<TrainingTerm | null>(null)
   const [editSubcategory, setEditSubcategory] = useState<TrainingSubcategory | null>(null)
   const [editMapping, setEditMapping] = useState<TrainingMapping | null>(null)
+  // Deleting training data changes how every receipt is read, so it asks first
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'term' | 'mapping'; id: string } | null>(null)
 
   const { data, isLoading } = useQuery<ReceiptTrainingSnapshot>({
-    queryKey: ['admin', 'receipt-training'],
+    queryKey: qk.adminReceiptTraining(),
     queryFn: async () => (await api.get<ReceiptTrainingSnapshot>('/admin/receipt-training')).data,
   })
 
@@ -110,48 +108,48 @@ export function ReceiptTrainingAdminPage() {
     !query || [mapping.normalizedLabel, mapping.merchantKey, mapping.householdName ?? 'system', mapping.categoryName, mapping.subcategoryName ?? ''].some((value) => value.toLowerCase().includes(query)),
   ), [snapshot.mappings, query])
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'receipt-training'] })
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: qk.adminReceiptTraining() })
   const createTermMutation = useMutation({
     mutationFn: () => api.post('/admin/receipt-training/terms', termBody(termDraft)),
     onSuccess: () => { invalidate(); setTermDraft(emptyTerm); toast.success('Classifier term saved') },
-    onError: (err) => toast.error(readError(err, 'Failed to save classifier term')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to save classifier term')),
   })
   const updateTermMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<TrainingTerm> }) => api.patch(`/admin/receipt-training/terms/${id}`, body),
     onSuccess: () => { invalidate(); setEditTerm(null); toast.success('Classifier term updated') },
-    onError: (err) => toast.error(readError(err, 'Failed to update classifier term')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to update classifier term')),
   })
   const deleteTermMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/receipt-training/terms/${id}`),
     onSuccess: () => { invalidate(); toast.success('Classifier term deleted') },
-    onError: (err) => toast.error(readError(err, 'Failed to delete classifier term')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete classifier term')),
   })
 
   const createSubcategoryMutation = useMutation({
     mutationFn: () => api.post('/admin/receipt-training/subcategories', scopedBody(subcategoryDraft)),
     onSuccess: () => { invalidate(); setSubcategoryDraft(emptySubcategory); toast.success('Receipt subcategory saved') },
-    onError: (err) => toast.error(readError(err, 'Failed to save receipt subcategory')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to save receipt subcategory')),
   })
   const updateSubcategoryMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<TrainingSubcategory> }) => api.patch(`/admin/receipt-training/subcategories/${id}`, body),
     onSuccess: () => { invalidate(); setEditSubcategory(null); toast.success('Receipt subcategory updated') },
-    onError: (err) => toast.error(readError(err, 'Failed to update receipt subcategory')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to update receipt subcategory')),
   })
 
   const createMappingMutation = useMutation({
     mutationFn: () => api.post('/admin/receipt-training/mappings', mappingBody(mappingDraft)),
     onSuccess: () => { invalidate(); setMappingDraft(emptyMapping); toast.success('Receipt mapping saved') },
-    onError: (err) => toast.error(readError(err, 'Failed to save receipt mapping')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to save receipt mapping')),
   })
   const updateMappingMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Partial<TrainingMapping> & { confidence?: number } }) => api.patch(`/admin/receipt-training/mappings/${id}`, body),
     onSuccess: () => { invalidate(); setEditMapping(null); toast.success('Receipt mapping updated') },
-    onError: (err) => toast.error(readError(err, 'Failed to update receipt mapping')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to update receipt mapping')),
   })
   const deleteMappingMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/admin/receipt-training/mappings/${id}`),
     onSuccess: () => { invalidate(); toast.success('Receipt mapping deleted') },
-    onError: (err) => toast.error(readError(err, 'Failed to delete receipt mapping')),
+    onError: (err) => toast.error(getApiError(err, 'Failed to delete receipt mapping')),
   })
 
   return (
@@ -178,12 +176,12 @@ export function ReceiptTrainingAdminPage() {
       ) : tab === 'terms' ? (
         <>
           <TermCreateForm draft={termDraft} setDraft={setTermDraft} households={activeHouseholds} onSubmit={() => createTermMutation.mutate()} isPending={createTermMutation.isPending} />
-          <TermsTable terms={filteredTerms} onEdit={setEditTerm} onToggle={(term) => updateTermMutation.mutate({ id: term.id, body: { isActive: !term.isActive } })} onDelete={(id) => deleteTermMutation.mutate(id)} />
+          <TermsTable terms={filteredTerms} onEdit={setEditTerm} onToggle={(term) => updateTermMutation.mutate({ id: term.id, body: { isActive: !term.isActive } })} onDelete={(id) => setPendingDelete({ kind: 'term', id })} />
         </>
       ) : tab === 'mappings' ? (
         <>
           <MappingCreateForm draft={mappingDraft} setDraft={setMappingDraft} households={activeHouseholds} categories={activeCategories} subcategories={snapshot.subcategories} onSubmit={() => createMappingMutation.mutate()} isPending={createMappingMutation.isPending} />
-          <MappingsTable mappings={filteredMappings} onEdit={setEditMapping} onDelete={(id) => deleteMappingMutation.mutate(id)} />
+          <MappingsTable mappings={filteredMappings} onEdit={setEditMapping} onDelete={(id) => setPendingDelete({ kind: 'mapping', id })} />
         </>
       ) : (
         <>
@@ -192,6 +190,20 @@ export function ReceiptTrainingAdminPage() {
         </>
       )}
 
+      {pendingDelete && (
+        <ConfirmDialog
+          title={pendingDelete.kind === 'term' ? 'Delete classifier term?' : 'Delete receipt mapping?'}
+          confirmLabel="Delete"
+          pending={deleteTermMutation.isPending || deleteMappingMutation.isPending}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const mutation = pendingDelete.kind === 'term' ? deleteTermMutation : deleteMappingMutation
+            mutation.mutate(pendingDelete.id, { onSettled: () => setPendingDelete(null) })
+          }}
+        >
+          <p className="text-sm text-gray-400 mb-6">This changes how future receipts are cleaned up and categorised. It can't be undone.</p>
+        </ConfirmDialog>
+      )}
       {editTerm && (
         <EditTermModal
           term={editTerm}
@@ -560,9 +572,4 @@ function mappingBody(draft: typeof emptyMapping) {
     subcategoryId: draft.subcategoryId || null,
     confidence: Number(draft.confidence || 1),
   }
-}
-
-function readError(err: unknown, fallback: string): string {
-  const maybe = err as { response?: { data?: { error?: string } } }
-  return maybe.response?.data?.error ?? fallback
 }

@@ -12,13 +12,16 @@ npm run db:migrate       # run prisma migrations
 npm run db:generate      # regenerate prisma client
 npm run db:studio        # open prisma studio
 npm run db:seed          # seed development data
+npm run typecheck        # typecheck both apps (incl. API tests)
+npm run lint             # ESLint, whole repo
+npm run test             # API unit tests
 ```
 
 ## Calculation rules
 - ALL business logic calculations are done server-side, never in React components
 - `monthlyEquivalent` is always calculated on save and stored in the database — never recalculated at render time
 - Currency conversion is calculated server-side using stored rates
-- The helpers in `apps/web/src/lib/constants.ts` (`calcMonthly`) and `apps/web/src/pages/IncomePage.tsx` (`calcDanishDeductions`) may be used on the frontend ONLY for live previews in forms before submission
+- The helpers in `apps/web/src/lib/constants.ts` (`calcMonthly`) and `apps/web/src/lib/danishTaxPreview.ts` (`calcDanishDeductions`) may be used on the frontend ONLY for live previews in forms before submission
 - Dashboard totals come from pre-aggregated API responses, not client-side math
 - Income history chart data is aggregated server-side — the endpoint returns ready-to-display time series data
 
@@ -39,15 +42,16 @@ npm run db:seed          # seed development data
 - All IDs use `cuid()`
 - All monetary amounts stored as `Decimal(10,2)`
 - Allocation percentages stored as `Decimal(5,2)`
-- Soft deletes via `isActive` or `endDate` — never hard delete user or financial data
+- Soft deletes via `isActive`, `endDate`, or `deletedAt` (trash, restorable) — never hard delete user or financial data
+- Expenses, savings, salary records, overrides, bonuses and tax cards use `deletedAt`: the Prisma client in `apps/api/src/lib/prisma.ts` hides trashed rows from reads automatically, but nested includes, `_count` and relation filters must add `notDeleted` explicitly
 - Retired budget years are read-only — never modify historical data
 
 ## API conventions
 - REST, JSON
 - Auth: JWT access token (15 min) + refresh token (7 days), rotated on use
-- All routes require authentication except `/auth/login` and `/health`
-- System admin routes are prefixed `/admin/`
-- Errors return `{ error: string, code: string }`
+- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config` and avatar images (`/uploads/avatars/`)
+- System admin routes are prefixed `/admin/`; user management (`/users`) and `DELETE /households/:id` are also admin-only via `requireAdmin`
+- Errors return `{ error: string, code?: string }` — add a machine-readable `code` when the client needs to react to the error (e.g. `BUDGET_YEAR_READ_ONLY`); unexpected errors are mapped by the global error handler
 - Successful creates return the created object with 201
 - Validation via Zod on all request bodies
 

@@ -1,0 +1,14 @@
+# Keep host artifacts out of the build context. Host node_modules can contain
+# platform-specific binaries (e.g. Windows rolldown) that break Linux builds.
+**/node_modules
+**/dist
+dist-seed
+.git
+.github
+.claude
+**/.env
+**/.env.*
+!**/.env.example
+uploads
+coverage
+*.log

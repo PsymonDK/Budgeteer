@@ -2,7 +2,10 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Zap } from 'lucide-react'
 import { api } from '../../api/client'
+import { qk } from '../../api/queryKeys'
 import { useAuth } from '../../contexts/AuthContext'
+import { toast } from 'sonner'
+import { getApiError } from '../../lib/apiError'
 
 interface AutomationRun {
   id: string
@@ -68,7 +71,7 @@ export function AutomationsAdminPage() {
   const [runsLoading, setRunsLoading] = useState(false)
 
   const { data: automations = [], isLoading } = useQuery<Automation[]>({
-    queryKey: ['admin', 'automations'],
+    queryKey: qk.adminAutomations(),
     queryFn: async () => (await api.get<Automation[]>('/admin/automations')).data,
   })
 
@@ -76,22 +79,30 @@ export function AutomationsAdminPage() {
     setRunAllLoading(true)
     try {
       await api.post('/admin/automations/trigger-all')
-      queryClient.invalidateQueries({ queryKey: ['admin', 'automations'] })
+      queryClient.invalidateQueries({ queryKey: qk.adminAutomations() })
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to run automations'))
     } finally {
       setRunAllLoading(false)
     }
   }
 
   async function handleToggle(automation: Automation) {
-    await api.patch(`/admin/automations/${automation.id}/toggle`)
-    queryClient.invalidateQueries({ queryKey: ['admin', 'automations'] })
+    try {
+      await api.patch(`/admin/automations/${automation.id}/toggle`)
+      queryClient.invalidateQueries({ queryKey: qk.adminAutomations() })
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to toggle automation'))
+    }
   }
 
   async function handleTrigger(automation: Automation) {
     setTriggerLoading(automation.id)
     try {
       await api.post(`/admin/automations/${automation.id}/trigger`)
-      queryClient.invalidateQueries({ queryKey: ['admin', 'automations'] })
+      queryClient.invalidateQueries({ queryKey: qk.adminAutomations() })
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to run automation'))
     } finally {
       setTriggerLoading(null)
     }
@@ -102,6 +113,8 @@ export function AutomationsAdminPage() {
     try {
       const res = await api.get<AutomationRun[]>(`/admin/automations/${automation.id}/runs`)
       setRunsModal({ automation, runs: res.data })
+    } catch (err) {
+      toast.error(getApiError(err, 'Failed to load automation runs'))
     } finally {
       setRunsLoading(false)
     }

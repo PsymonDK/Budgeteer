@@ -1,7 +1,7 @@
 import axios, { InternalAxiosRequestConfig } from 'axios'
 
-// In Docker the web is served by nginx which proxies /api → api:3001.
-// In local dev set VITE_API_URL=http://localhost:3001 in your .env file.
+// /api is proxied to the API by nginx in Docker and by the Vite dev server
+// locally. Set VITE_API_URL (in apps/web/.env) only to bypass the proxy.
 const API_URL = import.meta.env.VITE_API_URL ?? '/api'
 
 export const api = axios.create({
@@ -37,7 +37,10 @@ api.interceptors.response.use(
 
     const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean }
 
-    if (error.response?.status !== 401 || originalRequest._retry) {
+    // /auth/* calls (login, refresh, logout) report their own 401s; retrying
+    // them through the refresh flow would bounce a failed login to /login.
+    const isAuthCall = originalRequest?.url?.startsWith('/auth/') ?? false
+    if (error.response?.status !== 401 || originalRequest._retry || isAuthCall) {
       return Promise.reject(error)
     }
 

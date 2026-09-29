@@ -4,6 +4,10 @@ import bcrypt from 'bcryptjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { parseCsvRows } from '../apps/api/src/lib/csv'
+import { merchantMappingKey, normalizeClassifierTerm, normalizeReceiptLabel } from '../apps/api/src/lib/receiptText'
+
+// Local runs read the repo-root .env; existing env vars (Docker) win.
+if (fs.existsSync('.env')) process.loadEnvFile('.env')
 
 const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL as string }) })
 
@@ -136,9 +140,8 @@ async function main() {
       data: { email, name, passwordHash, role: 'SYSTEM_ADMIN', mustChangePassword: true },
     })
     await prisma.userPreferences.create({ data: { userId: admin.id } })
-    console.log(`✓ Created admin user: ${admin.email}`)
-    console.log(`  Default password: ${password}`)
-    console.log(`  Change this on first login.`)
+    // Never log the password: container logs are often shipped elsewhere
+    console.log(`✓ Created admin user: ${admin.email} (password from ADMIN_PASSWORD; change it on first login)`)
   }
 
   // ── Default system-wide expense categories (idempotent) ───────────────────
@@ -461,7 +464,6 @@ async function main() {
   })
 
   console.log('✓ Created Carol & Dave household (1 active budget year)')
-  await seedReceiptTrainingSeed()
   console.log('Demo data complete. Log in as alice@demo.local / demo1234 to explore.')
 }
 
@@ -480,7 +482,7 @@ async function seedReceiptTrainingSeed() {
   let mappingSeeded = 0
   for (const row of rows) {
     const termType = row.termType?.trim().toUpperCase()
-    const term = normalizeSeedClassifierTerm(termType, row.term ?? '')
+    const term = normalizeClassifierTerm(termType, row.term ?? '') ?? ''
     if ((termType === 'NOISE_TOKEN' || termType === 'LOW_VALUE_WORD' || termType === 'OCR_ALIAS') && term) {
       await prisma.receiptClassifierTerm.upsert({
         where: { scopeKey_termType_term: { scopeKey: 'system', termType, term } },
@@ -499,14 +501,15 @@ async function seedReceiptTrainingSeed() {
       continue
     }
 
-    const normalizedLabel = row.normalizedLabel?.trim()
+    // Same normalization as runtime lookups, so seeded mappings actually match
+    const normalizedLabel = normalizeReceiptLabel(row.normalizedLabel ?? '')
     const category = categoryByName.get(nameKey(row.categoryName ?? ''))
     if (!normalizedLabel || !category) continue
     const subcategoryName = row.subcategoryName?.trim()
     const subcategory = subcategoryName
       ? category.receiptSubcategories.find((candidate) => nameKey(candidate.name) === nameKey(subcategoryName))
       : null
-    const merchantKey = normalizeMerchantKey(row.merchantKey || row.merchantName || '')
+    const merchantKey = merchantMappingKey(row.merchantKey || row.merchantName || '')
     const confidence = Number(row.confidence) || 0.85
     await prisma.receiptCategoryMapping.upsert({
       where: {
@@ -526,11 +529,8 @@ async function seedReceiptTrainingSeed() {
         confidence,
         hitCount: 1,
       },
-      update: {
-        categoryId: category.id,
-        subcategoryId: subcategory?.id ?? null,
-        confidence,
-      },
+      // Existing rows keep any admin edits (this runs on every boot)
+      update: {},
     })
     const deduped = await prisma.receiptCategoryMapping.deleteMany({
       where: {
@@ -559,28 +559,9 @@ function nameKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-function normalizeSeedTerm(value: string): string {
-  return value.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}]+/gu, ' ').trim().replace(/\s+/g, ' ')
-}
 
-function normalizeSeedClassifierTerm(termType: string | undefined, value: string): string {
-  if (termType === 'OCR_ALIAS') {
-    const match = value.trim().toLowerCase().match(/^(.+?)(?:=>|->)(.+)$/)
-    if (!match) return ''
-    const source = normalizeSeedAliasSide(match[1])
-    const target = normalizeSeedAliasSide(match[2])
-    return source && target && source !== target ? `${source}=>${target}` : ''
-  }
-  return normalizeSeedTerm(value)
-}
 
-function normalizeSeedAliasSide(value: string): string {
-  return value.trim().toLowerCase().replace(/[^\p{Letter}\p{Number}\s@]+/gu, ' ').trim().replace(/\s+/g, ' ')
-}
 
-function normalizeMerchantKey(value: string): string {
-  return normalizeSeedTerm(value)
-}
 
 function parseSeedBoolean(value: string | undefined, fallback: boolean): boolean {
   const normalized = value?.trim().toLowerCase()
@@ -590,7 +571,76 @@ function parseSeedBoolean(value: string | undefined, fallback: boolean): boolean
   return fallback
 }
 
+/**
+ * Every household needs its monthly transfer automation. Households created through
+ * the API get one; seeded demo households and older installs may not. Idempotent.
+ */
+async function ensureHouseholdAutomations() {
+  const households = await prisma.household.findMany({
+    where: { automations: { none: { key: 'monthly_transfer_snapshot' } } },
+    select: { id: true },
+  })
+  for (const { id } of households) {
+    await prisma.automation.create({
+      data: {
+        key: 'monthly_transfer_snapshot',
+        label: 'Monthly budget transfer calculation',
+        description: 'Calculates and records the recommended monthly transfer on the 1st of each month',
+        schedule: '0 0 1 * *',
+        householdId: id,
+      },
+    })
+  }
+  if (households.length > 0) console.log(`✓ Added monthly transfer automation to ${households.length} household(s).`)
+}
+
+/**
+ * One-off repair (2026-09) after the receipt label normalization fix: keys used to
+ * be built with plain NFKD, which split "å" and mid-word accents ("blåbær" became
+ * "bla bær"). Line items whose stored key is exactly the old result for their label
+ * get the new key, and household mappings stored under the old key move with them
+ * (merging into an existing mapping when the new key already exists). Keys built
+ * differently (e.g. with household noise words) are left alone. Idempotent.
+ */
+async function rekeyReceiptLabels() {
+  const legacyKey = (label: string) => normalizeReceiptLabel(label.normalize('NFKD').replace(/\p{M}/gu, ' '))
+  const rows = await prisma.$queryRaw<Array<{ id: string; label: string; normalizedLabel: string; householdId: string }>>`
+    SELECT li.id, li.label, li."normalizedLabel", r."householdId"
+    FROM "ReceiptLineItem" li JOIN "Receipt" r ON r.id = li."receiptId"
+    WHERE li.label ~ '[^[:ascii:]]'`
+  const moves = new Map<string, { householdId: string; from: string; to: string }>()
+  let lines = 0
+  for (const row of rows) {
+    const next = normalizeReceiptLabel(row.label)
+    if (next === row.normalizedLabel || row.normalizedLabel !== legacyKey(row.label)) continue
+    await prisma.receiptLineItem.update({ where: { id: row.id }, data: { normalizedLabel: next } })
+    moves.set(`${row.householdId}|${row.normalizedLabel}`, { householdId: row.householdId, from: row.normalizedLabel, to: next })
+    lines++
+  }
+
+  let mappings = 0
+  for (const { householdId, from, to } of moves.values()) {
+    for (const old of await prisma.receiptCategoryMapping.findMany({ where: { scopeKey: householdId, normalizedLabel: from } })) {
+      const target = await prisma.receiptCategoryMapping.findUnique({
+        where: { scopeKey_normalizedLabel_merchantKey: { scopeKey: householdId, normalizedLabel: to, merchantKey: old.merchantKey } },
+      })
+      if (target) {
+        await prisma.$transaction([
+          prisma.receiptCategoryMapping.update({ where: { id: target.id }, data: { hitCount: { increment: old.hitCount } } }),
+          prisma.receiptCategoryMapping.delete({ where: { id: old.id } }),
+        ])
+      } else {
+        await prisma.receiptCategoryMapping.update({ where: { id: old.id }, data: { normalizedLabel: to } })
+      }
+      mappings++
+    }
+  }
+  if (lines > 0 || mappings > 0) console.log(`✓ Re-keyed ${lines} receipt line(s) and ${mappings} mapping(s) after the label normalization fix.`)
+}
+
 main()
+  .then(() => ensureHouseholdAutomations())
+  .then(() => rekeyReceiptLabels())
   .catch((err) => {
     console.error(err)
     process.exit(1)
