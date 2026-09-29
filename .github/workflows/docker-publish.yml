@@ -84,7 +84,7 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: API — upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-api.sarif
           category: trivy-api
@@ -122,7 +122,7 @@ jobs:
           severity: HIGH,CRITICAL
 
       - name: Web — upload Trivy results
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-web.sarif
           category: trivy-web
