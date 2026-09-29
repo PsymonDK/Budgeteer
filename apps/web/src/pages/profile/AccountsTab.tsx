@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Trash } from 'lucide-react'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import type { Account, AccountForm } from '../../api/types'
@@ -165,7 +165,7 @@ export function AccountsTab() {
                     onClick={() => { setDeleteTarget(account); setDeleteError('') }}
                     className="text-gray-500 hover:text-red-400 transition-colors p-1"
                   >
-                    <Trash2 size={14} />
+                    <Trash size={14} />
                   </button>
                 </div>
               </div>

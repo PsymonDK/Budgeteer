@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash } from 'lucide-react'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import type { Category, Household } from '../../api/types'
@@ -535,7 +535,7 @@ function RowActions({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => 
   return (
     <div className="flex items-center gap-3">
       <button type="button" onClick={onEdit} className="text-gray-400 hover:text-white" aria-label="Edit"><Pencil size={16} /></button>
-      <button type="button" onClick={onDelete} className="text-red-300 hover:text-red-200" aria-label="Delete"><Trash2 size={16} /></button>
+      <button type="button" onClick={onDelete} className="text-red-300 hover:text-red-200" aria-label="Delete"><Trash size={16} /></button>
     </div>
   )
 }

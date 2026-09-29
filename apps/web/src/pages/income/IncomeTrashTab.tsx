@@ -1,4 +1,4 @@
-import { RotateCcw, Trash2 } from 'lucide-react'
+import { RotateCcw, Trash } from 'lucide-react'
 import { useIncomeTrash, useRestoreFromTrash, restoreUrl } from '../../hooks/useTrash'
 
 const KIND_LABELS = { salary: 'Salary record', override: 'Monthly override', bonus: 'Bonus', taxcard: 'Tax card' } as const
@@ -13,7 +13,7 @@ export function IncomeTrashTab({ targetUserId, fmt }: { targetUserId: string | u
   if (items.length === 0) {
     return (
       <div className="bg-gray-900 border border-gray-800 rounded-xl py-12 text-center">
-        <Trash2 size={24} className="mx-auto text-gray-600 mb-3" />
+        <Trash size={24} className="mx-auto text-gray-600 mb-3" />
         <p className="text-gray-500 text-sm">The trash is empty.</p>
       </div>
     )
