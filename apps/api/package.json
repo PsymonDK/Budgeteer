@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@fastify/cookie": "^11.1.2",
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",
     "@fastify/jwt": "^10.0.0",
@@ -19,13 +21,12 @@
     "@fastify/static": "^9.1.0",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
-    "prisma": "^7.5.0",
     "bcryptjs": "^3.0.3",
     "fast-xml-parser": "^5.5.10",
     "fastify": "^5.8.5",
     "node-cron": "^4.2.1",
     "pg": "^8.13.0",
-    "@anthropic-ai/sdk": "^0.39.0",
+    "prisma": "^7.5.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

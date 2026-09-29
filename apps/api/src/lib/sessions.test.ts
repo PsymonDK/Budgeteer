@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { hashToken, issuedBeforeRevocation } from './sessions'
+import { hashToken, issuedBeforeRevocation, refreshCookieOptions } from './sessions'
 
 describe('hashToken', () => {
   it('is a stable SHA-256 hex digest that differs from the token', () => {
@@ -29,5 +29,19 @@ describe('issuedBeforeRevocation', () => {
 
   it('rejects tokens without an issue time once sessions were revoked', () => {
     expect(issuedBeforeRevocation(undefined, revokedAt)).toBe(true)
+  })
+})
+
+describe('refreshCookieOptions', () => {
+  it('keeps the refresh token away from page scripts and cross-site requests', () => {
+    expect(refreshCookieOptions(false)).toMatchObject({ httpOnly: true, sameSite: 'strict', path: '/', secure: false })
+  })
+
+  it('marks the cookie Secure when the browser used HTTPS', () => {
+    expect(refreshCookieOptions(true).secure).toBe(true)
+  })
+
+  it('lives as long as the refresh token', () => {
+    expect(refreshCookieOptions(true).maxAge).toBe(7 * 24 * 60 * 60)
   })
 })

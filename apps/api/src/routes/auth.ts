@@ -3,16 +3,17 @@ import { z } from 'zod'
 import crypto from 'crypto'
 import { prisma } from '../lib/prisma'
 import { hashPassword, verifyPassword } from '../lib/password'
-import { ACCESS_TOKEN_TTL, hashToken, issueSession, rotateRefreshToken } from '../lib/sessions'
+import { ACCESS_TOKEN_TTL, REFRESH_COOKIE, hashToken, issueSession, refreshCookieOptions, rotateRefreshToken } from '../lib/sessions'
 
 const LoginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 })
 
-const RefreshSchema = z.object({
-  refreshToken: z.string(),
-})
+// The refresh token normally arrives in the httpOnly cookie. A body token is still
+// accepted so sessions from before the cookie switch (token kept in localStorage)
+// are exchanged for a cookie once instead of being logged out.
+const LegacyRefreshSchema = z.object({ refreshToken: z.string().min(1) }).partial().optional()
 
 const MAX_FAILED_ATTEMPTS = 10
 const LOCKOUT_MINUTES = 15
@@ -73,10 +74,11 @@ export async function authRoutes(fastify: FastifyInstance) {
     })
 
     const { accessToken, refreshToken } = await issueSession(user, sign)
+    reply.setCookie(REFRESH_COOKIE, refreshToken, refreshCookieOptions(request.protocol === 'https'))
 
+    // The refresh token is only in the httpOnly cookie, never in the body
     return reply.send({
       accessToken,
-      refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -89,29 +91,38 @@ export async function authRoutes(fastify: FastifyInstance) {
 
   // POST /auth/refresh — rotates the refresh token; reuse of a rotated token revokes all sessions
   fastify.post('/auth/refresh', { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } } }, async (request, reply) => {
-    const result = RefreshSchema.safeParse(request.body)
-    if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body' })
+    const body = LegacyRefreshSchema.safeParse(request.body)
+    const presented = request.cookies[REFRESH_COOKIE] ?? (body.success ? body.data?.refreshToken : undefined)
+    const cookieOptions = refreshCookieOptions(request.protocol === 'https')
+    if (!presented) {
+      return reply.status(401).send({ error: 'Not signed in', code: 'INVALID_REFRESH_TOKEN' })
     }
 
-    const rotated = await rotateRefreshToken(result.data.refreshToken, sign)
+    const rotated = await rotateRefreshToken(presented, sign)
     if (!rotated.ok) {
       if (rotated.reason === 'reused') request.log.warn('Refresh token reuse detected; all sessions for the user were revoked')
-      return reply.status(401).send({ error: 'Invalid or expired refresh token', code: 'INVALID_REFRESH_TOKEN' })
+      return reply
+        .clearCookie(REFRESH_COOKIE, cookieOptions)
+        .status(401)
+        .send({ error: 'Invalid or expired refresh token', code: 'INVALID_REFRESH_TOKEN' })
     }
 
-    return reply.send({ accessToken: rotated.accessToken, refreshToken: rotated.refreshToken })
+    reply.setCookie(REFRESH_COOKIE, rotated.refreshToken, cookieOptions)
+    return reply.send({ accessToken: rotated.accessToken })
   })
 
   // POST /auth/logout
   fastify.post('/auth/logout', async (request, reply) => {
-    const result = RefreshSchema.safeParse(request.body)
-    if (result.success) {
+    const body = LegacyRefreshSchema.safeParse(request.body)
+    const presented = request.cookies[REFRESH_COOKIE] ?? (body.success ? body.data?.refreshToken : undefined)
+    if (presented) {
       // Silently ignore if token not found — logout should always succeed
       await prisma.refreshToken.deleteMany({
-        where: { token: { in: [hashToken(result.data.refreshToken), result.data.refreshToken] } },
+        where: { token: { in: [hashToken(presented), presented] } },
       })
     }
-    return reply.send({ ok: true })
+    return reply
+      .clearCookie(REFRESH_COOKIE, refreshCookieOptions(request.protocol === 'https'))
+      .send({ ok: true })
   })
 }

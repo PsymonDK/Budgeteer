@@ -217,7 +217,7 @@ budgeteer/
 - Rotated tokens are marked `revokedAt` instead of deleted. Presenting one again after a 30-second grace window (concurrent tabs) is treated as theft and revokes all of the user's sessions. Expired tokens are purged daily
 
 **Sessions**
-- `users.sessionsValidAfter`: access tokens issued before it are rejected. Set (and all refresh tokens deleted) on password change, admin password reset, role change, deactivation, and conversion to a proxy user. `POST /users/me/change-password` returns a fresh `accessToken`/`refreshToken` so the current client stays signed in
+- `users.sessionsValidAfter`: access tokens issued before it are rejected. Set (and all refresh tokens deleted) on password change, admin password reset, role change, deactivation, and conversion to a proxy user. `POST /users/me/change-password` returns a fresh `accessToken` and sets a new refresh cookie so the current client stays signed in
 - `authenticate` reads the user on every request: role comes from the database (demotions apply immediately), deactivated users are rejected, and `mustChangePassword` blocks everything except `GET /users/me` and `POST /users/me/change-password` (403 `PASSWORD_CHANGE_REQUIRED`)
 - Login answers unknown, inactive and proxy accounts exactly like a wrong password (including timing)
 
@@ -509,10 +509,12 @@ GET    /config
 
 ## Auth Flow
 
-- Login returns JWT access token (15 min) + refresh token (7 days)
-- Refresh token rotated on use
-- Frontend silently refreshes before expiry
-- Logout invalidates refresh token in database
+- Login returns a JWT access token (15 min) in the body and sets the refresh token (7 days) as the `budgeteer_refresh` cookie: `httpOnly`, `SameSite=Strict`, `Path=/`, and `Secure` when the request arrived over HTTPS (`request.protocol`, which honours `X-Forwarded-Proto` from a `TRUST_PROXY` proxy; nginx forwards it). The refresh token never appears in a response body
+- The web client keeps the access token in memory only (`apps/web/src/api/client.ts`); after a reload it calls `POST /auth/refresh`, which reads the cookie. `localStorage` holds only a `user` hint, not a secret
+- Refresh token rotated on use; the response sets the new cookie. Concurrent refreshes in one tab share a request, and a tab that loses a rotation race retries once with the cookie the other tab received
+- `POST /auth/refresh` and `/auth/logout` still accept `{ refreshToken }` in the body so sessions from before the cookie switch (token in `localStorage`) are exchanged for a cookie once; the client deletes the old keys when it does
+- Frontend silently refreshes on a 401 and only returns to /login when the refresh itself is rejected
+- Logout deletes the refresh token in the database and clears the cookie
 - Account locked after 10 failed login attempts for 15 minutes
 - First login (and admin-triggered reset) forces password change
 - Proxy accounts (`isProxy = true`) cannot log in directly — used for income entry on behalf of others

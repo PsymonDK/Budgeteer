@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useState, useEffect, ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import axios from 'axios'
-import { api } from '../api/client'
+import { api, isSessionEnded, refreshAccessToken, setAccessToken } from '../api/client'
 import { ACTIVE_HOUSEHOLD_KEY } from '../lib/storageKeys'
 import type { UserRole } from '../api/types'
 
@@ -31,20 +30,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
+    // "user" in localStorage is only a hint that a session cookie may exist (the
+    // cookie itself is httpOnly and invisible here); sessions from before the
+    // cookie switch still have a refresh token there, which the first refresh swaps.
     const stored = localStorage.getItem('user')
-    if (!stored) {
+    const hasLegacySession = localStorage.getItem('refreshToken') !== null
+    if (!stored && !hasLegacySession) {
       setIsLoading(false)
       return
     }
-    try {
-      setUser(JSON.parse(stored) as AuthUser)
-    } catch {
-      localStorage.removeItem('user')
-      setIsLoading(false)
-      return
+    if (stored) {
+      try {
+        setUser(JSON.parse(stored) as AuthUser)
+      } catch {
+        localStorage.removeItem('user')
+      }
     }
-    // Refresh user data from the server so name/email/role are always current
-    api.get<AuthUser>('/users/me')
+    // Get an access token from the refresh cookie, then load the current user so
+    // name/email/role are always up to date
+    refreshAccessToken()
+      .then(() => api.get<AuthUser>('/users/me'))
       .then((res) => {
         setUser(res.data)
         localStorage.setItem('user', JSON.stringify(res.data))
@@ -52,10 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         // Only an auth failure ends the session. Network errors or a restarting
         // API keep the stored user so the app recovers on the next request.
-        const status = axios.isAxiosError(err) ? err.response?.status : undefined
-        if (status !== 401 && status !== 403) return
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
+        if (!isSessionEnded(err)) return
         localStorage.removeItem('user')
         setUser(null)
       })
@@ -63,12 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   async function login(email: string, password: string) {
-    const res = await api.post<{ accessToken: string; refreshToken: string; user: AuthUser }>(
+    // The refresh token arrives as an httpOnly cookie; the access token stays in memory
+    const res = await api.post<{ accessToken: string; user: AuthUser }>(
       '/auth/login',
       { email, password }
     )
-    localStorage.setItem('accessToken', res.data.accessToken)
-    localStorage.setItem('refreshToken', res.data.refreshToken)
+    setAccessToken(res.data.accessToken)
     localStorage.setItem('user', JSON.stringify(res.data.user))
     setUser(res.data.user)
   }
@@ -84,11 +86,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function logout() {
     try {
-      const refreshToken = localStorage.getItem('refreshToken')
-      if (refreshToken) {
-        await api.post('/auth/logout', { refreshToken })
-      }
+      // Revokes the refresh token and clears its cookie
+      await api.post('/auth/logout', {})
     } finally {
+      setAccessToken(null)
       localStorage.removeItem('accessToken')
       localStorage.removeItem('refreshToken')
       localStorage.removeItem('user')
