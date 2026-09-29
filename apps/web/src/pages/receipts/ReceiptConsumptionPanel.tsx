@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { TriangleAlert } from 'lucide-react'
 import { useReceiptSummary } from '../../api/queries'
 import type { ReceiptSummaryPeriod } from '../../api/types'
 import { PageLoader } from '../../components/LoadingSpinner'
@@ -147,7 +147,7 @@ export function ReceiptConsumptionPanel({ householdId }: { householdId: string }
             {summary.warnings.length > 0 && (
               <div className="space-y-1 rounded-lg border border-amber-800/60 bg-amber-900/20 px-3 py-2 text-xs text-amber-200">
                 {summary.warnings.map((warning) => (
-                  <p key={warning} className="flex gap-2"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {warning}</p>
+                  <p key={warning} className="flex gap-2"><TriangleAlert size={14} className="mt-0.5 shrink-0" /> {warning}</p>
                 ))}
               </div>
             )}

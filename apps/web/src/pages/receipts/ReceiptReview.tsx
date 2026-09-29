@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
-import { AlertTriangle, Check, Trash2 } from 'lucide-react'
+import { TriangleAlert, Check, Trash } from 'lucide-react'
 import { useCategories, useCurrencies, useHouseholdAccounts, usePersonalAccounts } from '../../api/queries'
 import { useBaseCurrency, useFmt } from '../../hooks/useFmt'
 import { dangerBtn, primaryBtn, secondaryBtn } from '../../lib/styles'
@@ -86,7 +86,7 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
               </button>
             )}
             <button onClick={() => setConfirmingDelete(true)} className={`${dangerBtn} flex items-center gap-2`}>
-              <Trash2 size={16} />
+              <Trash size={16} />
               Delete
             </button>
           </div>
@@ -117,7 +117,7 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
                 onClick={() => setShowParserNotes((show) => !show)}
                 className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left"
               >
-                <span className="flex items-center gap-2 font-medium"><AlertTriangle size={16} /> Parser notes</span>
+                <span className="flex items-center gap-2 font-medium"><TriangleAlert size={16} /> Parser notes</span>
                 <span className="text-xs text-amber-300">{showParserNotes ? 'Hide' : `${receipt.notes.length} notes`}</span>
               </button>
               {showParserNotes && (
@@ -130,7 +130,7 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
 
           {receipt.totalMismatch && receipt.printedTotal != null && (
             <p className="flex gap-2 border border-amber-800/60 bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-amber-200">
-              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <TriangleAlert size={16} className="mt-0.5 shrink-0" />
               Line items add up to {fmt(receipt.totalAmount ?? '0', receipt.currencyCode)}, the receipt says {fmt(receipt.printedTotal, receipt.currencyCode)} — check for missed or misread lines.
             </p>
           )}

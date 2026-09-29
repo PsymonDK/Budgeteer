@@ -1,4 +1,4 @@
-import { AlertTriangle, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { TriangleAlert, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { useFmt } from '../../hooks/useFmt'
 import { receiptStatusClass } from './helpers'
@@ -67,7 +67,7 @@ export function ReceiptHistoryList({ receipts, isLoading, isOpen, onToggle, sele
                         {fmt(receipt.itemTotal, receipt.currencyCode)}
                         {receipt.totalMismatch && (
                           <span className="text-amber-300" title="Line items don't add up to the printed total">
-                            <AlertTriangle size={12} aria-hidden="true" />
+                            <TriangleAlert size={12} aria-hidden="true" />
                             <span className="sr-only">Line items don't add up to the printed total</span>
                           </span>
                         )}
