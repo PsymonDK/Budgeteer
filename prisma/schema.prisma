@@ -171,7 +171,11 @@ model Household {
   id                    String            @id @default(cuid())
   name                  String
   isActive              Boolean           @default(true)
-  autoMarkTransferPaid  Boolean           @default(false)
+  // How the monthly transfer into the budget account is made. AUTOMATIC (standing order) is
+  // marked paid on its due day by the daily job; MANUAL is listed on the to-pay list.
+  transferPaymentMethod PaymentMethod     @default(MANUAL)
+  // Day of the month the transfer is due (1–31; later days fall on the month's last day)
+  transferDueDay        Int               @default(1)
   budgetModel           BudgetModelType   @default(AVERAGE)
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt

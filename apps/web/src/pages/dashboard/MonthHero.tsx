@@ -1,5 +1,6 @@
 import { Check, TriangleAlert } from 'lucide-react'
 import { useMonthPayments } from '../../api/queries'
+import type { PaymentMethod } from '../../api/types'
 import type { BudgetTransfer } from '../../hooks/useTransfers'
 import { ENTITY } from '../../lib/charts'
 import { primaryBtn } from '../../lib/styles'
@@ -18,11 +19,24 @@ interface MonthHeroProps {
   surplus: number
   incomeSplit: DashboardSummary['incomeSplit']
   nextPending: BudgetTransfer | null
+  /** Automatic transfers are marked paid on their due day and show no Mark-as-paid button */
+  transferPaymentMethod: PaymentMethod
+  transferDueDay: number
+  /** This month's transfer, shown when the transfer is automatic */
+  currentTransfer: BudgetTransfer | null
   /** The signed-in member's monthly share of the transfer, when the household splits it */
   myShare: number | null
   onMarkPaid: (t: BudgetTransfer) => void
   baseCurrency: string
   fmt: Fmt
+}
+
+/** The due day within a month: days past its end fall on its last day. */
+const dueDayIn = (dueDay: number, year: number, month: number) => Math.min(dueDay, new Date(year, month, 0).getDate())
+
+function ordinal(day: number) {
+  const suffix = day >= 11 && day <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[day % 10] ?? 'th'
+  return `${day}${suffix}`
 }
 
 /** A big figure with small decimals and the currency code, like "17,650.00 DKK". */
@@ -42,7 +56,8 @@ function Figure({ value, currency, className }: { value: number; currency: strin
  * API; this only lays them out.
  */
 export function MonthHero({
-  budgetYearId, income, expenses, savings, surplus, incomeSplit, nextPending, myShare, onMarkPaid, baseCurrency, fmt,
+  budgetYearId, income, expenses, savings, surplus, incomeSplit, nextPending, transferPaymentMethod, transferDueDay, currentTransfer,
+  myShare, onMarkPaid, baseCurrency, fmt,
 }: MonthHeroProps) {
   const { data: payments, isLoading, isError } = useMonthPayments(budgetYearId)
   const short = surplus < 0
@@ -121,10 +136,22 @@ export function MonthHero({
 
           {/* The transfer that's due */}
           <div className="grid content-start gap-2.5 border-t border-gray-800 pt-5 @3xl:border-l @3xl:border-t-0 @3xl:pl-8 @3xl:pt-0">
-            {nextPending ? (
+            {transferPaymentMethod === 'AUTOMATIC' && currentTransfer ? (
               <>
                 <h2 className="font-mono text-xs font-medium uppercase tracking-widest text-gray-400">
-                  Transfer due · {MONTH_SHORT[nextPending.month - 1]} {nextPending.year}
+                  Transfer · {MONTH_SHORT[currentTransfer.month - 1]} {currentTransfer.year}
+                </h2>
+                <Figure value={parseFloat(currentTransfer.actualAmount ?? currentTransfer.calculatedAmount)} currency={baseCurrency} className="text-4xl text-gray-100" />
+                <p className="text-sm text-gray-400">
+                  {currentTransfer.status === 'PENDING' ? 'Goes' : 'Went'} into the budget account automatically on the{' '}
+                  {ordinal(dueDayIn(transferDueDay, currentTransfer.year, currentTransfer.month))}
+                  {myShare != null && <>; your share is <b className="font-semibold text-gray-100">{fmt(myShare)}</b></>}.
+                </p>
+              </>
+            ) : transferPaymentMethod === 'MANUAL' && nextPending ? (
+              <>
+                <h2 className="font-mono text-xs font-medium uppercase tracking-widest text-gray-400">
+                  Transfer due · {dueDayIn(transferDueDay, nextPending.year, nextPending.month)} {MONTH_SHORT[nextPending.month - 1]} {nextPending.year}
                 </h2>
                 <Figure value={parseFloat(nextPending.calculatedAmount)} currency={baseCurrency} className="text-4xl text-amber-400" />
                 <p className="text-sm text-gray-400">

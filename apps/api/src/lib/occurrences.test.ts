@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/client'
-import { isListable, occurrenceTotals, toOccurrenceItem, type OccurrenceStatus } from './occurrences'
+import { isListable, occurrenceTotals, toOccurrenceItem, toTransferItem, type OccurrenceStatus } from './occurrences'
 
 const entry = { id: 'e1', label: 'Rent', categoryName: 'Housing' }
 const row = (status: OccurrenceStatus, scheduled: number, carried = 0, actual: number | null = null) => ({
@@ -50,5 +50,18 @@ describe('dismissed and placeholder rows', () => {
     expect(isListable(row('PENDING', 0, 50))).toBe(true) // only a carried balance
     expect(isListable(row('PENDING', 0))).toBe(false) // placeholder: inactive month
     expect(isListable(row('PAID', 0))).toBe(true)
+  })
+})
+
+describe('toTransferItem', () => {
+  const transfer = (month: number) => ({ id: 't1', year: 2026, month, calculatedAmount: new Decimal(3356.67), status: 'PENDING' as const, actualAmount: null })
+
+  it('reports the planned amount and the due day', () => {
+    expect(toTransferItem(transfer(9), 25)).toEqual({ id: 't1', month: 9, amount: '3356.67', status: 'PENDING', actualAmount: null, dueDay: 25 })
+  })
+
+  it('clamps the due day to the month length', () => {
+    expect(toTransferItem(transfer(9), 31).dueDay).toBe(30)
+    expect(toTransferItem(transfer(2), 30).dueDay).toBe(28)
   })
 })

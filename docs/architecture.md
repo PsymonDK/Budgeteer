@@ -57,7 +57,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
-- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
+- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), automatic transfer marking (daily 00:15, and at startup), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
@@ -113,7 +113,8 @@ budgeteer/
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
 
 **households** — shared budget spaces
-- id, name, isActive, autoMarkTransferPaid, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
+- id, name, isActive, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
+- transferPaymentMethod (`AUTOMATIC` | `MANUAL`, default MANUAL), transferDueDay (1–31, default 1) — how and when the monthly transfer into the budget account is made
 
 **household_members** — many-to-many users ↔ households
 - householdId, userId, role (`ADMIN` | `MEMBER`)
@@ -221,6 +222,7 @@ budgeteer/
 - calculatedAt, paidAt (nullable), automationRunId (nullable)
 - One record per budget year per month; recalculated (awaited) when income, expenses, savings or FX rates change
 - PAY_NO_PAY: a month's amount is everything due that month (scheduled + carried) across PENDING and PAID occurrences, so paying items doesn't shrink it; closed months keep their recorded amount
+- AUTOMATIC transfers (a standing order) are marked PAID at `calculatedAmount` once their due day comes (`runTransferAutoPay`, planned by `planTransferAutoPay`): daily, at startup, and when a household switches to automatic or changes the due day, catching up on earlier PENDING months. MANUAL transfers are listed on the to-pay list (this month's, plus unpaid earlier months) and ticked off with mark-paid / mark-pending
 
 **Occurrences and the to-pay list** (`expense_occurrences`, `savings_occurrences`)
 - Seeded from the current month through December on every recalculation (`syncOccurrences`); PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED/DISMISSED rows are history
@@ -444,7 +446,7 @@ GET    /me/summary                                     # cross-household dashboa
 GET    /households
 POST   /households
 GET    /households/:id
-PUT    /households/:id
+PUT    /households/:id                                  # { name, budgetModel?, transferPaymentMethod?, transferDueDay? } — household admin
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)

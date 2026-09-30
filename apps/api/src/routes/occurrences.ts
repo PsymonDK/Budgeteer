@@ -5,7 +5,7 @@ import { prisma, notDeleted } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess } from '../lib/ownership'
 import { effectiveCurrentMonth, recalculateTransfer } from '../lib/budgetTransfer'
-import { dueAmount, isListable, occurrenceTotals, toOccurrenceItem, type OccurrenceItem, type OccurrenceKind } from '../lib/occurrences'
+import { dueAmount, isListable, occurrenceTotals, toOccurrenceItem, toTransferItem, type OccurrenceItem, type OccurrenceKind } from '../lib/occurrences'
 import { buildMonthPayments, occurrenceKey, type TrackedOccurrence } from '../lib/payments'
 
 const MonthQuerySchema = z.object({ month: z.coerce.number().int().min(1).max(12).optional() })
@@ -68,6 +68,23 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     return items.sort((a, b) => a.month - b.month || a.kind.localeCompare(b.kind) || a.label.localeCompare(b.label))
   }
 
+  /**
+   * A manual household transfer for the list: the month's transfer, plus earlier months'
+   * unpaid ones when `withOverdue` (the current month). Empty when the transfer is automatic.
+   */
+  async function listTransfers(budgetYear: { id: string; year: number; household: { transferPaymentMethod: string; transferDueDay: number } }, month: number, withOverdue: boolean) {
+    if (budgetYear.household.transferPaymentMethod !== 'MANUAL') return []
+    const transfers = await prisma.budgetTransfer.findMany({
+      where: {
+        budgetYearId: budgetYear.id,
+        year: budgetYear.year,
+        OR: [{ month }, ...(withOverdue ? [{ month: { lt: month }, status: 'PENDING' as const }] : [])],
+      },
+      orderBy: { month: 'asc' },
+    })
+    return transfers.map((t) => toTransferItem(t, budgetYear.household.transferDueDay))
+  }
+
   /** Unpaid manual items from months before `month`: shown (and marked) with the current month. */
   const listOverdue = (budgetYearId: string, year: number, month: number) =>
     listItems(budgetYearId, year, { month: { lt: month }, status: 'PENDING' })
@@ -87,7 +104,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     const month = query.data.month ?? Math.min(12, currentMonth)
     const payNoPay = budgetModel === 'PAY_NO_PAY'
     const automatic = { paymentMethod: 'AUTOMATIC' as const }
-    const [items, overdue, automaticExpenses, automaticSavings, manualExpenses, manualSavings] = await Promise.all([
+    const [transfers, items, overdue, automaticExpenses, automaticSavings, manualExpenses, manualSavings] = await Promise.all([
+      listTransfers(budgetYear, month, month === currentMonth),
       listItems(id, budgetYear.year, { month }),
       month === currentMonth ? listOverdue(id, budgetYear.year, month) : [],
       // Only Pay/No-pay has rows for automatic items (marked paid at month close)
@@ -104,6 +122,9 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
       isReadOnly: budgetYear.status === 'RETIRED',
       // Pay/No-pay carries unpaid items into the next month; the other models keep them as overdue
       carriesOver: payNoPay,
+      // The household's transfer when it's paid by hand: this month's, plus unpaid earlier ones
+      transferPaymentMethod: budgetYear.household.transferPaymentMethod,
+      transfers,
       items,
       overdue,
       totals: occurrenceTotals(items),
@@ -195,7 +216,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
   })
 
   // POST /budget-years/:id/occurrences/mark-all-paid — mark every pending manual item of a month
-  // paid; for the current month that includes overdue items from earlier months
+  // paid, including a manual household transfer; for the current month that includes overdue
+  // items from earlier months
   fastify.post('/budget-years/:id/occurrences/mark-all-paid', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = MarkAllPaidSchema.safeParse(request.body)
@@ -219,6 +241,13 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
       }
       for (const o of savingsOccs.filter(isListable)) {
         await tx.savingsOccurrence.update({ where: { id: o.id }, data: { status: 'PAID', paidAt, actualAmount: dueAmount(o) } })
+      }
+      // A manual household transfer is on the list too
+      if (budgetYear.household.transferPaymentMethod === 'MANUAL') {
+        const transfers = await tx.budgetTransfer.findMany({ where: { budgetYearId: id, year, month: months, status: 'PENDING' } })
+        for (const t of transfers) {
+          await tx.budgetTransfer.update({ where: { id: t.id }, data: { status: 'PAID', actualAmount: t.calculatedAmount, paidAt } })
+        }
       }
     })
 

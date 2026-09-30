@@ -4,7 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
-import type { BudgetModel, Household } from '../../api/types'
+import type { BudgetModel, Household, PaymentMethod } from '../../api/types'
+import { inputClass, segmentBtnSolid, segmentGroupPlain } from '../../lib/styles'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 
 const BUDGET_MODEL_OPTIONS: { value: BudgetModel; label: string; description: string }[] = [
@@ -13,14 +14,21 @@ const BUDGET_MODEL_OPTIONS: { value: BudgetModel; label: string; description: st
   { value: 'PAY_NO_PAY', label: 'Pay / No pay', description: 'Track each expense individually. Unpaid amounts roll over to the next month.' },
 ]
 
-/** Budget model + auto-mark-as-paid settings (household admins). */
+const DAYS = Array.from({ length: 31 }, (_, i) => i + 1)
+
+/** Budget model, and how and when the monthly transfer is paid (household admins). */
 export function TransferSettings({ householdId: id, household }: { householdId: string; household: Household }) {
   const queryClient = useQueryClient()
 
   const updateSettingsMutation = useMutation({
-    mutationFn: (settings: { autoMarkTransferPaid?: boolean; budgetModel?: BudgetModel }) =>
+    mutationFn: (settings: { transferPaymentMethod?: PaymentMethod; transferDueDay?: number; budgetModel?: BudgetModel }) =>
       api.put(`/households/${id}`, { name: household!.name, ...settings }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.household(id) }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.household(id) })
+      // Switching to automatic marks due transfers paid; the dashboard and to-pay list change
+      queryClient.invalidateQueries({ queryKey: qk.transfersAll() })
+      queryClient.invalidateQueries({ queryKey: ['occurrences'] })
+    },
     onError: () => toast.error('Failed to update settings'),
   })
 
@@ -52,29 +60,44 @@ export function TransferSettings({ householdId: id, household }: { householdId: 
         </div>
       </div>
 
-      {/* Auto-mark toggle */}
-      <div className="flex items-start justify-between gap-4 pt-4 border-t border-gray-800">
+      {/* How and when the transfer is paid */}
+      <div className="pt-4 border-t border-gray-800 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
         <div>
-          <p className="text-sm font-medium text-white">Auto-mark transfer as paid</p>
-          <p className="text-xs text-gray-500 mt-0.5">
-            On the 1st of each month the previous month's transfer is automatically marked as paid at the planned amount.
+          <p id="transfer-method-label" className="text-sm font-medium text-white mb-2">How the transfer is paid</p>
+          <div role="radiogroup" aria-labelledby="transfer-method-label" className={segmentGroupPlain}>
+            {(['AUTOMATIC', 'MANUAL'] as const).map((method) => (
+              <button
+                key={method}
+                type="button"
+                role="radio"
+                aria-checked={household.transferPaymentMethod === method}
+                onClick={() => updateSettingsMutation.mutate({ transferPaymentMethod: method })}
+                disabled={updateSettingsMutation.isPending || household.transferPaymentMethod === method}
+                className={segmentBtnSolid(household.transferPaymentMethod === method)}
+              >
+                {method === 'AUTOMATIC' ? 'Automatic' : 'Manual'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1.5">
+            {household.transferPaymentMethod === 'AUTOMATIC'
+              ? "A standing order: each month's transfer is marked paid at the planned amount on its due day."
+              : "You make the transfer yourself: it's on the dashboard's to-pay list until you tick it off."}
           </p>
         </div>
-        <button
-          role="switch"
-          aria-checked={household.autoMarkTransferPaid}
-          onClick={() => updateSettingsMutation.mutate({ autoMarkTransferPaid: !household.autoMarkTransferPaid })}
-          disabled={updateSettingsMutation.isPending}
-          className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
-            household.autoMarkTransferPaid ? 'bg-amber-500' : 'bg-gray-700'
-          }`}
-        >
-          <span
-            className={`inline-block h-5 w-5 transform rounded-full bg-[#fff] shadow transition duration-200 ${
-              household.autoMarkTransferPaid ? 'translate-x-5' : 'translate-x-0'
-            }`}
-          />
-        </button>
+        <div>
+          <label htmlFor="transfer-due-day" className="block text-sm font-medium text-white mb-2">Due day</label>
+          <select
+            id="transfer-due-day"
+            value={household.transferDueDay}
+            onChange={(e) => updateSettingsMutation.mutate({ transferDueDay: Number(e.target.value) })}
+            disabled={updateSettingsMutation.isPending}
+            className={`${inputClass} w-28`}
+          >
+            {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <p className="text-xs text-gray-500 mt-1.5">Days past a month's end fall on its last day.</p>
+        </div>
       </div>
     </div>
   )

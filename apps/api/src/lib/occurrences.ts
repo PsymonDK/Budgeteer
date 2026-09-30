@@ -91,3 +91,31 @@ export function occurrenceTotals(items: OccurrenceItem[]): { due: string; paid: 
   }
   return { due: due.toFixed(2), paid: paid.toFixed(2), unpaid: unpaid.toFixed(2) }
 }
+
+/** A manual household transfer on the to-pay list: the month's transfer into the budget account. */
+export interface TransferItem {
+  id: string
+  month: number
+  /** The planned (calculated) amount */
+  amount: string
+  status: 'PENDING' | 'PAID' | 'ADJUSTED'
+  /** What was actually transferred, once marked paid */
+  actualAmount: string | null
+  /** The household's transfer due day, clamped to the month's length */
+  dueDay: number
+}
+
+export function toTransferItem(
+  t: { id: string; year: number; month: number; calculatedAmount: Decimal; status: TransferItem['status']; actualAmount: Decimal | null },
+  dueDay: number,
+): TransferItem {
+  const lastDay = new Date(Date.UTC(t.year, t.month, 0)).getUTCDate()
+  return {
+    id: t.id,
+    month: t.month,
+    amount: new Decimal(t.calculatedAmount.toString()).toFixed(2),
+    status: t.status,
+    actualAmount: t.actualAmount ? new Decimal(t.actualAmount.toString()).toFixed(2) : null,
+    dueDay: Math.min(dueDay, lastDay),
+  }
+}

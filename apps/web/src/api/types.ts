@@ -41,7 +41,10 @@ export interface Household {
   id: string
   name: string
   isActive: boolean
-  autoMarkTransferPaid: boolean
+  /** How the monthly transfer into the budget account is made; AUTOMATIC is marked paid on its due day */
+  transferPaymentMethod: PaymentMethod
+  /** Day of the month the transfer is due (1–31) */
+  transferDueDay: number
   budgetModel: BudgetModel
   createdAt: string
   updatedAt: string

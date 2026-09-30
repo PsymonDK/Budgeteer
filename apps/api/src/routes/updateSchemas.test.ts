@@ -8,6 +8,7 @@ import { BulkUpdateExpenseSchema, CreateExpenseSchema, UpdateExpenseSchema } fro
 import { BulkUpdateSavingsSchema, CreateSavingsSchema, UpdateSavingsSchema } from './savings'
 import { CreateJobSchema, UpdateJobSchema } from './jobs'
 import { UpdateOccurrenceSchema } from './occurrences'
+import { UpdateHouseholdSchema } from './households'
 
 // Zod 4 applies .default() values inside .partial() schemas too. Update schemas
 // must not carry defaults, or a PATCH that leaves a field out would reset it.
@@ -127,5 +128,24 @@ describe('UpdateOccurrenceSchema', () => {
 
   it('cannot close a month by hand', () => {
     expect(UpdateOccurrenceSchema.safeParse({ status: 'SKIPPED' }).success).toBe(false)
+  })
+})
+
+describe('UpdateHouseholdSchema (transfer settings)', () => {
+  it('accepts how the transfer is paid and its due day', () => {
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'AUTOMATIC', transferDueDay: 25 }).success).toBe(true)
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'MANUAL' }).success).toBe(true)
+  })
+
+  it('rejects due days outside 1–31 and unknown methods', () => {
+    for (const transferDueDay of [0, 32, 1.5]) {
+      expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferDueDay }).success).toBe(false)
+    }
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'CARD' }).success).toBe(false)
+  })
+
+  it('no longer takes the old auto-mark switch into the update', () => {
+    const parsed = UpdateHouseholdSchema.parse({ name: 'Home', autoMarkTransferPaid: true })
+    expect('autoMarkTransferPaid' in parsed).toBe(false)
   })
 })

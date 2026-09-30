@@ -34,6 +34,7 @@ import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
 import { purgeRefreshTokens } from './lib/sessions'
+import { runTransferAutoPay } from './lib/transferAutoPay'
 import { prisma } from './lib/prisma'
 import { toErrorResponse } from './lib/errors'
 
@@ -168,6 +169,15 @@ const start = async () => {
         .catch((err) => app.log.error({ err }, 'Refresh token purge failed'))
     await purgeTokens()
     cron.schedule('10 0 * * *', purgeTokens)
+
+    // Automatic (standing-order) transfers are marked paid on their due day. Run now to
+    // catch up after downtime, and daily after midnight.
+    const autoPayTransfers = () =>
+      runTransferAutoPay()
+        .then((n) => { if (n > 0) app.log.info(`Marked ${n} automatic transfer(s) paid`) })
+        .catch((err) => app.log.error({ err }, 'Automatic transfer marking failed'))
+    await autoPayTransfers()
+    cron.schedule('15 0 * * *', autoPayTransfers)
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00
     cron.schedule('0 0 1 * *', () => {

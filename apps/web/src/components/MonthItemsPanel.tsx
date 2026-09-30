@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, ListChecks, MoreHorizontal, TriangleAlert } from 'lucide-react'
+import { ArrowRightLeft, ChevronLeft, ChevronRight, ListChecks, MoreHorizontal, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import { qk } from '../api/queryKeys'
-import type { DismissReason, OccurrenceStatus } from '../api/types'
+import type { DismissReason, OccurrenceStatus, PaymentMethod } from '../api/types'
 import { getApiError } from '../lib/apiError'
 
 interface OccurrenceItem {
@@ -24,6 +24,16 @@ interface OccurrenceItem {
   paidAt: string | null
 }
 
+/** The household's monthly transfer into the budget account, when it's paid by hand */
+interface TransferItem {
+  id: string
+  month: number
+  amount: string
+  status: 'PENDING' | 'PAID' | 'ADJUSTED'
+  actualAmount: string | null
+  dueDay: number
+}
+
 interface MonthItems {
   budgetModel: 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
   year: number
@@ -31,6 +41,9 @@ interface MonthItems {
   isReadOnly: boolean
   /** Pay/No-pay carries unpaid items into the next month; the other models keep them as overdue */
   carriesOver: boolean
+  transferPaymentMethod: PaymentMethod
+  /** Manual transfer: this month's, plus unpaid earlier ones (empty when the transfer is automatic) */
+  transfers: TransferItem[]
   items: OccurrenceItem[]
   /** Unpaid items from earlier months, listed with the current month */
   overdue: OccurrenceItem[]
@@ -52,8 +65,8 @@ const DISMISS_LABEL: Record<DismissReason, string> = { PAID_ELSEWHERE: 'Paid els
  * The to-pay list: what the household pays by hand this month, in every budget model.
  * Each item is ticked off on its own (or all at once), or dismissed as paid elsewhere or
  * skipped. In Pay/No-pay whatever is unpaid when the month closes carries into the next
- * month; in the other models it stays on the list as overdue. Renders nothing when the
- * household has no manual payments.
+ * month; in the other models it stays on the list as overdue. A manually made household
+ * transfer is listed first. Renders nothing when nothing is paid by hand.
  */
 export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; fmt: (v: number | string) => string }) {
   const queryClient = useQueryClient()
@@ -79,6 +92,15 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
     onError: (err) => toast.error(getApiError(err, 'Failed to update item')),
   })
 
+  const transferMutation = useMutation({
+    mutationFn: ({ transfer, paid }: { transfer: TransferItem; paid: boolean }) =>
+      paid
+        ? api.patch(`/budget-years/${budgetYearId}/transfers/${transfer.id}/mark-paid`, { actualAmount: parseFloat(transfer.amount) })
+        : api.patch(`/budget-years/${budgetYearId}/transfers/${transfer.id}/mark-pending`),
+    onSuccess: refresh,
+    onError: (err) => toast.error(getApiError(err, 'Failed to update the transfer')),
+  })
+
   const markAllMutation = useMutation({
     mutationFn: (m: number) => api.post(`/budget-years/${budgetYearId}/occurrences/mark-all-paid`, { month: m }),
     onSuccess: () => { refresh(); toast.success('All items marked as paid') },
@@ -87,11 +109,11 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
 
   if (isLoading || !data) return null
   // Nothing is paid by hand: no list and no Mark-as-paid controls
-  if (data.manualEntryCount === 0 && data.overdue.length === 0) return null
+  if (data.manualEntryCount === 0 && data.overdue.length === 0 && data.transfers.length === 0) return null
 
   const shownMonth = data.month
-  const pendingCount = [...data.items, ...data.overdue].filter((i) => i.status === 'PENDING').length
-  const busy = changeMutation.isPending || markAllMutation.isPending
+  const pendingCount = [...data.items, ...data.overdue, ...data.transfers].filter((i) => i.status === 'PENDING').length
+  const busy = changeMutation.isPending || markAllMutation.isPending || transferMutation.isPending
   const onChange = (item: OccurrenceItem, change: Change) => changeMutation.mutate({ item, change })
   const rowProps = { fmt, busy, readOnly: data.isReadOnly, onChange }
 
@@ -122,6 +144,21 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
           </button>
         </div>
       </div>
+
+      {data.transfers.length > 0 && (
+        <ul className="divide-y divide-gray-800 mb-4 pb-3 border-b border-gray-800">
+          {data.transfers.map((t) => (
+            <TransferRow
+              key={t.id}
+              transfer={t}
+              overdue={t.month < shownMonth}
+              fmt={fmt}
+              locked={data.isReadOnly || busy}
+              onToggle={(paid) => transferMutation.mutate({ transfer: t, paid })}
+            />
+          ))}
+        </ul>
+      )}
 
       {data.overdue.length > 0 && (
         <section aria-labelledby="overdue-heading" className="mb-4">
@@ -170,6 +207,40 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
         </p>
       )}
     </div>
+  )
+}
+
+function TransferRow({ transfer, overdue, fmt, locked, onToggle }: {
+  transfer: TransferItem
+  overdue: boolean
+  fmt: (v: number | string) => string
+  locked: boolean
+  onToggle: (paid: boolean) => void
+}) {
+  const paid = transfer.status !== 'PENDING'
+  return (
+    <li className="flex items-center gap-3 py-2">
+      <input
+        type="checkbox"
+        checked={paid}
+        disabled={locked}
+        onChange={() => onToggle(!paid)}
+        className="accent-amber-400 w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+        aria-label={`Mark the ${MONTH_NAMES[transfer.month - 1]} transfer as ${paid ? 'not made' : 'made'}`}
+      />
+      <div className="flex-1 min-w-0">
+        <p className={`flex items-center gap-1.5 text-sm truncate ${paid ? 'text-gray-500 line-through' : 'text-white'}`}>
+          <ArrowRightLeft size={13} className="shrink-0 text-amber-400" aria-hidden="true" />
+          Transfer to the budget account
+        </p>
+        <p className="text-xs text-gray-500">
+          <span className={overdue && !paid ? 'text-red-300' : undefined}>Due {transfer.dueDay} {MONTH_SHORT[transfer.month - 1]}</span>
+          {transfer.status === 'ADJUSTED' && transfer.actualAmount && <> · {fmt(transfer.actualAmount)} transferred</>}
+        </p>
+      </div>
+      <span className={`text-sm tabular-nums ${paid ? 'text-gray-600' : 'text-gray-200'}`}>{fmt(transfer.amount)}</span>
+      <span className="w-6" aria-hidden="true" />
+    </li>
   )
 }
 

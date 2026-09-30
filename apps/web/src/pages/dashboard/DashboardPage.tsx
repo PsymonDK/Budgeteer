@@ -85,6 +85,10 @@ export function DashboardPage() {
     .filter((t) => t.status === 'PENDING')
     .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)[0] ?? null
 
+  // This calendar month's transfer, shown when the transfer is automatic (a standing order)
+  const today = new Date()
+  const currentTransfer = transfers.find((t) => t.year === today.getFullYear() && t.month === today.getMonth() + 1) ?? nextPending
+
   function openMarkPaid(transfer: BudgetTransfer) {
     setMarkPaidTransfer(transfer)
     setMarkPaidAmount(transfer.calculatedAmount)
@@ -211,6 +215,9 @@ export function DashboardPage() {
                 surplus={surplus}
                 incomeSplit={summary.incomeSplit}
                 nextPending={nextPending}
+                transferPaymentMethod={household?.transferPaymentMethod ?? 'MANUAL'}
+                transferDueDay={household?.transferDueDay ?? 1}
+                currentTransfer={currentTransfer}
                 myShare={me ? memberBreakdownMap.get(me.id)?.monthlyTotal ?? null : null}
                 onMarkPaid={openMarkPaid}
                 baseCurrency={baseCurrency}
