@@ -45,7 +45,7 @@ export async function accountRoutes(fastify: FastifyInstance) {
 
     const result = CreateAccountSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const account = await prisma.account.create({
@@ -73,7 +73,7 @@ export async function accountRoutes(fastify: FastifyInstance) {
 
     const result = UpdateAccountSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const account = await prisma.account.update({
@@ -137,7 +137,7 @@ export async function accountRoutes(fastify: FastifyInstance) {
 
     const result = CreateAccountSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const account = await prisma.account.create({
@@ -170,7 +170,7 @@ export async function accountRoutes(fastify: FastifyInstance) {
 
     const result = UpdateAccountSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const account = await prisma.account.update({

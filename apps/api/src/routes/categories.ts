@@ -160,7 +160,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
     const { id: categoryId } = request.params as { id: string }
     const result = CreateSubcategorySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { name, householdId } = result.data
@@ -204,7 +204,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
   fastify.post('/categories', { preHandler: authenticate }, async (request, reply) => {
     const result = CreateCategorySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { name, householdId, icon, categoryType } = result.data
     const { sub: userId, role } = request.user
@@ -243,7 +243,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/categories', { preHandler: requireAdmin }, async (request, reply) => {
     const result = CreateSystemCategorySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { name, icon, categoryType } = result.data
     const { sub: userId } = request.user
@@ -269,7 +269,7 @@ export async function categoryRoutes(fastify: FastifyInstance) {
 
     const result = UpdateCategorySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { name, isActive, icon } = result.data
 

@@ -219,7 +219,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const result = CreateBudgetYearSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const isAdmin = await assertHouseholdAdmin(householdId, userId, role)
@@ -258,7 +258,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const result = CopyBudgetYearSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Provide either { year } or { simulationName }', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Provide either { year } or { simulationName }', details: z.flattenError(result.error) })
     }
 
     const [source, householdMembers] = await Promise.all([
@@ -331,7 +331,7 @@ export async function budgetYearRoutes(fastify: FastifyInstance) {
 
     const result = RenameSimulationSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'simulationName is required', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'simulationName is required', details: z.flattenError(result.error) })
     }
 
     const target = await prisma.budgetYear.findFirst({ where: { id: yearId, householdId } })

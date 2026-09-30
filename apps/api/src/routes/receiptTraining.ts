@@ -100,7 +100,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
 
   fastify.post('/admin/receipt-training/terms', { preHandler: requireAdmin }, async (request, reply) => {
     const body = CreateTermSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const scoped = resolveScope(body.data)
     const term = normalizeClassifierTerm(body.data.termType, body.data.term)
@@ -129,7 +129,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
   fastify.patch('/admin/receipt-training/terms/:id', { preHandler: requireAdmin }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = UpdateTermSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const existing = await prisma.receiptClassifierTerm.findUnique({ where: { id } })
     if (!existing) return reply.status(404).send({ error: 'Classifier term not found' })
@@ -164,7 +164,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
 
   fastify.post('/admin/receipt-training/subcategories', { preHandler: requireAdmin }, async (request, reply) => {
     const body = CreateSubcategorySchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const category = await prisma.category.findFirst({ where: { id: body.data.categoryId, categoryType: 'EXPENSE' } })
     if (!category) return reply.status(404).send({ error: 'Category not found' })
@@ -200,7 +200,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
   fastify.patch('/admin/receipt-training/subcategories/:id', { preHandler: requireAdmin }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = UpdateSubcategorySchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const existing = await prisma.receiptSubcategory.findUnique({ where: { id } })
     if (!existing) return reply.status(404).send({ error: 'Receipt subcategory not found' })
@@ -235,7 +235,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
 
   fastify.post('/admin/receipt-training/mappings', { preHandler: requireAdmin }, async (request, reply) => {
     const body = CreateMappingSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const scoped = resolveScope(body.data)
     const validation = await validateMappingTargets(scoped, body.data.categoryId, body.data.subcategoryId ?? null)
@@ -276,7 +276,7 @@ export async function receiptTrainingRoutes(fastify: FastifyInstance) {
   fastify.patch('/admin/receipt-training/mappings/:id', { preHandler: requireAdmin }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = UpdateMappingSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const existing = await prisma.receiptCategoryMapping.findUnique({ where: { id } })
     if (!existing) return reply.status(404).send({ error: 'Receipt mapping not found' })

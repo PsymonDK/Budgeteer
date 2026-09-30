@@ -100,7 +100,7 @@ export async function currencyRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/currencies', { preHandler: requireAdmin }, async (request, reply) => {
     const result = CreateCurrencySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { code, name, rate } = result.data
 
@@ -138,7 +138,7 @@ export async function currencyRoutes(fastify: FastifyInstance) {
 
     const result = UpdateCurrencySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { name, isEnabled, rate } = result.data
 

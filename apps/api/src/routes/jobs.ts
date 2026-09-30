@@ -14,15 +14,21 @@ import { computeIncomeShares, formatSharePct } from '../lib/incomeShare'
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
-const CreateJobSchema = z.object({
+const CountrySchema = z.string().min(2).max(10).toUpperCase()
+
+const JobBaseSchema = z.object({
   name: z.string().min(1).max(200),
   employer: z.string().max(200).optional(),
-  country: z.string().min(2).max(10).toUpperCase().default('DK'),
+  country: CountrySchema,
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 })
 
-const UpdateJobSchema = CreateJobSchema.partial().refine(
+// The default lives only on the create schema: Zod 4 applies defaults inside
+// .partial() too, so an update without `country` would reset it to DK.
+export const CreateJobSchema = JobBaseSchema.extend({ country: CountrySchema.default('DK') })
+
+export const UpdateJobSchema = JobBaseSchema.partial().refine(
   (d) => Object.keys(d).length > 0,
   { message: 'At least one field is required' }
 )
@@ -54,7 +60,7 @@ function validateDeductionNet(
   const expectedNet = grossAmount - cashDeductions
   if (Math.abs(expectedNet - netAmount) > 1) {
     ctx.addIssue({
-      code: z.ZodIssueCode.custom,
+      code: 'custom',
       message: `netAmount (${netAmount}) does not match gross minus deductions (expected ~${expectedNet.toFixed(2)}, tolerance ±1)`,
       path: ['netAmount'],
     })
@@ -68,7 +74,7 @@ const CreateSalarySchema = z
     effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     currencyCode: z.string().length(3).toUpperCase().optional(),
   })
-  .merge(DeductionFieldsSchema)
+  .extend(DeductionFieldsSchema.shape)
   .superRefine((data, ctx) => {
     validateDeductionNet(data.grossAmount, data.netAmount, data, ctx)
   })
@@ -81,7 +87,7 @@ const OverrideSchema = z
     netAmount: z.number().positive(),
     note: z.string().max(500).optional(),
   })
-  .merge(DeductionFieldsSchema)
+  .extend(DeductionFieldsSchema.shape)
   .superRefine((data, ctx) => {
     validateDeductionNet(data.grossAmount, data.netAmount, data, ctx)
   })
@@ -360,7 +366,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = CreateJobSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { name, employer, country, startDate, endDate } = result.data
@@ -388,7 +394,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = UpdateJobSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { name, employer, country, startDate, endDate } = result.data
@@ -450,7 +456,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = CreateSalarySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { grossAmount, netAmount, effectiveFrom, currencyCode, payslipLines } = result.data
@@ -490,7 +496,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = CreateSalarySchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const existing = await prisma.salaryRecord.findFirst({ where: { id: salaryId, jobId } })
@@ -572,7 +578,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = OverrideSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { year, month, grossAmount, netAmount, note, payslipLines } = result.data
@@ -640,7 +646,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = CreateTaxCardSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const {
@@ -680,7 +686,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = UpdateTaxCardSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const data = result.data
@@ -748,7 +754,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = CreateBonusSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { label, grossAmount, netAmount, paymentDate, includeInBudget, budgetMode, currencyCode } = result.data
@@ -788,7 +794,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = UpdateBonusSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const data = result.data
@@ -847,7 +853,7 @@ export async function jobRoutes(fastify: FastifyInstance) {
 
     const result = AllocationSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const job = await assertJobOwnership(jobId, userId, role)
