@@ -249,13 +249,15 @@ budgeteer/
 - Items: PENDING manual expense/savings occurrences and PENDING manual household transfers of each ACTIVE budget year, up to next month. Due date = the entry's due day in that month, clamped (weekly/fortnightly and no due day → the 1st); a transfer uses the household's transfer due day
 - Stages: DUE_SOON within the lead time (the member's reminderLeadDays, else the household's leadDays), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
 - Recipients: INDIVIDUAL → its owner; CUSTOM → members with a share above 0; SHARED (or an owner no longer a member) → every member; transfers → every member
-- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (#258) and ntfy/webhook (#259); none yet
+- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (`lib/channels/email.ts`, nodemailer, whenever an SMTP server is configured; the digest from `lib/digestEmail.ts` as plain text + HTML with links to the to-pay list and Profile) and ntfy/webhook (#259)
 - In-app: the navigation badge (red when something is overdue) and the to-pay list's summary line come from `GET /me/reminders`
 
 **Notification settings** (`lib/notificationSettings.ts`) — three levels, each narrowing the one above (`resolveChannels`): a channel reaches a member for a household's items only when the install, the household and the member all allow it and there's a destination (email: reminderEmailAddress or the login email; webhook: the member's URL). The household channel (`resolveHouseholdChannel`) is the household's shared webhook URL. Missing rows mean the defaults
 
 **notification_settings** — install-wide, one row (`id` = "default"), system admins
 - inAppEnabled (default true), emailEnabled (default false), webhookEnabled (default false), webhookAllowPrivateNetwork (default false)
+- SMTP: smtpHost, smtpPort (default by security: 25 / 587 / 465), smtpSecurity (`NONE` | `STARTTLS` | `TLS`), smtpUsername, smtpPasswordEncrypted, smtpFromAddress, smtpFromName. Email can only be switched on once a host and sender are set (400 `SMTP_NOT_CONFIGURED`)
+- The SMTP password is encrypted with AES-256-GCM (`lib/secretBox.ts`) under `SETTINGS_ENCRYPTION_KEY`, or a key derived from `JWT_SECRET` when that's unset; the API never returns it (`passwordSet` only)
 
 **household_notification_settings** — per household (PK householdId), household admins
 - inAppEnabled, emailEnabled, webhookEnabled (default true), webhookUrl (nullable; the household channel), leadDays (0–14, default 2)
@@ -562,7 +564,8 @@ DELETE /admin/receipt-training/mappings/:id            # admin only
 
 GET    /admin/automations                              # admin only
 GET    /admin/notification-settings                    # admin only
-PUT    /admin/notification-settings                    # admin only; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookAllowPrivateNetwork? }
+PUT    /admin/notification-settings                    # admin only; channel switches and smtp* (smtpPassword: string to set, null to clear, omit to keep)
+POST   /admin/notification-settings/test-email         # admin only; { to } — sends a test with the saved SMTP settings (400 SMTP_ERROR with the reason)
 GET    /admin/notification-deliveries?limit=N          # admin only; latest reminder digests with status and error
 PATCH  /admin/automations/:id/toggle                   # admin only
 GET    /admin/automations/:id/runs                     # admin only

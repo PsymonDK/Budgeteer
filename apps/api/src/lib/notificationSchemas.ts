@@ -24,13 +24,22 @@ export const reminderPreferenceFields = {
   reminderDigestTime: digestTimeSchema,
 }
 
-/** PUT /admin/notification-settings */
+const emptyToNull = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? null : typeof v === 'string' ? v.trim() : v)
+
+/** PUT /admin/notification-settings. `smtpPassword`: a new password, null to clear, left out to keep. */
 export const UpdateSystemNotificationSchema = z
   .object({
     inAppEnabled: z.boolean(),
     emailEnabled: z.boolean(),
     webhookEnabled: z.boolean(),
     webhookAllowPrivateNetwork: z.boolean(),
+    smtpHost: z.preprocess(emptyToNull, z.string().max(255).regex(/^[A-Za-z0-9.-]+$/, 'Enter a host name, e.g. smtp.example.com').nullable()),
+    smtpPort: z.number().int().min(1).max(65535).nullable(),
+    smtpSecurity: z.enum(['NONE', 'STARTTLS', 'TLS']),
+    smtpUsername: z.preprocess(emptyToNull, z.string().max(255).nullable()),
+    smtpPassword: z.string().min(1).max(500).nullable(),
+    smtpFromAddress: z.preprocess(emptyToNull, z.email().max(255).nullable()),
+    smtpFromName: z.preprocess(emptyToNull, z.string().max(100).nullable()),
   })
   .partial()
   .refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' })

@@ -1,5 +1,7 @@
 import { NotificationChannel } from '@prisma/client'
 import { prisma } from './prisma'
+import { BASE_CURRENCY } from './currency'
+import { appUrl, createEmailChannel, loadSmtpConfig } from './channels/email'
 import { loadReminderItems } from './reminderItems'
 import { deliveryKey, digestTimeReached, planDigest, remindersFor, toISODate, type Reminder, type ReminderItem } from './reminders'
 import {
@@ -27,9 +29,12 @@ export interface ReminderChannel {
   send(recipient: DigestRecipient, digest: Digest): Promise<void>
 }
 
-/** Channels digests go out on. Email (#258) and ntfy/webhook (#259) register here. */
-export function activeChannels(): ReminderChannel[] {
-  return []
+/** Channels digests go out on: email once an SMTP server is set up; ntfy/webhook (#259). */
+export async function activeChannels(): Promise<ReminderChannel[]> {
+  const channels: ReminderChannel[] = []
+  const smtp = await loadSmtpConfig()
+  if (smtp) channels.push(createEmailChannel(smtp, { appUrl: appUrl(), currency: BASE_CURRENCY }))
+  return channels
 }
 
 /** Whether the install allows a channel at all. */
@@ -56,9 +61,11 @@ export const DELIVERY_RETENTION_DAYS = 90
  * install has switched off send nothing. Safe to run as often as the scheduler likes; a
  * second run the same day sends nothing new. Returns how many digests were sent.
  */
-export async function runReminderDigests(now: Date = new Date(), channels: ReminderChannel[] = activeChannels()): Promise<number> {
-  if (channels.length === 0) return 0
+export async function runReminderDigests(now: Date = new Date(), only?: ReminderChannel[]): Promise<number> {
   const system = await loadSystemSettings()
+  // Skip loading channels when the install has every channel off
+  if (!system.emailEnabled && !system.webhookEnabled) return 0
+  const channels = only ?? await activeChannels()
   const enabled = channels.filter((c) => systemAllows(system, c.channel))
   if (enabled.length === 0) return 0
 

@@ -773,7 +773,23 @@ model NotificationSettings {
   webhookEnabled             Boolean  @default(false)
   // Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN)
   webhookAllowPrivateNetwork Boolean  @default(false)
+  // Email server for reminder digests
+  smtpHost                   String?
+  smtpPort                   Int?
+  smtpSecurity               SmtpSecurity @default(STARTTLS)
+  smtpUsername               String?
+  // Encrypted at rest (lib/secretBox.ts); never returned by the API
+  smtpPasswordEncrypted      String?
+  smtpFromAddress            String?
+  smtpFromName               String?
   updatedAt                  DateTime @updatedAt
+}
+
+// How the connection to the SMTP server is secured
+enum SmtpSecurity {
+  NONE     // plain (only for a trusted local relay)
+  STARTTLS // upgrade to TLS after connecting, usually port 587
+  TLS      // TLS from the start, usually port 465
 }
 
 // A household's reminder settings, set by its admins; they can only narrow the install's.

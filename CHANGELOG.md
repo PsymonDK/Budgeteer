@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Email reminders (#258)** — Admin → Notifications has an Email server section: SMTP host, port, security (STARTTLS, TLS or none), username, password and sender, plus a "Send test email" button that reports the server's error when something's wrong. Once email is on, each member gets a daily digest of what they pay by hand — due soon, due today and overdue — as plain text and HTML, grouped by household, with links to the to-pay list and to their reminder settings. The SMTP password is encrypted in the database and never shown again. Set the new optional `SETTINGS_ENCRYPTION_KEY` to choose the encryption key; without it, one is derived from `JWT_SECRET`, and changing that means entering the SMTP password again. Failed sends are logged and retried.
 - **Notification settings (#260)** — payment reminders can be set up at three levels, and each level can only narrow the one above:
   - **Admin → Notifications:** which channels this install offers (in the app, email, ntfy and webhooks), whether webhooks may reach private-network addresses, and a log of recent deliveries with errors.
   - **Household settings → Payment reminders** (household admins): turn channels off for the household, add a shared ntfy topic or webhook, and choose how many days ahead to remind.

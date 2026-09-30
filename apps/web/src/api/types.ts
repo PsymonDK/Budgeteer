@@ -282,6 +282,8 @@ export interface PaymentReminders {
 /** Which channels the level above allows */
 export interface AllowedChannels { inApp: boolean; email: boolean; webhook: boolean }
 
+export type SmtpSecurity = 'NONE' | 'STARTTLS' | 'TLS'
+
 /** GET/PUT /admin/notification-settings */
 export interface SystemNotificationSettings {
   inAppEnabled: boolean
@@ -289,6 +291,16 @@ export interface SystemNotificationSettings {
   webhookEnabled: boolean
   /** Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN) */
   webhookAllowPrivateNetwork: boolean
+  /** The email server; the password itself is never returned */
+  smtp: {
+    host: string | null
+    port: number | null
+    security: SmtpSecurity
+    username: string | null
+    passwordSet: boolean
+    fromAddress: string | null
+    fromName: string | null
+  }
 }
 
 /** GET /admin/notification-deliveries */
