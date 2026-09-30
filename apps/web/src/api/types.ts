@@ -279,6 +279,9 @@ export interface PaymentReminders {
 
 // ── Notification settings (admin → household → member; each narrows the one above) ──
 
+/** What a webhook URL expects: an ntfy topic, or a generic (signed) JSON webhook */
+export type WebhookFormat = 'NTFY' | 'JSON'
+
 /** Which channels the level above allows */
 export interface AllowedChannels { inApp: boolean; email: boolean; webhook: boolean }
 
@@ -323,6 +326,9 @@ export interface HouseholdNotificationSettings {
   webhookEnabled: boolean
   /** Shared ntfy topic or webhook URL */
   webhookUrl: string | null
+  webhookFormat: WebhookFormat
+  /** A secret (ntfy token / signing secret) is saved; it's never returned */
+  webhookSecretSet: boolean
   leadDays: number
 }
 
@@ -330,6 +336,8 @@ export interface HouseholdNotificationSettings {
 export interface HouseholdNotificationResponse {
   settings: HouseholdNotificationSettings
   allowed: AllowedChannels
+  /** Whether webhooks may reach private-network addresses */
+  allowPrivateNetwork: boolean
 }
 
 export interface UserReminderSettings {
@@ -338,6 +346,9 @@ export interface UserReminderSettings {
   reminderEmailAddress: string | null
   reminderWebhook: boolean
   reminderWebhookUrl: string | null
+  reminderWebhookFormat: WebhookFormat
+  /** A secret (ntfy token / signing secret) is saved; it's never returned */
+  reminderWebhookSecretSet: boolean
   /** null = each household's default */
   reminderLeadDays: number | null
   /** HH:MM */

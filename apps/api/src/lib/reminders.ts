@@ -116,6 +116,20 @@ export function remindersFor(
     STAGE_ORDER[a.stage] - STAGE_ORDER[b.stage] || a.item.dueDate.localeCompare(b.item.dueDate) || a.item.label.localeCompare(b.item.label))
 }
 
+/** A household channel's reminders today: every item of the household with a stage, whoever it belongs to. */
+export function remindersForHousehold(
+  householdId: string,
+  items: ReminderItem[],
+  today: string,
+  leadDays: number,
+  mode: 'current' | 'digest',
+): Reminder[] {
+  const own = items.filter((i) => i.householdId === householdId)
+  // Everyone in a household is reminded about shared items, so reuse the member rule on a copy
+  return remindersFor('household', own.map((i) => ({ ...i, recipientIds: ['household'] })), today, leadDays, mode)
+    .map((r) => ({ ...r, item: items.find((i) => i.key === r.item.key)! }))
+}
+
 /** The key a delivered reminder is logged under: one per item per stage. */
 export const deliveryKey = (r: Pick<Reminder, 'stage' | 'item'>) => `${r.stage}:${r.item.key}`
 

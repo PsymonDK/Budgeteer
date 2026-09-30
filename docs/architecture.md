@@ -111,7 +111,7 @@ budgeteer/
 
 **user_preferences** — per-user settings (1:1 with user)
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
-- Payment reminders: reminderInApp, reminderEmail, reminderEmailAddress (nullable; null = login email), reminderWebhook, reminderWebhookUrl (nullable), reminderLeadDays (nullable; null = household default), reminderDigestTime (HH:MM, default 08:00)
+- Payment reminders: reminderInApp, reminderEmail, reminderEmailAddress (nullable; null = login email), reminderWebhook, reminderWebhookUrl (nullable), reminderWebhookFormat (`NTFY` | `JSON`), reminderWebhookSecretEncrypted (nullable), reminderLeadDays (nullable; null = household default), reminderDigestTime (HH:MM, default 08:00)
 
 **households** — shared budget spaces
 - id, name, isActive, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
@@ -249,7 +249,7 @@ budgeteer/
 - Items: PENDING manual expense/savings occurrences and PENDING manual household transfers of each ACTIVE budget year, up to next month. Due date = the entry's due day in that month, clamped (weekly/fortnightly and no due day → the 1st); a transfer uses the household's transfer due day
 - Stages: DUE_SOON within the lead time (the member's reminderLeadDays, else the household's leadDays), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
 - Recipients: INDIVIDUAL → its owner; CUSTOM → members with a share above 0; SHARED (or an owner no longer a member) → every member; transfers → every member
-- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (`lib/channels/email.ts`, nodemailer, whenever an SMTP server is configured; the digest from `lib/digestEmail.ts` as plain text + HTML with links to the to-pay list and Profile) and ntfy/webhook (#259)
+- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (`lib/channels/email.ts`, nodemailer, whenever an SMTP server is configured; the digest from `lib/digestEmail.ts` as plain text + HTML with links to the to-pay list and Profile) and ntfy/webhook (`lib/channels/webhook.ts`, whenever the install allows webhooks). Besides members, each household with a shared URL gets a digest of all its items (`remindersForHousehold`, recipient `household:<id>`, 08:00)
 - In-app: the navigation badge (red when something is overdue) and the to-pay list's summary line come from `GET /me/reminders`
 
 **Notification settings** (`lib/notificationSettings.ts`) — three levels, each narrowing the one above (`resolveChannels`): a channel reaches a member for a household's items only when the install, the household and the member all allow it and there's a destination (email: reminderEmailAddress or the login email; webhook: the member's URL). The household channel (`resolveHouseholdChannel`) is the household's shared webhook URL. Missing rows mean the defaults
@@ -260,7 +260,30 @@ budgeteer/
 - The SMTP password is encrypted with AES-256-GCM (`lib/secretBox.ts`) under `SETTINGS_ENCRYPTION_KEY`, or a key derived from `JWT_SECRET` when that's unset; the API never returns it (`passwordSet` only)
 
 **household_notification_settings** — per household (PK householdId), household admins
-- inAppEnabled, emailEnabled, webhookEnabled (default true), webhookUrl (nullable; the household channel), leadDays (0–14, default 2)
+- inAppEnabled, emailEnabled, webhookEnabled (default true), webhookUrl (nullable; the household channel), webhookFormat (`NTFY` | `JSON`), webhookSecretEncrypted (nullable), leadDays (0–14, default 2)
+
+**ntfy and webhooks** (`lib/channels/webhook.ts`, `lib/safeHttp.ts`)
+- Guard: http(s) only, no credentials in the URL. Private, loopback, link-local and other special addresses are refused unless `webhookAllowPrivateNetwork`: checked when a URL is saved (IP literals, localhost; 400 `WEBHOOK_URL_NOT_ALLOWED`) and on every send against each address DNS returns, inside the connection's lookup (no rebinding). Redirects aren't followed; 10 s timeout; non-2xx is a failure
+- Secrets (ntfy access token / signing secret) are encrypted like the SMTP password and never returned (`…SecretSet` only)
+- ntfy: the topic URL `https://server/[path/]topic` is published as JSON to `https://server/[path]`: `{ topic, title, message, priority (4 when something is overdue, else 3), tags, click }`; a token goes in `Authorization: Bearer …`
+- JSON webhook: `POST` with `Content-Type: application/json`, `X-Budgeteer-Timestamp: <unix seconds>` and, with a secret, `X-Budgeteer-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<raw body>">`. Receivers should recompute the HMAC over the raw body and reject old timestamps. Body:
+  ```json
+  {
+    "type": "budgeteer.reminder_digest",
+    "version": 1,
+    "date": "2026-09-30",
+    "recipient": { "kind": "member", "id": "…", "name": "Alice" },
+    "summary": "2 payments to make by hand: 1 due today",
+    "reminders": [
+      {
+        "key": "expense:…", "kind": "expense", "label": "Electricity", "amount": "270.00", "currency": "DKK",
+        "dueDate": "2026-10-01", "stage": "DUE_SOON", "daysUntilDue": 1,
+        "household": { "id": "…", "name": "The Smith Family" }, "url": "https://budget.example.com/households/…"
+      }
+    ]
+  }
+  ```
+  `recipient.kind` is `household` for a household's shared URL; `stage` is `DUE_SOON` | `DUE_TODAY` | `OVERDUE`; `kind` is `expense` | `savings` | `transfer`. Test messages are `{ "type": "budgeteer.test", "version": 1, "message": "…" }`
 
 **notification_deliveries** — log of reminder digests sent or attempted
 - recipientKey (`user:<id>` or `household:<id>`), userId / householdId (nullable), channel (`EMAIL` | `WEBHOOK`), date (YYYY-MM-DD), itemKeys (`<stage>:<item key>`), status (`SENT` | `FAILED`), attempts, error
@@ -429,6 +452,7 @@ GET    /users/me
 PUT    /users/me
 PUT    /users/me/preferences                          # includes the reminder* settings
 GET    /me/notification-settings                      # the member's reminder settings, login email, and channels the install allows
+POST   /me/notification-settings/test-webhook         # sends a test to the member's saved ntfy topic / webhook (400 WEBHOOK_ERROR with the reason)
 POST   /users/me/change-password
 POST   /users/me/avatar
 DELETE /users/me/avatar
@@ -472,7 +496,8 @@ POST   /households
 GET    /households/:id
 PUT    /households/:id                                  # { name, budgetModel?, transferPaymentMethod?, transferDueDay? } — household admin
 GET    /households/:id/notification-settings          # members; { settings, allowed }
-PUT    /households/:id/notification-settings          # household admin; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookUrl?, leadDays? }
+PUT    /households/:id/notification-settings          # household admin; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookUrl?, webhookFormat?, webhookSecret?, leadDays? }
+POST   /households/:id/notification-settings/test-webhook # household admin; tests the shared ntfy topic / webhook
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)

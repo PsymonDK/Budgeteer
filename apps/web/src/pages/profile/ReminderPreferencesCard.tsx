@@ -7,8 +7,10 @@ import { qk } from '../../api/queryKeys'
 import { useMyNotificationSettings } from '../../api/queries'
 import type { UserReminderSettings } from '../../api/types'
 import { ChannelToggle } from '../../components/notifications/ChannelToggle'
+import { WebhookFields } from '../../components/notifications/WebhookFields'
 import { StickyActions } from '../../components/StickyActions'
 import { FormError } from '../../components/FormError'
+import { getApiError } from '../../lib/apiError'
 import { inputClass, primaryBtn } from '../../lib/styles'
 import { cardClass } from './cardClass'
 
@@ -21,11 +23,20 @@ export function ReminderPreferencesCard() {
   const { data } = useMyNotificationSettings()
   const [form, setForm] = useState<UserReminderSettings | null>(null)
   const [error, setError] = useState('')
+  // A new webhook secret being typed, or the saved one to remove; never loaded from the server
+  const [secret, setSecret] = useState('')
+  const [clearSecret, setClearSecret] = useState(false)
   useEffect(() => { if (data) setForm(data.settings) }, [data])
 
   const saveMutation = useMutation({
-    mutationFn: (settings: UserReminderSettings) => api.put('/users/me/preferences', settings),
+    mutationFn: ({ reminderWebhookSecretSet: _set, ...settings }: UserReminderSettings) =>
+      api.put('/users/me/preferences', {
+        ...settings,
+        ...(clearSecret ? { reminderWebhookSecret: null } : secret ? { reminderWebhookSecret: secret } : {}),
+      }),
     onSuccess: () => {
+      setSecret('')
+      setClearSecret(false)
       queryClient.invalidateQueries({ queryKey: qk.myNotificationSettings() })
       queryClient.invalidateQueries({ queryKey: qk.me() })
       queryClient.invalidateQueries({ queryKey: qk.reminders() })
@@ -38,10 +49,16 @@ export function ReminderPreferencesCard() {
     },
   })
 
+  const testMutation = useMutation({
+    mutationFn: () => api.post('/me/notification-settings/test-webhook'),
+    onSuccess: () => toast.success('Test sent — check your ntfy app or webhook'),
+    onError: (err) => toast.error(getApiError(err, 'The test could not be sent')),
+  })
+
   if (!data || !form) return null
   const { allowed, loginEmail } = data
   const set = (patch: Partial<UserReminderSettings>) => setForm({ ...form, ...patch })
-  const dirty = JSON.stringify(form) !== JSON.stringify(data.settings)
+  const dirty = JSON.stringify(form) !== JSON.stringify(data.settings) || !!secret || clearSecret
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -107,18 +124,23 @@ export function ReminderPreferencesCard() {
           />
           {allowed.webhook && form.reminderWebhook && (
             <div className="pl-7">
-              <label htmlFor="me-webhook-url" className="block text-xs font-medium text-gray-400 mb-1">ntfy topic or webhook URL</label>
-              <input
-                id="me-webhook-url"
-                type="url"
-                inputMode="url"
-                value={form.reminderWebhookUrl ?? ''}
-                onChange={(e) => set({ reminderWebhookUrl: e.target.value })}
-                placeholder="https://ntfy.sh/your-topic"
-                aria-describedby="me-webhook-url-help"
-                className={inputClass}
+              <WebhookFields
+                idPrefix="me-webhook"
+                format={form.reminderWebhookFormat}
+                onFormat={(reminderWebhookFormat) => set({ reminderWebhookFormat })}
+                url={form.reminderWebhookUrl ?? ''}
+                onUrl={(reminderWebhookUrl) => set({ reminderWebhookUrl })}
+                urlPlaceholder="https://ntfy.sh/your-topic"
+                urlHelp="Nothing is sent until you add one."
+                secretSet={form.reminderWebhookSecretSet}
+                secret={secret}
+                onSecret={(v) => { setSecret(v); setClearSecret(false) }}
+                clearSecret={clearSecret}
+                onClearSecret={() => { setClearSecret(true); setSecret('') }}
+                onTest={() => testMutation.mutate()}
+                testPending={testMutation.isPending}
+                dirty={dirty}
               />
-              <p id="me-webhook-url-help" className="text-xs text-gray-500 mt-1">Nothing is sent until you add one.</p>
             </div>
           )}
         </div>

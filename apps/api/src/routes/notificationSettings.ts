@@ -4,8 +4,44 @@ import { prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 import { UpdateHouseholdNotificationSchema, UpdateSystemNotificationSchema } from '../lib/notificationSchemas'
 import { allowedChannels, loadHouseholdSettings, loadSystemSettings, loadUserReminderSettings } from '../lib/notificationSettings'
-import { encryptSecret } from '../lib/secretBox'
-import { loadSmtpConfig, sendTestEmail } from '../lib/channels/email'
+import { decryptSecret, encryptSecret } from '../lib/secretBox'
+import { appUrl, loadSmtpConfig, sendTestEmail } from '../lib/channels/email'
+import { sendTestWebhook } from '../lib/channels/webhook'
+import { checkWebhookUrl } from '../lib/safeHttp'
+import { BASE_CURRENCY } from '../lib/currency'
+import type { WebhookFormat } from '@prisma/client'
+import type { FastifyReply } from 'fastify'
+
+/** Sends a test to a saved webhook target and answers with the outcome. */
+async function testWebhook(reply: FastifyReply, target: { url: string | null; format: WebhookFormat; secretEncrypted: string | null }, name: string) {
+  const system = await loadSystemSettings()
+  if (!system.webhookEnabled) return reply.status(400).send({ error: 'ntfy and webhooks are turned off for this install', code: 'WEBHOOK_DISABLED' })
+  if (!target.url) return reply.status(400).send({ error: 'Save an ntfy topic or webhook URL first', code: 'WEBHOOK_NOT_CONFIGURED' })
+  let secret: string | null
+  try { secret = target.secretEncrypted ? decryptSecret(target.secretEncrypted) : null } catch {
+    return reply.status(400).send({ error: "The saved secret can't be read: the encryption key has changed. Enter it again.", code: 'WEBHOOK_SECRET_UNREADABLE' })
+  }
+  try {
+    await sendTestWebhook({ url: target.url, format: target.format, secret }, name, { appUrl: appUrl(), currency: BASE_CURRENCY, allowPrivate: system.webhookAllowPrivateNetwork })
+  } catch (err) {
+    return reply.status(400).send({ error: `Couldn't deliver the test: ${(err as Error).message}`, code: 'WEBHOOK_ERROR' })
+  }
+  return reply.send({ sent: true })
+}
+
+/** A household's settings for its admins: never the secret, only whether one is set. */
+async function householdView(householdId: string) {
+  const [system, households, row] = await Promise.all([
+    loadSystemSettings(),
+    loadHouseholdSettings([householdId]),
+    prisma.householdNotificationSettings.findUnique({ where: { householdId }, select: { webhookSecretEncrypted: true } }),
+  ])
+  return {
+    settings: { ...households.get(householdId)!, webhookSecretSet: !!row?.webhookSecretEncrypted },
+    allowed: allowedChannels(system),
+    allowPrivateNetwork: system.webhookAllowPrivateNetwork,
+  }
+}
 
 const TestEmailSchema = z.object({ to: z.email() })
 
@@ -104,8 +140,7 @@ export async function notificationSettingsRoutes(fastify: FastifyInstance) {
     const membership = await prisma.householdMember.findUnique({ where: { householdId_userId: { householdId: id, userId } } })
     if (!membership && role !== 'SYSTEM_ADMIN') return reply.status(403).send({ error: 'Forbidden' })
 
-    const [system, households] = await Promise.all([loadSystemSettings(), loadHouseholdSettings([id])])
-    return reply.send({ settings: households.get(id), allowed: allowedChannels(system) })
+    return reply.send(await householdView(id))
   })
 
   // PUT /households/:id/notification-settings — household admin only
@@ -120,9 +155,30 @@ export async function notificationSettingsRoutes(fastify: FastifyInstance) {
     const household = await prisma.household.findUnique({ where: { id }, select: { id: true } })
     if (!household) return reply.status(404).send({ error: 'Household not found' })
 
-    await prisma.householdNotificationSettings.upsert({ where: { householdId: id }, create: { householdId: id, ...result.data }, update: result.data })
-    const [system, households] = await Promise.all([loadSystemSettings(), loadHouseholdSettings([id])])
-    return reply.send({ settings: households.get(id), allowed: allowedChannels(system) })
+    const { webhookSecret, ...fields } = result.data
+    if (fields.webhookUrl) {
+      const problem = checkWebhookUrl(fields.webhookUrl, (await loadSystemSettings()).webhookAllowPrivateNetwork)
+      if (problem) return reply.status(400).send({ error: problem, code: 'WEBHOOK_URL_NOT_ALLOWED' })
+    }
+    const data = {
+      ...fields,
+      ...(webhookSecret !== undefined && { webhookSecretEncrypted: webhookSecret === null ? null : encryptSecret(webhookSecret) }),
+    }
+    await prisma.householdNotificationSettings.upsert({ where: { householdId: id }, create: { householdId: id, ...data }, update: data })
+    return reply.send(await householdView(id))
+  })
+
+  // POST /households/:id/notification-settings/test-webhook — household admin; tests the shared URL
+  fastify.post('/households/:id/notification-settings/test-webhook', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const { sub: userId, role } = request.user
+    const membership = await prisma.householdMember.findUnique({ where: { householdId_userId: { householdId: id, userId } } })
+    if (membership?.role !== 'ADMIN' && role !== 'SYSTEM_ADMIN') return reply.status(403).send({ error: 'Forbidden' })
+    const [row, household] = await Promise.all([
+      prisma.householdNotificationSettings.findUnique({ where: { householdId: id } }),
+      prisma.household.findUnique({ where: { id }, select: { name: true } }),
+    ])
+    return testWebhook(reply, { url: row?.webhookUrl ?? null, format: row?.webhookFormat ?? 'NTFY', secretEncrypted: row?.webhookSecretEncrypted ?? null }, household?.name ?? '')
   })
 
   // GET /me/notification-settings — the member's reminder settings and what the install allows.
@@ -135,6 +191,21 @@ export async function notificationSettingsRoutes(fastify: FastifyInstance) {
       loadUserReminderSettings([userId]),
     ])
     if (!user) return reply.status(404).send({ error: 'User not found' })
-    return reply.send({ settings: userSettings.get(userId), loginEmail: user.email, allowed: allowedChannels(system) })
+    const secret = await prisma.userPreferences.findUnique({ where: { userId }, select: { reminderWebhookSecretEncrypted: true } })
+    return reply.send({
+      settings: { ...userSettings.get(userId)!, reminderWebhookSecretSet: !!secret?.reminderWebhookSecretEncrypted },
+      loginEmail: user.email,
+      allowed: allowedChannels(system),
+    })
+  })
+
+  // POST /me/notification-settings/test-webhook — tests the member's saved ntfy topic or webhook
+  fastify.post('/me/notification-settings/test-webhook', { preHandler: authenticate }, async (request, reply) => {
+    const userId = request.user.sub
+    const [prefs, user] = await Promise.all([
+      prisma.userPreferences.findUnique({ where: { userId } }),
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true } }),
+    ])
+    return testWebhook(reply, { url: prefs?.reminderWebhookUrl ?? null, format: prefs?.reminderWebhookFormat ?? 'NTFY', secretEncrypted: prefs?.reminderWebhookSecretEncrypted ?? null }, user?.name ?? '')
   })
 }

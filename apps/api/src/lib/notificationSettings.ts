@@ -2,7 +2,9 @@
 // admins) and each member. A level can only narrow the one above: a channel reaches a member
 // for a household's items only when the install, the household and the member all allow it
 // and there is somewhere to send it.
+import type { WebhookFormat } from '@prisma/client'
 import { prisma } from './prisma'
+import { decryptSecret } from './secretBox'
 
 export interface SystemNotificationSettings {
   inAppEnabled: boolean
@@ -16,6 +18,7 @@ export interface HouseholdNotificationSettings {
   emailEnabled: boolean
   webhookEnabled: boolean
   webhookUrl: string | null
+  webhookFormat: WebhookFormat
   leadDays: number
 }
 
@@ -25,20 +28,24 @@ export interface UserReminderSettings {
   reminderEmailAddress: string | null
   reminderWebhook: boolean
   reminderWebhookUrl: string | null
+  reminderWebhookFormat: WebhookFormat
   reminderLeadDays: number | null
   reminderDigestTime: string
 }
+
+/** A webhook destination (its secret is loaded separately, only when sending). */
+export interface WebhookDestination { url: string; format: WebhookFormat }
 
 // Defaults when no row exists (matching the schema defaults)
 export const SYSTEM_DEFAULTS: SystemNotificationSettings = {
   inAppEnabled: true, emailEnabled: false, webhookEnabled: false, webhookAllowPrivateNetwork: false,
 }
 export const HOUSEHOLD_DEFAULTS: HouseholdNotificationSettings = {
-  inAppEnabled: true, emailEnabled: true, webhookEnabled: true, webhookUrl: null, leadDays: 2,
+  inAppEnabled: true, emailEnabled: true, webhookEnabled: true, webhookUrl: null, webhookFormat: 'NTFY', leadDays: 2,
 }
 export const USER_DEFAULTS: UserReminderSettings = {
   reminderInApp: true, reminderEmail: true, reminderEmailAddress: null, reminderWebhook: true,
-  reminderWebhookUrl: null, reminderLeadDays: null, reminderDigestTime: '08:00',
+  reminderWebhookUrl: null, reminderWebhookFormat: 'NTFY', reminderLeadDays: null, reminderDigestTime: '08:00',
 }
 
 /** How a member is reminded about one household's items. */
@@ -46,8 +53,8 @@ export interface ResolvedReminderChannels {
   inApp: boolean
   /** Where reminder emails go, or null when email doesn't reach them */
   email: string | null
-  /** The member's own ntfy/webhook URL, or null when the webhook channel doesn't reach them */
-  webhook: string | null
+  /** The member's own ntfy topic or webhook, or null when the webhook channel doesn't reach them */
+  webhook: WebhookDestination | null
   leadDays: number
   digestTime: string
 }
@@ -65,15 +72,19 @@ export function resolveChannels(
   return {
     inApp: system.inAppEnabled && household.inAppEnabled && user.reminderInApp,
     email: system.emailEnabled && household.emailEnabled && user.reminderEmail ? (user.reminderEmailAddress || loginEmail) : null,
-    webhook: system.webhookEnabled && household.webhookEnabled && user.reminderWebhook ? user.reminderWebhookUrl : null,
+    webhook: system.webhookEnabled && household.webhookEnabled && user.reminderWebhook && user.reminderWebhookUrl
+      ? { url: user.reminderWebhookUrl, format: user.reminderWebhookFormat }
+      : null,
     leadDays: user.reminderLeadDays ?? household.leadDays,
     digestTime: user.reminderDigestTime,
   }
 }
 
-/** The household channel: its shared ntfy/webhook URL, when the install and the household allow webhooks. */
-export function resolveHouseholdChannel(system: SystemNotificationSettings, household: HouseholdNotificationSettings): string | null {
-  return system.webhookEnabled && household.webhookEnabled ? household.webhookUrl : null
+/** The household channel: its shared ntfy topic or webhook, when the install and the household allow webhooks. */
+export function resolveHouseholdChannel(system: SystemNotificationSettings, household: HouseholdNotificationSettings): WebhookDestination | null {
+  return system.webhookEnabled && household.webhookEnabled && household.webhookUrl
+    ? { url: household.webhookUrl, format: household.webhookFormat }
+    : null
 }
 
 /** What the level above allows, for greying out settings a member or household can't turn on. */
@@ -100,7 +111,10 @@ export async function loadHouseholdSettings(householdIds: string[]): Promise<Map
   const byId = new Map(rows.map((r) => [r.householdId, r]))
   return new Map(householdIds.map((id) => {
     const r = byId.get(id)
-    return [id, r ? { inAppEnabled: r.inAppEnabled, emailEnabled: r.emailEnabled, webhookEnabled: r.webhookEnabled, webhookUrl: r.webhookUrl, leadDays: r.leadDays } : HOUSEHOLD_DEFAULTS]
+    return [id, r ? {
+      inAppEnabled: r.inAppEnabled, emailEnabled: r.emailEnabled, webhookEnabled: r.webhookEnabled,
+      webhookUrl: r.webhookUrl, webhookFormat: r.webhookFormat, leadDays: r.leadDays,
+    } : HOUSEHOLD_DEFAULTS]
   }))
 }
 
@@ -110,9 +124,27 @@ export async function loadUserReminderSettings(userIds: string[]): Promise<Map<s
     where: { userId: { in: userIds } },
     select: {
       userId: true, reminderInApp: true, reminderEmail: true, reminderEmailAddress: true, reminderWebhook: true,
-      reminderWebhookUrl: true, reminderLeadDays: true, reminderDigestTime: true,
+      reminderWebhookUrl: true, reminderWebhookFormat: true, reminderLeadDays: true, reminderDigestTime: true,
     },
   })
   const byId = new Map(rows.map(({ userId, ...r }) => [userId, r]))
   return new Map(userIds.map((id) => [id, byId.get(id) ?? USER_DEFAULTS]))
+}
+
+/** Decrypts a stored webhook secret; null when there's none or it can no longer be read. */
+function readSecret(stored: string | null): string | null {
+  if (!stored) return null
+  try { return decryptSecret(stored) } catch { return null }
+}
+
+/** Webhook secrets (ntfy tokens, signing secrets) for members and households, only for sending. */
+export async function loadWebhookSecrets(userIds: string[], householdIds: string[]) {
+  const [users, households] = await Promise.all([
+    prisma.userPreferences.findMany({ where: { userId: { in: userIds } }, select: { userId: true, reminderWebhookSecretEncrypted: true } }),
+    prisma.householdNotificationSettings.findMany({ where: { householdId: { in: householdIds } }, select: { householdId: true, webhookSecretEncrypted: true } }),
+  ])
+  return {
+    user: new Map(users.map((u) => [u.userId, readSecret(u.reminderWebhookSecretEncrypted)])),
+    household: new Map(households.map((h) => [h.householdId, readSecret(h.webhookSecretEncrypted)])),
+  }
 }

@@ -7,27 +7,37 @@ import { qk } from '../../api/queryKeys'
 import { useHouseholdNotificationSettings } from '../../api/queries'
 import type { HouseholdNotificationResponse, HouseholdNotificationSettings } from '../../api/types'
 import { ChannelToggle } from '../../components/notifications/ChannelToggle'
+import { WebhookFields } from '../../components/notifications/WebhookFields'
 import { StickyActions } from '../../components/StickyActions'
 import { FormError } from '../../components/FormError'
+import { getApiError } from '../../lib/apiError'
 import { inputClass, primaryBtn } from '../../lib/styles'
 
 const LEAD_DAYS = Array.from({ length: 15 }, (_, i) => i)
 const OFF_BY_ADMIN = 'Turned off for this install by the administrator.'
 
-/** Household payment-reminder settings (household admins): channels, shared ntfy/webhook URL, lead time. */
+/** Household payment-reminder settings (household admins): channels, shared ntfy/webhook, lead time. */
 export function ReminderSettings({ householdId }: { householdId: string }) {
   const queryClient = useQueryClient()
   const { data } = useHouseholdNotificationSettings(householdId)
   const [form, setForm] = useState<HouseholdNotificationSettings | null>(null)
   const [error, setError] = useState('')
+  // A new webhook secret being typed, or the saved one to remove; never loaded from the server
+  const [secret, setSecret] = useState('')
+  const [clearSecret, setClearSecret] = useState(false)
   useEffect(() => { if (data) setForm(data.settings) }, [data])
 
   const saveMutation = useMutation({
-    mutationFn: (settings: HouseholdNotificationSettings) =>
-      api.put<HouseholdNotificationResponse>(`/households/${householdId}/notification-settings`, settings),
+    mutationFn: ({ webhookSecretSet: _set, ...settings }: HouseholdNotificationSettings) =>
+      api.put<HouseholdNotificationResponse>(`/households/${householdId}/notification-settings`, {
+        ...settings,
+        ...(clearSecret ? { webhookSecret: null } : secret ? { webhookSecret: secret } : {}),
+      }),
     onSuccess: ({ data: saved }) => {
       queryClient.setQueryData(qk.householdNotificationSettings(householdId), saved)
       queryClient.invalidateQueries({ queryKey: qk.reminders() })
+      setSecret('')
+      setClearSecret(false)
       setError('')
       toast.success('Reminder settings saved')
     },
@@ -37,10 +47,17 @@ export function ReminderSettings({ householdId }: { householdId: string }) {
     },
   })
 
+  const testMutation = useMutation({
+    mutationFn: () => api.post(`/households/${householdId}/notification-settings/test-webhook`),
+    onSuccess: () => toast.success('Test sent — check the ntfy topic or webhook'),
+    onError: (err) => toast.error(getApiError(err, 'The test could not be sent')),
+  })
+
   if (!data || !form) return null
   const { allowed } = data
   const set = (patch: Partial<HouseholdNotificationSettings>) => setForm({ ...form, ...patch })
-  const dirty = JSON.stringify(form) !== JSON.stringify(data.settings)
+  const dirty = JSON.stringify(form) !== JSON.stringify(data.settings) || !!secret || clearSecret
+  const webhookUsable = allowed.webhook && form.webhookEnabled
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -86,36 +103,41 @@ export function ReminderSettings({ householdId }: { householdId: string }) {
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
-        <div>
-          <label htmlFor="hh-webhook-url" className="block text-xs font-medium text-gray-400 mb-1">
-            Shared ntfy topic or webhook <span className="text-gray-600">(optional)</span>
-          </label>
-          <input
-            id="hh-webhook-url"
-            type="url"
-            inputMode="url"
-            value={form.webhookUrl ?? ''}
-            onChange={(e) => set({ webhookUrl: e.target.value })}
-            placeholder="https://ntfy.sh/our-household"
-            disabled={!allowed.webhook || !form.webhookEnabled}
-            aria-describedby="hh-webhook-url-help"
-            className={inputClass}
+      {webhookUsable && (
+        <div className="border-t border-gray-800 pt-4">
+          <p className="text-sm font-medium text-gray-100 mb-1">Shared ntfy topic or webhook <span className="text-gray-600 font-normal">(optional)</span></p>
+          <p className="text-xs text-gray-500 mb-3">Gets a daily digest of every manual payment, whoever it belongs to.</p>
+          <WebhookFields
+            idPrefix="hh-webhook"
+            format={form.webhookFormat}
+            onFormat={(webhookFormat) => set({ webhookFormat })}
+            url={form.webhookUrl ?? ''}
+            onUrl={(webhookUrl) => set({ webhookUrl })}
+            urlPlaceholder="https://ntfy.sh/our-household"
+            urlHelp={data.allowPrivateNetwork ? 'Private-network addresses are allowed on this install.' : undefined}
+            secretSet={form.webhookSecretSet}
+            secret={secret}
+            onSecret={(v) => { setSecret(v); setClearSecret(false) }}
+            clearSecret={clearSecret}
+            onClearSecret={() => { setClearSecret(true); setSecret('') }}
+            onTest={() => testMutation.mutate()}
+            testPending={testMutation.isPending}
+            dirty={dirty}
           />
-          <p id="hh-webhook-url-help" className="text-xs text-gray-500 mt-1">Gets a digest of every manual payment, whoever it belongs to.</p>
         </div>
-        <div>
-          <label htmlFor="hh-lead-days" className="block text-xs font-medium text-gray-400 mb-1">Remind this many days ahead</label>
-          <select
-            id="hh-lead-days"
-            value={form.leadDays}
-            onChange={(e) => set({ leadDays: Number(e.target.value) })}
-            className={`${inputClass} sm:w-40`}
-          >
-            {LEAD_DAYS.map((d) => <option key={d} value={d}>{d === 0 ? 'Only on the day' : `${d} ${d === 1 ? 'day' : 'days'}`}</option>)}
-          </select>
-          <p className="text-xs text-gray-500 mt-1">The default; members can pick their own.</p>
-        </div>
+      )}
+
+      <div>
+        <label htmlFor="hh-lead-days" className="block text-xs font-medium text-gray-400 mb-1">Remind this many days ahead</label>
+        <select
+          id="hh-lead-days"
+          value={form.leadDays}
+          onChange={(e) => set({ leadDays: Number(e.target.value) })}
+          className={`${inputClass} sm:w-48`}
+        >
+          {LEAD_DAYS.map((d) => <option key={d} value={d}>{d === 0 ? 'Only on the day' : `${d} ${d === 1 ? 'day' : 'days'}`}</option>)}
+        </select>
+        <p className="text-xs text-gray-500 mt-1">The default; members can pick their own.</p>
       </div>
 
       <FormError message={error} />

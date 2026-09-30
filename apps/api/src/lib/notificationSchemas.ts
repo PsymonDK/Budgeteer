@@ -19,6 +19,9 @@ export const reminderPreferenceFields = {
   reminderEmailAddress: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? null : v), z.email().max(200).nullable()),
   reminderWebhook: z.boolean(),
   reminderWebhookUrl: optionalHttpUrl,
+  reminderWebhookFormat: z.enum(['NTFY', 'JSON']),
+  // ntfy access token or signing secret: a new one, null to clear, left out to keep
+  reminderWebhookSecret: z.string().min(1).max(500).nullable(),
   // null = use each household's default
   reminderLeadDays: leadDaysSchema.nullable(),
   reminderDigestTime: digestTimeSchema,
@@ -51,6 +54,9 @@ export const UpdateHouseholdNotificationSchema = z
     emailEnabled: z.boolean(),
     webhookEnabled: z.boolean(),
     webhookUrl: optionalHttpUrl,
+    webhookFormat: z.enum(['NTFY', 'JSON']),
+    // ntfy access token or signing secret: a new one, null to clear, left out to keep
+    webhookSecret: z.string().min(1).max(500).nullable(),
     leadDays: leadDaysSchema,
   })
   .partial()

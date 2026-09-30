@@ -2,18 +2,26 @@ import { NotificationChannel } from '@prisma/client'
 import { prisma } from './prisma'
 import { BASE_CURRENCY } from './currency'
 import { appUrl, createEmailChannel, loadSmtpConfig } from './channels/email'
+import { createWebhookChannel, type WebhookTarget } from './channels/webhook'
 import { loadReminderItems } from './reminderItems'
-import { deliveryKey, digestTimeReached, planDigest, remindersFor, toISODate, type Reminder, type ReminderItem } from './reminders'
 import {
-  loadHouseholdSettings, loadSystemSettings, loadUserReminderSettings, resolveChannels,
-  type ResolvedReminderChannels, type SystemNotificationSettings,
+  deliveryKey, digestTimeReached, planDigest, remindersFor, remindersForHousehold, toISODate, type Reminder, type ReminderItem,
+} from './reminders'
+import {
+  HOUSEHOLD_DEFAULTS, loadHouseholdSettings, loadSystemSettings, loadUserReminderSettings, loadWebhookSecrets, resolveChannels,
+  resolveHouseholdChannel, type ResolvedReminderChannels, type SystemNotificationSettings,
 } from './notificationSettings'
 
-/** Who a digest goes to, and where on this channel (an email address, or an ntfy/webhook URL). */
+/** Who a digest goes to, and where: an email address, or an ntfy topic / webhook. */
 export interface DigestRecipient {
-  userId: string
+  /** The member, or null for a household's shared channel */
+  userId: string | null
+  householdId?: string
   name: string
+  /** The email address, or the webhook URL */
   destination: string
+  /** Set for the webhook channel */
+  webhook?: WebhookTarget
 }
 
 /** A day's reminders for one recipient: due soon, due today and overdue, each sent once. */
@@ -29,11 +37,15 @@ export interface ReminderChannel {
   send(recipient: DigestRecipient, digest: Digest): Promise<void>
 }
 
-/** Channels digests go out on: email once an SMTP server is set up; ntfy/webhook (#259). */
-export async function activeChannels(): Promise<ReminderChannel[]> {
+/** Channels digests go out on: email once an SMTP server is set up, and ntfy/webhooks. */
+export async function activeChannels(system: SystemNotificationSettings): Promise<ReminderChannel[]> {
+  const opts = { appUrl: appUrl(), currency: BASE_CURRENCY }
   const channels: ReminderChannel[] = []
-  const smtp = await loadSmtpConfig()
-  if (smtp) channels.push(createEmailChannel(smtp, { appUrl: appUrl(), currency: BASE_CURRENCY }))
+  if (system.emailEnabled) {
+    const smtp = await loadSmtpConfig()
+    if (smtp) channels.push(createEmailChannel(smtp, opts))
+  }
+  if (system.webhookEnabled) channels.push(createWebhookChannel({ ...opts, allowPrivate: system.webhookAllowPrivateNetwork }))
   return channels
 }
 
@@ -44,7 +56,7 @@ function systemAllows(system: SystemNotificationSettings, channel: NotificationC
 
 /** A member's destination on a channel for one household's items, or null when it doesn't reach them. */
 function destinationOn(resolved: ResolvedReminderChannels, channel: NotificationChannel): string | null {
-  return channel === 'EMAIL' ? resolved.email : resolved.webhook
+  return channel === 'EMAIL' ? resolved.email : resolved.webhook?.url ?? null
 }
 
 /** A failed digest is retried on later runs the same day, up to this many attempts. */
@@ -53,78 +65,122 @@ export const MAX_DELIVERY_ATTEMPTS = 5
 const SENT_LOOKBACK_DAYS = 62
 /** Delivery log rows are kept this long. */
 export const DELIVERY_RETENTION_DAYS = 90
+/** Local time a household channel's daily digest goes out */
+export const HOUSEHOLD_DIGEST_TIME = '08:00'
 
 /**
- * Sends each member's reminder digest on every channel that reaches them, once their digest
- * time has come: at most one digest per member per channel per day, carrying only reminder
- * stages not sent before, and only items of households that allow the channel. Channels the
- * install has switched off send nothing. Safe to run as often as the scheduler likes; a
- * second run the same day sends nothing new. Returns how many digests were sent.
+ * Sends each recipient's digest once, unless today's is already sent (or has failed too often),
+ * with only the reminder stages not delivered before on this channel. Logs the outcome.
+ */
+async function deliver(
+  channel: ReminderChannel,
+  recipient: DigestRecipient,
+  recipientKey: string,
+  reminders: Reminder[],
+  today: string,
+  since: string,
+): Promise<boolean> {
+  const history = await prisma.notificationDelivery.findMany({
+    where: { recipientKey, channel: channel.channel, date: { gte: since } },
+    select: { date: true, status: true, attempts: true, itemKeys: true },
+  })
+  const todays = history.find((d) => d.date === today)
+  if (todays && (todays.status === 'SENT' || todays.attempts >= MAX_DELIVERY_ATTEMPTS)) return false
+
+  const alreadySent = new Set(history.filter((d) => d.status === 'SENT').flatMap((d) => d.itemKeys))
+  const digestReminders = planDigest(reminders, alreadySent)
+  if (digestReminders.length === 0) return false
+
+  const itemKeys = digestReminders.map(deliveryKey)
+  const owner = { userId: recipient.userId, householdId: recipient.userId ? null : recipient.householdId ?? null }
+  const where = { recipientKey_channel_date: { recipientKey, channel: channel.channel, date: today } }
+  try {
+    await channel.send(recipient, { date: today, reminders: digestReminders })
+    await prisma.notificationDelivery.upsert({
+      where,
+      create: { recipientKey, ...owner, channel: channel.channel, date: today, itemKeys, status: 'SENT' },
+      update: { itemKeys, status: 'SENT', attempts: { increment: 1 }, error: null },
+    })
+    return true
+  } catch (err) {
+    const error = (err instanceof Error ? err.message : String(err)).slice(0, 500)
+    await prisma.notificationDelivery.upsert({
+      where,
+      create: { recipientKey, ...owner, channel: channel.channel, date: today, itemKeys, status: 'FAILED', error },
+      update: { itemKeys, status: 'FAILED', attempts: { increment: 1 }, error },
+    })
+    return false
+  }
+}
+
+/**
+ * Sends reminder digests on every channel the install allows, once each recipient's digest time
+ * has come: each member on the channels that reach them (only items of households that allow
+ * the channel), and each household's shared ntfy topic or webhook. At most one digest per
+ * recipient per channel per day, carrying only reminder stages not sent before. Safe to run as
+ * often as the scheduler likes. Returns how many digests were sent.
  */
 export async function runReminderDigests(now: Date = new Date(), only?: ReminderChannel[]): Promise<number> {
   const system = await loadSystemSettings()
-  // Skip loading channels when the install has every channel off
   if (!system.emailEnabled && !system.webhookEnabled) return 0
-  const channels = only ?? await activeChannels()
-  const enabled = channels.filter((c) => systemAllows(system, c.channel))
-  if (enabled.length === 0) return 0
+  const channels = (only ?? await activeChannels(system)).filter((c) => systemAllows(system, c.channel))
+  if (channels.length === 0) return 0
 
   const today = toISODate(now)
   const items = await loadReminderItems(now)
+  if (items.length === 0) return 0
   const userIds = [...new Set(items.flatMap((i) => i.recipientIds))]
-  if (userIds.length === 0) return 0
+  const householdIds = [...new Set(items.map((i) => i.householdId))]
 
-  const [users, households, userSettings] = await Promise.all([
+  const [users, households, userSettings, secrets] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: userIds }, isActive: true }, select: { id: true, name: true, email: true } }),
-    loadHouseholdSettings([...new Set(items.map((i) => i.householdId))]),
+    loadHouseholdSettings(householdIds),
     loadUserReminderSettings(userIds),
+    loadWebhookSecrets(userIds, householdIds),
   ])
   const since = toISODate(new Date(now.getTime() - SENT_LOOKBACK_DAYS * 86_400_000))
-
   let sent = 0
+
+  // Members
   for (const user of users) {
     const prefs = userSettings.get(user.id)!
     if (!digestTimeReached(now, prefs.reminderDigestTime)) continue
-    const resolvedFor = (item: ReminderItem) => resolveChannels(system, households.get(item.householdId)!, prefs, user.email)
+    const resolvedFor = (item: ReminderItem) => resolveChannels(system, households.get(item.householdId) ?? HOUSEHOLD_DEFAULTS, prefs, user.email)
     const reminders = remindersFor(user.id, items, today, (item) => resolvedFor(item).leadDays, 'digest')
     if (reminders.length === 0) continue
-    const recipientKey = `user:${user.id}`
 
-    for (const channel of enabled) {
+    for (const channel of channels) {
       // Only items of households whose settings let this channel reach the member
       const reachable = reminders.filter((r) => destinationOn(resolvedFor(r.item), channel.channel) !== null)
       if (reachable.length === 0) continue
-      const destination = destinationOn(resolvedFor(reachable[0].item), channel.channel)!
-
-      const history = await prisma.notificationDelivery.findMany({
-        where: { recipientKey, channel: channel.channel, date: { gte: since } },
-        select: { date: true, status: true, attempts: true, itemKeys: true },
-      })
-      const todays = history.find((d) => d.date === today)
-      if (todays && (todays.status === 'SENT' || todays.attempts >= MAX_DELIVERY_ATTEMPTS)) continue
-
-      const alreadySent = new Set(history.filter((d) => d.status === 'SENT').flatMap((d) => d.itemKeys))
-      const digestReminders = planDigest(reachable, alreadySent)
-      if (digestReminders.length === 0) continue
-
-      const itemKeys = digestReminders.map(deliveryKey)
-      const where = { recipientKey_channel_date: { recipientKey, channel: channel.channel, date: today } }
-      try {
-        await channel.send({ userId: user.id, name: user.name, destination }, { date: today, reminders: digestReminders })
-        await prisma.notificationDelivery.upsert({
-          where,
-          create: { recipientKey, userId: user.id, channel: channel.channel, date: today, itemKeys, status: 'SENT' },
-          update: { itemKeys, status: 'SENT', attempts: { increment: 1 }, error: null },
-        })
-        sent++
-      } catch (err) {
-        const error = (err instanceof Error ? err.message : String(err)).slice(0, 500)
-        await prisma.notificationDelivery.upsert({
-          where,
-          create: { recipientKey, userId: user.id, channel: channel.channel, date: today, itemKeys, status: 'FAILED', error },
-          update: { itemKeys, status: 'FAILED', attempts: { increment: 1 }, error },
-        })
+      const resolved = resolvedFor(reachable[0].item)
+      const recipient: DigestRecipient = {
+        userId: user.id,
+        name: user.name,
+        destination: destinationOn(resolved, channel.channel)!,
+        ...(channel.channel === 'WEBHOOK' && resolved.webhook && { webhook: { ...resolved.webhook, secret: secrets.user.get(user.id) ?? null } }),
       }
+      if (await deliver(channel, recipient, `user:${user.id}`, reachable, today, since)) sent++
+    }
+  }
+
+  // Households' shared ntfy topics / webhooks
+  const webhook = channels.find((c) => c.channel === 'WEBHOOK')
+  if (webhook && digestTimeReached(now, HOUSEHOLD_DIGEST_TIME)) {
+    for (const householdId of householdIds) {
+      const settings = households.get(householdId) ?? HOUSEHOLD_DEFAULTS
+      const target = resolveHouseholdChannel(system, settings)
+      if (!target) continue
+      const reminders = remindersForHousehold(householdId, items, today, settings.leadDays, 'digest')
+      if (reminders.length === 0) continue
+      const recipient: DigestRecipient = {
+        userId: null,
+        householdId,
+        name: reminders[0].item.householdName,
+        destination: target.url,
+        webhook: { ...target, secret: secrets.household.get(householdId) ?? null },
+      }
+      if (await deliver(webhook, recipient, `household:${householdId}`, reminders, today, since)) sent++
     }
   }
   return sent

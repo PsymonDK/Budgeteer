@@ -183,6 +183,9 @@ model UserPreferences {
   reminderWebhook           Boolean  @default(true)
   // Personal ntfy topic or webhook URL; the webhook channel needs one
   reminderWebhookUrl        String?
+  reminderWebhookFormat     WebhookFormat @default(NTFY)
+  // ntfy access token or webhook signing secret, encrypted (lib/secretBox.ts); never returned
+  reminderWebhookSecretEncrypted String?
   // Days before the due date a "due soon" reminder starts; null = the household's default
   reminderLeadDays          Int?
   // Local time the daily digest goes out, HH:MM
@@ -785,6 +788,12 @@ model NotificationSettings {
   updatedAt                  DateTime @updatedAt
 }
 
+// What a webhook URL expects: an ntfy topic, or a generic JSON webhook (signed with the secret)
+enum WebhookFormat {
+  NTFY
+  JSON
+}
+
 // How the connection to the SMTP server is secured
 enum SmtpSecurity {
   NONE     // plain (only for a trusted local relay)
@@ -802,6 +811,9 @@ model HouseholdNotificationSettings {
   webhookEnabled Boolean   @default(true)
   // Shared ntfy topic or webhook URL: the household channel, reminded about every item
   webhookUrl     String?
+  webhookFormat  WebhookFormat @default(NTFY)
+  // ntfy access token or webhook signing secret, encrypted; never returned
+  webhookSecretEncrypted String?
   // Default days before the due date a "due soon" reminder starts
   leadDays       Int       @default(2)
   updatedAt      DateTime  @updatedAt

@@ -1,6 +1,9 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { reminderPreferenceFields } from '../lib/notificationSchemas'
+import { checkWebhookUrl } from '../lib/safeHttp'
+import { encryptSecret } from '../lib/secretBox'
+import { loadSystemSettings } from '../lib/notificationSettings'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -253,12 +256,24 @@ export async function userRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
-    const prefs = await prisma.userPreferences.upsert({
+    const { reminderWebhookSecret, ...fields } = result.data
+    // A webhook URL must be allowed to reach where it points
+    if (fields.reminderWebhookUrl) {
+      const problem = checkWebhookUrl(fields.reminderWebhookUrl, (await loadSystemSettings()).webhookAllowPrivateNetwork)
+      if (problem) return reply.status(400).send({ error: problem, code: 'WEBHOOK_URL_NOT_ALLOWED' })
+    }
+    const data = {
+      ...fields,
+      ...(reminderWebhookSecret !== undefined && { reminderWebhookSecretEncrypted: reminderWebhookSecret === null ? null : encryptSecret(reminderWebhookSecret) }),
+    }
+
+    const { reminderWebhookSecretEncrypted, ...prefs } = await prisma.userPreferences.upsert({
       where: { userId },
-      create: { userId, ...result.data },
-      update: result.data,
+      create: { userId, ...data },
+      update: data,
     })
-    return reply.send(prefs)
+    // Secrets are never returned, only whether one is set
+    return reply.send({ ...prefs, reminderWebhookSecretSet: !!reminderWebhookSecretEncrypted })
   })
 
   // POST /users/me/change-password — authenticated user changes their own password

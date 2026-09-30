@@ -11,7 +11,7 @@ const user = (over: Partial<typeof USER_DEFAULTS> = {}) => ({ ...USER_DEFAULTS, 
 describe('resolveChannels: each level narrows the one above', () => {
   it('reaches a member on every channel when everyone allows it', () => {
     expect(resolveChannels(allOn, HOUSEHOLD_DEFAULTS, user(), 'anna@home.dk')).toEqual({
-      inApp: true, email: 'anna@home.dk', webhook: 'https://ntfy.sh/anna', leadDays: 2, digestTime: '08:00',
+      inApp: true, email: 'anna@home.dk', webhook: { url: 'https://ntfy.sh/anna', format: 'NTFY' }, leadDays: 2, digestTime: '08:00',
     })
   })
 
@@ -19,7 +19,7 @@ describe('resolveChannels: each level narrows the one above', () => {
     const r = resolveChannels({ ...allOn, emailEnabled: false, inAppEnabled: false }, HOUSEHOLD_DEFAULTS, user(), 'anna@home.dk')
     expect(r.email).toBeNull()
     expect(r.inApp).toBe(false)
-    expect(r.webhook).toBe('https://ntfy.sh/anna')
+    expect(r.webhook).toEqual({ url: 'https://ntfy.sh/anna', format: 'NTFY' })
   })
 
   it('lets a household turn a channel off for its items', () => {
@@ -46,8 +46,8 @@ describe('resolveChannels: each level narrows the one above', () => {
 
 describe('household channel and what is allowed', () => {
   it('sends to the household URL only when the install and the household allow webhooks', () => {
-    const household = { ...HOUSEHOLD_DEFAULTS, webhookUrl: 'https://ntfy.sh/home' }
-    expect(resolveHouseholdChannel(allOn, household)).toBe('https://ntfy.sh/home')
+    const household = { ...HOUSEHOLD_DEFAULTS, webhookUrl: 'https://ntfy.sh/home', webhookFormat: 'JSON' as const }
+    expect(resolveHouseholdChannel(allOn, household)).toEqual({ url: 'https://ntfy.sh/home', format: 'JSON' })
     expect(resolveHouseholdChannel(SYSTEM_DEFAULTS, household)).toBeNull() // webhooks off by default
     expect(resolveHouseholdChannel(allOn, { ...household, webhookEnabled: false })).toBeNull()
   })
