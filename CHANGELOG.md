@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-09-30 — Payment reminders, installable app and Chart & Ledger look
+
 ### Added
 - **Mark as paid from a reminder (#261)** — every reminder in an email has a "Mark as paid" link that opens a small page: it shows the payment and marks it paid when you confirm, without logging in. ntfy notifications get "Paid: …" buttons that do it straight from the notification, and JSON webhooks get a `markPaidUrl` per reminder. Each link works once, for 14 days, and only for that one payment; opening a link (as email security scanners do) changes nothing until you press the button. Links follow the same rules as the app: closed budget years stay read-only and automatic payments can't be marked. Only a hash of each link is stored.
 - **ntfy and webhook reminders (#259)** — reminder digests can go to an ntfy topic (shows up as a push notification on your phone; high priority when something is overdue) or to any JSON webhook (Home Assistant, n8n, Discord relays…). Each member can add their own under Profile → Payment reminders, and a household can add a shared one that gets every manual payment. ntfy topics can use an access token; JSON webhooks can be signed with a secret (HMAC-SHA256, format in docs/architecture.md). Both are stored encrypted. "Send a test" checks a URL works. For safety, webhooks can't reach private-network addresses (192.168.x.x, localhost…) unless an admin allows it in Admin → Notifications, e.g. for an ntfy server on your LAN.
