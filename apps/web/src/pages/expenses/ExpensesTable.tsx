@@ -123,8 +123,8 @@ export function ExpensesTable({
     },
     {
       key: 'monthly', header: '/month', sortKey: 'monthly', align: 'right',
-      cell: (e) => <span className="text-amber-400 tabular-nums font-medium whitespace-nowrap">{fmt(parseFloat(e.monthlyWhenActive))}</span>,
-      footer: <span className="text-amber-400 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
+      cell: (e) => <span className="text-gray-100 tabular-nums font-medium whitespace-nowrap">{fmt(parseFloat(e.monthlyWhenActive))}</span>,
+      footer: <span className="text-gray-100 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
     },
   ]
 

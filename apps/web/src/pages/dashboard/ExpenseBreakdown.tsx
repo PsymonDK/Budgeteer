@@ -42,7 +42,7 @@ export function ExpenseList({ summary, expenses, expenseView, setExpenseView, ho
 
       {summary.expenses.items.length === 0 ? (
         <div className="flex-1 text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
-          No plunder recorded yet.{' '}
+          No expenses yet.{' '}
           <Link to={`/households/${householdId}/expenses`} className="text-amber-400 hover:text-amber-300">
             Add expenses →
           </Link>
@@ -92,7 +92,7 @@ export function ExpenseList({ summary, expenses, expenseView, setExpenseView, ho
             <tfoot className="sticky bottom-0 bg-gray-900">
               <tr className="border-t border-gray-700 text-gray-300 font-medium">
                 <td colSpan={2} className="px-4 py-3">Total / month</td>
-                <td className="px-4 py-3 text-right tabular-nums text-amber-400">{fmt(expenses)}</td>
+                <td className="px-4 py-3 text-right tabular-nums text-gray-100">{fmt(expenses)}</td>
               </tr>
             </tfoot>
           </table>

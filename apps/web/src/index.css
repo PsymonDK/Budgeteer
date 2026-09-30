@@ -4,7 +4,7 @@
 
 /*
  * Chart & Ledger colour tokens (Night watch, the dark theme).
- * Tailwind's gray / amber / red / green / emerald / blue / purple scales point at these ramps
+ * Tailwind's gray / amber / red / green / emerald / blue / purple / orange scales point at these ramps
  * (see tailwind.config.js), so existing classes pick up the palette. Values are RGB channels so
  * opacity modifiers like bg-gray-900/60 keep working. A light theme redefines the same variables.
  */
@@ -22,6 +22,8 @@
     --slate-50: 238 243 252; --slate-100: 218 228 248; --slate-200: 184 203 241; --slate-300: 146 174 231; --slate-400: 111 147 220; --slate-500: 84 126 205; --slate-600: 64 100 176; --slate-700: 52 80 142; --slate-800: 44 67 113; --slate-900: 38 58 94; --slate-950: 23 35 58;
     /* plum */
     --plum-50: 250 240 246; --plum-100: 243 220 234; --plum-200: 231 185 213; --plum-300: 215 147 189; --plum-400: 194 113 165; --plum-500: 165 83 140; --plum-600: 138 65 116; --plum-700: 112 53 94; --plum-800: 90 44 76; --plum-900: 74 38 63; --plum-950: 44 19 37;
+    /* lantern — warnings, needs attention (replaces orange) */
+    --lantern-50: 254 246 236; --lantern-100: 253 235 211; --lantern-200: 250 211 166; --lantern-300: 246 188 126; --lantern-400: 240 165 90; --lantern-500: 227 136 58; --lantern-600: 196 109 40; --lantern-700: 156 84 33; --lantern-800: 122 66 29; --lantern-900: 94 53 26; --lantern-950: 52 25 10;
     color-scheme: dark;
   }
 

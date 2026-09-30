@@ -11,6 +11,7 @@ import type { Household } from '../../api/types'
 import { Page } from '../../components/Page'
 import { PageHeader } from '../../components/PageHeader'
 import { DataTable, type DataColumn } from '../../components/DataTable'
+import { EmptyState } from '../../components/EmptyState'
 
 export function HouseholdsAdminPage() {
   const queryClient = useQueryClient()
@@ -72,7 +73,7 @@ export function HouseholdsAdminPage() {
         {isLoading ? (
           <div className="text-gray-500 text-sm">Loading…</div>
         ) : households.length === 0 ? (
-          <div className="text-center py-20 text-gray-500">No crews on the seas yet.</div>
+          <EmptyState title="No households yet" />
         ) : (
           <DataTable rows={households} columns={columns} rowClassName={(h) => (h.isActive ? '' : 'opacity-50')} />
         )}

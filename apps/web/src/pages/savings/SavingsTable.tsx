@@ -84,12 +84,12 @@ export function SavingsTable({
     {
       key: 'monthly', header: '/ month', align: 'right',
       cell: (e) => (
-        <span className="text-amber-400 tabular-nums font-medium whitespace-nowrap">
+        <span className="text-gray-100 tabular-nums font-medium whitespace-nowrap">
           {fmt(parseFloat(e.monthlyEquivalent), '')}
           <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
         </span>
       ),
-      footer: <span className="text-amber-400 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
+      footer: <span className="text-gray-100 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
     },
   ]
 

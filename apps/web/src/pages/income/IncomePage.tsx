@@ -22,6 +22,7 @@ import {
 import type { Tab } from './types'
 import { IncomeTrashTab } from './IncomeTrashTab'
 import { Page } from '../../components/Page'
+import { TriangleAlert } from 'lucide-react'
 
 /** Personal income: jobs & salary history, monthly overrides, bonuses and household allocations. */
 export function IncomePage() {
@@ -60,8 +61,9 @@ export function IncomePage() {
 
         {/* ── Proxy banner ────────────────────────────────────────────────── */}
         {isProxy && proxyUserName && (
-          <div className="bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
-            <span>⚠ Entering income on behalf of <strong>{proxyUserName}</strong></span>
+          <div className="bg-orange-950 border border-orange-700 text-orange-300 px-4 py-3 rounded-lg text-sm flex items-center gap-2">
+            <TriangleAlert size={16} className="shrink-0 text-orange-400" aria-hidden="true" />
+            <span>Entering income on behalf of <strong>{proxyUserName}</strong></span>
           </div>
         )}
 

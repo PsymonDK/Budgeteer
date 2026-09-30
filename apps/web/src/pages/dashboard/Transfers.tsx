@@ -88,7 +88,7 @@ export function TransferHistory({ transfers, collapsed: historyCollapsed, onTogg
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         t.status === 'PAID' ? 'bg-green-900/50 text-green-300' :
-                        t.status === 'ADJUSTED' ? 'bg-amber-900/50 text-amber-300' :
+                        t.status === 'ADJUSTED' ? 'bg-orange-900/50 text-orange-300' :
                         'bg-gray-800 text-gray-400'
                       }`}>
                         {t.status}

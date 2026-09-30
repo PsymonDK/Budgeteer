@@ -31,7 +31,7 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
           onClick={() => toggle(id)}
           className={`text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
             selected.has(id)
-              ? 'bg-amber-400 text-gray-950 border-amber-400'
+              ? 'bg-gray-200 text-gray-950 border-gray-200'
               : 'border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white'
           }`}
         >

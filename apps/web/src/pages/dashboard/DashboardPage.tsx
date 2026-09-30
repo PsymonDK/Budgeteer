@@ -25,6 +25,9 @@ import type { DashboardSummary, SavingsHistoryRow } from './types'
 import type { ReceiptSummaryPeriod } from '../../api/types'
 import { Page } from '../../components/Page'
 import { Widget, WidgetGrid } from '../../components/WidgetGrid'
+import { StatusBadge } from '../../components/StatusBadge'
+import { statusLabel } from '../../lib/budgetYear'
+import { TriangleAlert, X } from 'lucide-react'
 
 export function DashboardPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -158,11 +161,9 @@ export function DashboardPage() {
       {/* Budget year badge */}
       {summary?.budgetYear && (
         <div className="mb-5">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-            summary.budgetYear.status === 'ACTIVE' ? 'bg-green-900/50 text-green-300' : 'bg-blue-900/50 text-blue-300'
-          }`}>
-            {summary.budgetYear.year} · {summary.budgetYear.status}
-          </span>
+          <StatusBadge status={summary.budgetYear.status} shape="pillLg">
+            {summary.budgetYear.year} · {statusLabel(summary.budgetYear.status)}
+          </StatusBadge>
         </div>
       )}
 
@@ -175,14 +176,15 @@ export function DashboardPage() {
           {visibleWarnings.map((w) => (
             <div
               key={w.key}
-              className="flex items-center justify-between bg-amber-950/60 border border-amber-700/50 text-amber-300 px-4 py-3 rounded-lg text-sm"
+              className="flex items-center justify-between gap-3 bg-orange-950/60 border border-orange-800/60 text-orange-200 px-4 py-3 rounded-md text-sm"
             >
-              <span>⚠ {w.message}</span>
+              <span className="flex items-center gap-2"><TriangleAlert size={16} className="shrink-0 text-orange-400" aria-hidden="true" />{w.message}</span>
               <button
                 onClick={() => dismiss(w.key)}
-                className="ml-4 text-amber-500 hover:text-amber-300 text-lg leading-none"
+                aria-label="Dismiss"
+                className="p-1 -m-1 text-orange-400 hover:text-orange-200 transition-colors"
               >
-                ×
+                <X size={16} />
               </button>
             </div>
           ))}

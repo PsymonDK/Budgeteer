@@ -8,6 +8,8 @@ import { PageHeader } from '../components/PageHeader'
 import { FREQ_LABELS, type Frequency } from '../lib/constants'
 import { useFmt } from '../hooks/useFmt'
 import { Page } from '../components/Page'
+import { StatusBadge } from '../components/StatusBadge'
+import { statusLabel } from '../lib/budgetYear'
 
 interface IncomeEntry {
   id: string
@@ -53,11 +55,9 @@ export function HouseholdIncomePage() {
     <Page template="analysis">
       {summary?.budgetYear && (
         <div className="mb-6">
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-            summary.budgetYear.status === 'ACTIVE' ? 'bg-green-900/50 text-green-300' : 'bg-blue-900/50 text-blue-300'
-          }`}>
-            {summary.budgetYear.year} · {summary.budgetYear.status}
-          </span>
+          <StatusBadge status={summary.budgetYear.status} shape="pillLg">
+            {summary.budgetYear.year} · {statusLabel(summary.budgetYear.status)}
+          </StatusBadge>
         </div>
       )}
 

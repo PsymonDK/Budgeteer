@@ -35,6 +35,7 @@ export default {
         emerald: ramp('starboard'),
         blue: ramp('slate'),     // savings, informational
         purple: ramp('plum'),    // custom splits, secondary series
+        orange: ramp('lantern'), // warnings, needs attention
         sea,
         brass,
         // Semantic aliases

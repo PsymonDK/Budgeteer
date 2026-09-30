@@ -77,7 +77,7 @@ export function OverridesTab({ jobs, allJobsOverrides, fmt, overrideEditor, pays
                             </div>
                           </td>
                           <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(o.grossAmount)}</td>
-                          <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(o.netAmount)}</td>
+                          <td className="py-2 pr-4 text-gray-100 tabular-nums">{fmt(o.netAmount)}</td>
                           <td className="py-2 pr-4 text-gray-500 text-xs">{o.note ?? '—'}</td>
                           <td className="py-2">
                             <button onClick={() => setConfirmDeleteOverride({ jobId: job.id, overrideId: o.id })}

@@ -26,7 +26,7 @@ export function AffordabilityCalculator({ extraSavings, setExtraSavings, sliderM
           onChange={(e) => setExtraSavings(Number(e.target.value))}
           className="flex-1 accent-amber-400"
         />
-        <span className="text-amber-400 font-bold tabular-nums w-24 text-right">
+        <span className="text-gray-100 font-bold tabular-nums w-24 text-right">
           +{fmt(extraSavings)} / mo
         </span>
       </div>

@@ -41,9 +41,9 @@ export function MemberObligations({ memberSplits, meId, memberBreakdownMap, fmt 
               ) : (
                 <div className="mb-4" />
               )}
-              <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
+              <div className={`flex flex-wrap justify-between items-baseline gap-x-3 gap-y-1 border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
                 <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
-                <span className={`font-display text-2xl tabular-nums ${isMe ? 'text-amber-400' : 'text-gray-100'}`}>
+                <span className={`font-display text-2xl tabular-nums whitespace-nowrap ${isMe ? 'text-amber-400' : 'text-gray-100'}`}>
                   {fmt(memberBd?.monthlyTotal ?? parseFloat(m.monthlyTotalOwed))}
                 </span>
               </div>

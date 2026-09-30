@@ -111,14 +111,14 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
 
         <div className="min-w-0 space-y-4">
           {receipt.notes?.length > 0 && (
-            <div className="border border-amber-800/60 bg-amber-900/20 rounded-lg text-sm text-amber-200">
+            <div className="border border-orange-800/60 bg-orange-900/20 rounded-lg text-sm text-orange-200">
               <button
                 type="button"
                 onClick={() => setShowParserNotes((show) => !show)}
                 className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left"
               >
                 <span className="flex items-center gap-2 font-medium"><TriangleAlert size={16} /> Parser notes</span>
-                <span className="text-xs text-amber-300">{showParserNotes ? 'Hide' : `${receipt.notes.length} notes`}</span>
+                <span className="text-xs text-orange-300">{showParserNotes ? 'Hide' : `${receipt.notes.length} notes`}</span>
               </button>
               {showParserNotes && (
                 <ul className="px-4 pb-3 list-disc list-inside space-y-1">
@@ -129,7 +129,7 @@ export function ReceiptReview({ householdId, receipt, onDeleted }: ReceiptReview
           )}
 
           {receipt.totalMismatch && receipt.printedTotal != null && (
-            <p className="flex gap-2 border border-amber-800/60 bg-amber-900/20 rounded-lg px-3 py-2 text-sm text-amber-200">
+            <p className="flex gap-2 border border-orange-800/60 bg-orange-900/20 rounded-lg px-3 py-2 text-sm text-orange-200">
               <TriangleAlert size={16} className="mt-0.5 shrink-0" />
               Line items add up to {fmt(receipt.totalAmount ?? '0', receipt.currencyCode)}, the receipt says {fmt(receipt.printedTotal, receipt.currencyCode)} — check for missed or misread lines.
             </p>

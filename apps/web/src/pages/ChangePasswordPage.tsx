@@ -57,7 +57,7 @@ export function ChangePasswordPage() {
       <Page template="form" className="flex justify-center">
         <div className="w-full max-w-sm">
           {isMandatory && (
-            <div className="mb-6 bg-amber-950 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-300">
+            <div className="mb-6 bg-orange-950 border border-orange-700 rounded-lg px-4 py-3 text-sm text-orange-300">
               You must set a new password before continuing.
             </div>
           )}

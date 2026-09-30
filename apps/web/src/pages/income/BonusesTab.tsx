@@ -57,7 +57,7 @@ export function BonusesTab({ jobs, allJobsBonuses, fmt, bonusEditor }: BonusesTa
                         <tr key={b.id} className="border-b border-gray-800/50 last:border-0">
                           <td className="py-2 pr-4 text-white">{b.label}</td>
                           <td className="py-2 pr-4 text-gray-300">{fmtDate(b.paymentDate)}</td>
-                          <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(b.netAmount)}</td>
+                          <td className="py-2 pr-4 text-gray-100 tabular-nums">{fmt(b.netAmount)}</td>
                           <td className="py-2 pr-4">
                             {b.includeInBudget
                               ? <span className="text-xs bg-green-900 text-green-400 border border-green-700 px-2 py-0.5 rounded">Yes</span>

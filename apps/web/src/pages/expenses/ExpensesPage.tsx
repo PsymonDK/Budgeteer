@@ -20,7 +20,7 @@ import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
 import { useRowSelection } from '../../hooks/useRowSelection'
 import { useAddFromQuery } from '../../hooks/useAddFromQuery'
-import { primaryBtnSm, segmentGroup, segmentBtn } from '../../lib/styles'
+import { primaryBtnSm, secondaryBtn, segmentGroup, segmentBtn } from '../../lib/styles'
 import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { emptyForm, filterAndSortExpenses, formFromExpense } from './helpers'
@@ -35,6 +35,7 @@ import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 import { Page } from '../../components/Page'
+import { EmptyState } from '../../components/EmptyState'
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -386,9 +387,22 @@ export function ExpensesPage() {
             {expensesLoading ? (
               <PageLoader />
             ) : filtered.length === 0 ? (
-              <div className="text-center py-20 text-gray-500">
-                {expenses.length === 0 ? 'No plunder recorded yet. Add one to get started.' : 'No plunder matches the filter.'}
-              </div>
+              expenses.length === 0 ? (
+                <EmptyState
+                  title="No expenses yet"
+                  aside="The hold's empty. Add the first expense to start the ledger."
+                  action={!isReadOnly && <button onClick={openAdd} className={primaryBtnSm}>+ Add expense</button>}
+                />
+              ) : (
+                <EmptyState
+                  title="No expenses match these filters"
+                  action={
+                    <button onClick={() => { setFilterCategories(new Set()); setFilterAccounts(new Set()) }} className={secondaryBtn}>
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
             ) : view === 'calendar' ? (
               <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (

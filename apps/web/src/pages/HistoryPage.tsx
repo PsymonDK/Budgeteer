@@ -204,7 +204,7 @@ export function HistoryPage() {
                       </div>
                       <div className="flex items-center gap-6 text-sm">
                         <span className="text-gray-400">
-                          Income <span className="text-amber-400 font-medium tabular-nums">{fmt(row.totalMonthlyIncome)}</span>
+                          Income <span className="text-gray-100 font-medium tabular-nums">{fmt(row.totalMonthlyIncome)}</span>
                         </span>
                         <span className="text-gray-400">
                           Expenses <span className="text-white font-medium tabular-nums">{fmt(row.totalMonthlyExpenses)}</span>

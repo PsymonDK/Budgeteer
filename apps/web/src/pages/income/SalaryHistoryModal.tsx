@@ -44,7 +44,7 @@ export function SalaryHistoryModal({ editor, jobs, currencies, baseCurrency, fmt
               <tr key={r.id} className="border-b border-gray-800/50 last:border-0">
                 <td className="py-2 pr-4 text-gray-300">{fmtDate(r.effectiveFrom)}</td>
                 <td className="py-2 pr-4 text-gray-300 tabular-nums">{fmt(r.grossAmount, '')}</td>
-                <td className="py-2 pr-4 text-amber-400 tabular-nums">{fmt(r.netAmount, '')}</td>
+                <td className="py-2 pr-4 text-gray-100 tabular-nums">{fmt(r.netAmount, '')}</td>
                 <td className="py-2 pr-4 text-gray-500 text-xs">{r.currencyCode ?? baseCurrency}</td>
                 <td className="py-2 pl-4 text-right whitespace-nowrap">
                   <button

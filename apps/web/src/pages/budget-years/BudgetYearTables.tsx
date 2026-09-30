@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { BudgetYear } from '../../api/types'
 import { StatusBadge } from '../../components/StatusBadge'
 import { RETIRED_STATUS_CLASS_MUTED, statusLabel } from '../../lib/budgetYear'
+import { EmptyState } from '../../components/EmptyState'
 
 interface RegularYearsTableProps {
   householdId: string | undefined
@@ -20,9 +21,7 @@ export function RegularYearsTable({ householdId, years: regularYears, isAdmin, c
     <section className="mb-8">
       <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Budget Years</h2>
       {regularYears.length === 0 ? (
-        <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
-          Your treasure chest is empty — no budget years yet.
-        </div>
+        <EmptyState compact title="No budget years yet" aside="Chart a course: create your first budget year." />
       ) : (
         <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">

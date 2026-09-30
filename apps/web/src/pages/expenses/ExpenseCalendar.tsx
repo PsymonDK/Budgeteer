@@ -66,7 +66,7 @@ export function ExpenseCalendar({ expenses, fmt }: { expenses: Expense[]; fmt: (
                   </td>
                 )
               )}
-              <td className="border-b border-l border-gray-800/60 px-3 py-2 text-right tabular-nums text-amber-400 font-medium">
+              <td className="border-b border-l border-gray-800/60 px-3 py-2 text-right tabular-nums text-gray-100 font-medium">
                 {fmt(rowTotal)}
               </td>
             </tr>
@@ -82,7 +82,7 @@ export function ExpenseCalendar({ expenses, fmt }: { expenses: Expense[]; fmt: (
                 {fmt(total)}
               </td>
             ))}
-            <td className="border-t border-l border-gray-700 px-3 py-2.5 text-right tabular-nums text-amber-400 font-bold">
+            <td className="border-t border-l border-gray-700 px-3 py-2.5 text-right tabular-nums text-gray-100 font-bold">
               {fmt(grandTotal)}
             </td>
           </tr>
