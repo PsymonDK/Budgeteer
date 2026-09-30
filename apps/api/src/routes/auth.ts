@@ -6,7 +6,7 @@ import { hashPassword, verifyPassword } from '../lib/password'
 import { ACCESS_TOKEN_TTL, REFRESH_COOKIE, hashToken, issueSession, refreshCookieOptions, rotateRefreshToken } from '../lib/sessions'
 
 const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(1),
 })
 

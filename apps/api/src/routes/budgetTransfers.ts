@@ -42,7 +42,7 @@ export async function budgetTransferRoutes(fastify: FastifyInstance) {
 
     const result = MarkPaidSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const transfer = await prisma.budgetTransfer.findUnique({ where: { id: transferId } })

@@ -138,7 +138,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
   // Optional ?budgetYearId= to view any year (including retired) as read-only
   fastify.get('/households/:id/summary', { preHandler: authenticate }, async (request, reply) => {
     const { id: householdId } = request.params as { id: string }
-    const queryResult = z.object({ budgetYearId: z.string().cuid().optional() }).safeParse(request.query)
+    const queryResult = z.object({ budgetYearId: z.cuid().optional() }).safeParse(request.query)
     if (!queryResult.success) return reply.status(400).send({ error: 'Invalid query parameters' })
     const requestedYearId = queryResult.data.budgetYearId
     const { sub: userId, role } = request.user
