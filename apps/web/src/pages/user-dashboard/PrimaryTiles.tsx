@@ -106,7 +106,7 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
         const surplusAmt = parseFloat(dashboard.surplus.amount)
         const pos = dashboard.surplus.isPositive
         return (
-          <div className={`rounded-xl border p-5 ${pos ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-red-950/30 border-red-900/50'}`}>
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest font-medium">{pos ? 'Surplus' : 'Deficit'}</p>
             </div>
