@@ -113,6 +113,16 @@ All configuration is via environment variables in `.env`. Required variables wil
 
 If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_URL` in your `.env` to the public URL (e.g. `https://budget.yourdomain.com`) and point your reverse proxy to port `7272`.
 
+### Install on your phone
+
+Budgeteer can be installed as an app, so it opens from the home screen in its own window without the browser's address bar. It needs HTTPS, so serve it through a reverse proxy with a certificate (see above); on plain HTTP it only works in a browser tab.
+
+- **Android (Chrome)**: open Budgeteer, then menu (⋮) → **Install app** (or **Add to home screen** → **Install**).
+- **iPhone / iPad (Safari)**: Share → **Add to Home Screen**.
+- **Desktop (Chrome / Edge)**: the install icon at the right of the address bar.
+
+The installed app is the same web app: it updates with every deploy and needs a connection to your server. Without one it shows an offline page; no budget data is stored on the device.
+
 See [deploy/README.md](deploy/README.md) for backup/restore instructions.
 
 ### AI payslip parsing

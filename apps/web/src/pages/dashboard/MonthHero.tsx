@@ -1,10 +1,9 @@
 import { Check, TriangleAlert } from 'lucide-react'
-import { useMonthPayments } from '../../api/queries'
 import type { PaymentMethod } from '../../api/types'
+import { SankeyChart, type SankeyLinkDef, type SankeyNodeDef } from '../../components/SankeyChart'
 import type { BudgetTransfer } from '../../hooks/useTransfers'
 import { ENTITY } from '../../lib/charts'
 import { primaryBtn } from '../../lib/styles'
-import { PaymentsTimeline } from './PaymentsTimeline'
 import type { DashboardSummary } from './types'
 
 type Fmt = (v: number | string, suffix?: string) => string
@@ -12,12 +11,15 @@ type Fmt = (v: number | string, suffix?: string) => string
 const MONTH_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 interface MonthHeroProps {
-  budgetYearId: string
+  /** The budget year's calendar year, for the frame label */
+  year: number
   income: number
   expenses: number
   savings: number
   surplus: number
   incomeSplit: DashboardSummary['incomeSplit']
+  /** Each member's income to categories, savings and surplus, from `buildIncomeSankey` */
+  incomeFlow: { nodes: SankeyNodeDef[]; links: SankeyLinkDef[] } | null
   nextPending: BudgetTransfer | null
   /** Automatic transfers are marked paid on their due day and show no Mark-as-paid button */
   transferPaymentMethod: PaymentMethod
@@ -52,14 +54,13 @@ function Figure({ value, currency, className }: { value: number; currency: strin
 
 /**
  * The dashboard's hero: the month's surplus and how income splits, the transfer that's due
- * with its action, and a day-by-day line of the month's payments. All figures come from the
- * API; this only lays them out.
+ * with its action, and the income flow diagram. All figures come from the API; this only lays
+ * them out.
  */
 export function MonthHero({
-  budgetYearId, income, expenses, savings, surplus, incomeSplit, nextPending, transferPaymentMethod, transferDueDay, currentTransfer,
+  year, income, expenses, savings, surplus, incomeSplit, incomeFlow, nextPending, transferPaymentMethod, transferDueDay, currentTransfer,
   myShare, onMarkPaid, baseCurrency, fmt,
 }: MonthHeroProps) {
-  const { data: payments, isLoading, isError } = useMonthPayments(budgetYearId)
   const short = surplus < 0
 
   const segments = incomeSplit
@@ -74,11 +75,9 @@ export function MonthHero({
 
   return (
     <div className="chart-frame">
-      {payments && (
-        <span aria-hidden="true" className="absolute -top-[7px] left-6 bg-gray-900 px-1.5 font-mono text-[10px] leading-none tracking-wider text-gray-500 py-0.5">
-          {MONTH_SHORT[payments.month - 1].toUpperCase()} {payments.year}
-        </span>
-      )}
+      <span aria-hidden="true" className="absolute -top-[7px] left-6 bg-gray-900 px-1.5 font-mono text-[10px] leading-none tracking-wider text-gray-500 py-0.5">
+        BUDGET {year}
+      </span>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 border border-gray-800 bg-gray-900 p-4 @xl:p-6">
         <div className="grid grid-cols-[minmax(0,1fr)] gap-6 @3xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] @3xl:gap-8">
           {/* Surplus and the income split */}
@@ -175,16 +174,13 @@ export function MonthHero({
           </div>
         </div>
 
-        {/* The month's payments, day by day */}
-        <div className="border-t border-gray-800 pt-4">
-          {payments ? (
-            <PaymentsTimeline data={payments} fmt={fmt} />
-          ) : isLoading ? (
-            <p className="text-sm text-gray-500">Loading this month's payments…</p>
-          ) : isError ? (
-            <p className="text-sm text-gray-500">Couldn't load this month's payments.</p>
-          ) : null}
-        </div>
+        {/* VIZ-001: where each member's income goes */}
+        {incomeFlow && incomeFlow.links.length > 0 && (
+          <div className="border-t border-gray-800 pt-4">
+            <h3 className="mb-3 text-sm font-semibold text-gray-100">Income flow</h3>
+            <SankeyChart data={incomeFlow} currency={baseCurrency} />
+          </div>
+        )}
       </div>
     </div>
   )

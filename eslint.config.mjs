@@ -32,6 +32,10 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/web/public/sw.js'],
+    languageOptions: { globals: globals.serviceworker },
+  },
+  {
     files: ['**/*.test.ts'],
     languageOptions: { globals: globals.vitest },
   },
