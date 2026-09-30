@@ -13,26 +13,31 @@ import { recalculateTransfer } from '../lib/budgetTransfer'
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
+const OwnershipEnum = z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM'])
 
 const CustomSplitSchema = z.object({
   userId: z.string(),
   pct: z.number().min(0).max(100),
 })
 
-const CreateSavingsSchema = z.object({
+const SavingsBaseSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
   frequency: FrequencyEnum,
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
-  ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
+  ownership: OwnershipEnum,
   ownedByUserId: z.string().nullable().optional(),
   categoryId: z.string().optional(),
   customSplits: z.array(CustomSplitSchema).optional(),
   accountId: z.string().nullable().optional(),
 })
 
-const UpdateSavingsSchema = CreateSavingsSchema.partial().refine(
+// The default lives only on the create schema: Zod 4 applies defaults inside
+// .partial() too, so an update without `ownership` would reset it to SHARED.
+export const CreateSavingsSchema = SavingsBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED') })
+
+export const UpdateSavingsSchema = SavingsBaseSchema.partial().refine(
   (d) => Object.keys(d).length > 0,
   { message: 'At least one field is required' }
 )
@@ -84,7 +89,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const result = CreateSavingsSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
@@ -161,7 +166,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const result = UpdateSavingsSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { ownership, ownedByUserId, categoryId, customSplits, accountId, ...data } = result.data
@@ -249,7 +254,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
 
     const result = BulkUpdateSavingsSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')

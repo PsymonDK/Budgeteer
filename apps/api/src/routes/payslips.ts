@@ -41,7 +41,7 @@ export async function payslipRoutes(fastify: FastifyInstance) {
 
     const body = ParseBodySchema.safeParse(request.body)
     if (!body.success) {
-      return reply.status(400).send({ error: body.error.errors[0].message, code: 'VALIDATION_ERROR' })
+      return reply.status(400).send({ error: body.error.issues[0].message, code: 'VALIDATION_ERROR' })
     }
 
     try {

@@ -70,7 +70,7 @@ export async function householdRoutes(fastify: FastifyInstance) {
   fastify.post('/households', { preHandler: authenticate }, async (request, reply) => {
     const result = CreateHouseholdSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { sub: userId } = request.user
@@ -132,7 +132,7 @@ export async function householdRoutes(fastify: FastifyInstance) {
 
     const result = UpdateHouseholdSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const membership = await getMembership(id, userId)
@@ -170,7 +170,7 @@ export async function householdRoutes(fastify: FastifyInstance) {
 
     const result = AddMemberSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const membership = await getMembership(id, userId)
@@ -203,7 +203,7 @@ export async function householdRoutes(fastify: FastifyInstance) {
 
     const result = UpdateMemberSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const callerMembership = await getMembership(id, userId)

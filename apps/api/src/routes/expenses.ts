@@ -9,6 +9,7 @@ import { assertBudgetYearAccess, findUsableCategory, validateAccountAccess, vali
 import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
+const OwnershipEnum = z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM'])
 
 const CustomSplitSchema = z.object({
   userId: z.string(),
@@ -25,7 +26,7 @@ const ExpenseBaseSchema = z.object({
   endMonth: z.number().int().min(1).max(12).nullable().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
-  ownership: z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM']).default('SHARED'),
+  ownership: OwnershipEnum,
   ownedByUserId: z.string().nullable().optional(),
   customSplits: z.array(CustomSplitSchema).optional(),
   accountId: z.string().nullable().optional(),
@@ -36,11 +37,12 @@ const monthRangeRefinement = (d: { startMonth?: number | null; endMonth?: number
   return true
 }
 
-const CreateExpenseSchema = ExpenseBaseSchema.refine(monthRangeRefinement, {
-  message: 'startMonth must be ≤ endMonth', path: ['endMonth'],
-})
+// The default lives only on the create schema: Zod 4 applies defaults inside
+// .partial() too, so an update without `ownership` would reset it to SHARED.
+export const CreateExpenseSchema = ExpenseBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED') })
+  .refine(monthRangeRefinement, { message: 'startMonth must be ≤ endMonth', path: ['endMonth'] })
 
-const UpdateExpenseSchema = ExpenseBaseSchema.partial()
+export const UpdateExpenseSchema = ExpenseBaseSchema.partial()
   .refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' })
   .refine(monthRangeRefinement, { message: 'startMonth must be ≤ endMonth', path: ['endMonth'] })
 
@@ -99,7 +101,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const result = CreateExpenseSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
@@ -174,7 +176,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const result = UpdateExpenseSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')
@@ -274,7 +276,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
 
     const result = BulkUpdateExpenseSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const budgetYear = await assertBudgetYearAccess(id, userId, role === 'SYSTEM_ADMIN')

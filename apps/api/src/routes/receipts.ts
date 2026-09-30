@@ -87,7 +87,7 @@ const ReceiptSummaryQuerySchema = z.object({
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 }).superRefine((data, ctx) => {
   if (data.period === 'custom' && (!data.startDate || !data.endDate)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'startDate and endDate are required for custom period' })
+    ctx.addIssue({ code: 'custom', message: 'startDate and endDate are required for custom period' })
   }
 })
 
@@ -117,7 +117,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     const body = ParseReceiptSchema.safeParse(request.body)
     if (!body.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
     }
 
     if (body.data.accountId) {
@@ -290,7 +290,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const query = ReceiptSummaryQuerySchema.safeParse(request.query)
-    if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: query.error.flatten() })
+    if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: z.flattenError(query.error) })
 
     let periodInfo
     try {
@@ -336,7 +336,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const body = ReceiptMappingImportSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     try {
       return reply.send(await previewReceiptMappingImport(householdId, body.data.csvText))
@@ -353,7 +353,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!await assertHouseholdAccess(householdId, userId, role, reply)) return
 
     const body = ReceiptMappingImportSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     try {
       return reply.send(await confirmReceiptMappingImport(householdId, body.data.csvText))
@@ -398,7 +398,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!receipt) return
 
     const body = UpdateReceiptSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const headerError = await validateReceiptHeader(body.data, receipt.householdId, request.user.sub)
     if (headerError) return reply.status(400).send({ error: headerError })
@@ -419,7 +419,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
 
     const { lineItemId } = request.params as { lineItemId: string }
     const body = UpdateLineItemSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const existing = receipt.lineItems.find((item) => item.id === lineItemId)
     if (!existing) return reply.status(404).send({ error: 'Receipt line item not found' })
@@ -442,7 +442,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!receipt) return
 
     const body = CreateLineItemSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     if (body.data.categoryId) {
       const category = await validateExpenseCategory(body.data.categoryId, receipt.householdId)
@@ -485,7 +485,7 @@ export async function receiptRoutes(fastify: FastifyInstance) {
     if (!receipt) return
 
     const body = ConfirmReceiptSchema.safeParse(request.body ?? undefined)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
     // Confirming teaches the classifier; doing it twice would count the same
     // receipt twice (and could promote noise tokens), so it happens once.
     if (receipt.status === 'CONFIRMED') {
