@@ -12,5 +12,9 @@
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "screenshots": [
+    { "src": "/screenshots/dashboard-narrow.jpg", "sizes": "469x1015", "type": "image/jpeg", "form_factor": "narrow", "label": "Household dashboard on a phone" },
+    { "src": "/screenshots/dashboard-wide.jpg", "sizes": "800x500", "type": "image/jpeg", "form_factor": "wide", "label": "Household dashboard on a desktop" }
   ]
 }

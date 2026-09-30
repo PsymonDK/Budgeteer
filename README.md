@@ -117,6 +117,8 @@ If you're running behind Nginx Proxy Manager, Traefik, or similar, set `PUBLIC_U
 
 Budgeteer can be installed as an app, so it opens from the home screen in its own window without the browser's address bar. It needs HTTPS, so serve it through a reverse proxy with a certificate (see above); on plain HTTP it only works in a browser tab.
 
+Where the browser supports it, Budgeteer offers the install itself: an **Install app** button in the menu, a one-time hint on phones, and Profile → Preferences → App. Otherwise use the browser:
+
 - **Android (Chrome)**: open Budgeteer, then menu (⋮) → **Install app** (or **Add to home screen** → **Install**).
 - **iPhone / iPad (Safari)**: Share → **Add to Home Screen**.
 - **Desktop (Chrome / Edge)**: the install icon at the right of the address bar.

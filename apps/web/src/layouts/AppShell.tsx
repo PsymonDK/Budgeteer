@@ -5,6 +5,8 @@ import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 import { BrandMark } from '../components/BrandMark'
+import { InstallAppButton, InstallAppHint } from '../components/InstallApp'
+import { useInstallState } from '../lib/install'
 
 export interface ShellNavItem {
   label: string
@@ -76,6 +78,7 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const isLarge = useMediaQuery('(min-width: 1024px)')
+  const canInstall = useInstallState().canPrompt
   const sideMode: NavMode = collapsed ? 'rail' : 'responsive'
   // Labels are hidden in the rail, so links get a tooltip there
   const railTooltips = !isLarge || collapsed
@@ -145,6 +148,15 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
                 ))}
               </div>
             )}
+            {canInstall && (
+              <div className="px-2 lg:px-3 pt-3 mt-3 border-t border-gray-800">
+                <InstallAppButton
+                  showTitle={railTooltips}
+                  className={`${NAV_BUTTON} ${LINK_ALIGN[sideMode]}`}
+                  labelClassName={LINK_LABEL[sideMode]}
+                />
+              </div>
+            )}
             <div className="hidden lg:block px-3 pt-3 mt-3 border-t border-gray-800">
               <button
                 type="button"
@@ -167,6 +179,7 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
           ref={scrollRef}
           className={`relative flex-1 min-w-0 overflow-y-auto flex flex-col ${hasTabBar ? 'pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] sm:pb-0' : ''}`}
         >
+          <InstallAppHint />
           <div className="flex-1">
             <Outlet key={outletKey} />
           </div>
@@ -205,6 +218,11 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
                 {footerItems.map((item) => (
                   <ShellNavLink key={item.to} item={item} mode="drawer" showTitle={false} />
                 ))}
+              </div>
+            )}
+            {canInstall && (
+              <div className="px-3 py-3 border-t border-gray-800">
+                <InstallAppButton showTitle={false} className={`${NAV_BUTTON} ${LINK_ALIGN.drawer}`} />
               </div>
             )}
           </nav>
@@ -276,6 +294,9 @@ function NavBadgeDot({ badge, className }: { badge: ShellNavBadge; className: st
     />
   )
 }
+
+/** Nav-link look for buttons in the navigation (Install app) */
+const NAV_BUTTON = 'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-white hover:bg-gray-800/50 transition-colors'
 
 function NavSections({ sections, mode, showTitles }: { sections: ShellNavSection[]; mode: NavMode; showTitles: boolean }) {
   return (
