@@ -18,3 +18,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 )
+
+// Makes the app installable with an offline page (see public/sw.js). Not in dev,
+// where a service worker would get in the way of Vite's hot reload.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* not a secure context, e.g. plain HTTP */ })
+  })
+}
