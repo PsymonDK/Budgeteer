@@ -75,6 +75,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
   --from-empty --to-schema prisma/schema.prisma --script > /dev/null
 
 COPY docker/entrypoint.sh ./entrypoint.sh
+COPY docker/db-push-prepare.sql ./db-push-prepare.sql
 RUN chmod +x entrypoint.sh
 
 EXPOSE 3001

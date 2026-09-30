@@ -42,6 +42,7 @@ npm run test             # API unit tests
 - All IDs use `cuid()`
 - All monetary amounts stored as `Decimal(10,2)`
 - Allocation percentages stored as `Decimal(5,2)`
+- Docker installs sync the schema with `prisma db push`, which skips migration SQL: a migration that moves data out of a column before dropping or changing it must repeat that data step, guarded, in `docker/db-push-prepare.sql`
 - Soft deletes via `isActive`, `endDate`, or `deletedAt` (trash, restorable) — never hard delete user or financial data
 - Expenses, savings, salary records, overrides, bonuses and tax cards use `deletedAt`: the Prisma client in `apps/api/src/lib/prisma.ts` hides trashed rows from reads automatically, but nested includes, `_count` and relation filters must add `notDeleted` explicitly
 - Retired budget years are read-only — never modify historical data
