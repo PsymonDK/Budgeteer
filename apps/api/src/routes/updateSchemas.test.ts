@@ -7,6 +7,7 @@ vi.mock('../lib/budgetTransfer', () => ({ recalculateTransfer: vi.fn() }))
 import { BulkUpdateExpenseSchema, CreateExpenseSchema, UpdateExpenseSchema } from './expenses'
 import { BulkUpdateSavingsSchema, CreateSavingsSchema, UpdateSavingsSchema } from './savings'
 import { CreateJobSchema, UpdateJobSchema } from './jobs'
+import { UpdateOccurrenceSchema } from './occurrences'
 
 // Zod 4 applies .default() values inside .partial() schemas too. Update schemas
 // must not carry defaults, or a PATCH that leaves a field out would reset it.
@@ -108,5 +109,23 @@ describe('paymentMethod', () => {
     expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'], paymentMethod: 'MANUAL' }).success).toBe(true)
     expect(BulkUpdateSavingsSchema.safeParse({ ids: ['s1'], paymentMethod: 'AUTOMATIC' }).success).toBe(true)
     expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'] }).success).toBe(false)
+  })
+})
+
+describe('UpdateOccurrenceSchema', () => {
+  it('marks paid or pending without a reason', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'PAID' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'PENDING' }).success).toBe(true)
+  })
+
+  it('needs a reason to dismiss, and only the known ones', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'PAID_ELSEWHERE' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'SKIPPED' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED' }).success).toBe(false)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'FORGOT' }).success).toBe(false)
+  })
+
+  it('cannot close a month by hand', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'SKIPPED' }).success).toBe(false)
   })
 })

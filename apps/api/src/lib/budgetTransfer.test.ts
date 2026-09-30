@@ -4,6 +4,7 @@ import {
   carryFromClosedMonth,
   effectiveCurrentMonth,
   planMonthClose,
+  trackingScheduledAmount,
   planOccurrenceSync,
   sumMonthObligations,
   unpaidAmount,
@@ -118,5 +119,38 @@ describe('planMonthClose', () => {
 
   it('has nothing to do once every row is closed', () => {
     expect(planMonthClose([])).toEqual({ skip: [], autoPay: [] })
+  })
+})
+
+describe('manual payment tracking (Average / Forward-looking)', () => {
+  const bill = (over: Partial<Parameters<typeof trackingScheduledAmount>[0]> = {}) => ({
+    frequency: 'MONTHLY' as const, startMonth: null, endMonth: null,
+    monthlyEquivalent: d(300), amount: d(300), rateUsed: null, ...over,
+  })
+
+  it('is due the bill as charged: a quarterly bill in full in its months, nothing in between', () => {
+    const water = bill({ frequency: 'QUARTERLY', amount: d(900), monthlyEquivalent: d(300) })
+    expect(trackingScheduledAmount(water, 12)?.toString()).toBe('900')
+    expect(trackingScheduledAmount(water, 11)).toBeNull()
+  })
+
+  it('follows the active months of a monthly bill', () => {
+    const summer = bill({ startMonth: 6, endMonth: 8, monthlyEquivalent: d(75) }) // 300 × 3 / 12
+    expect(trackingScheduledAmount(summer, 7)?.toString()).toBe('300')
+    expect(trackingScheduledAmount(summer, 9)).toBeNull()
+  })
+
+  it('leaves dismissed rows alone when schedules change', () => {
+    const plan = planOccurrenceSync(['gym'], [10], [{ id: 'o1', entryId: 'gym', month: 10, status: 'DISMISSED', scheduledAmount: d(100) }], () => d(150))
+    expect(plan).toEqual({ create: [], update: [] })
+  })
+
+  it('keeps dismissed items in the Pay/No-pay transfer and never carries them over', () => {
+    const rows = [
+      { month: 10, status: 'DISMISSED', scheduledAmount: d(300), carriedAmount: d(0) },
+      { month: 10, status: 'PENDING', scheduledAmount: d(100), carriedAmount: d(0) },
+    ]
+    expect(sumMonthObligations(rows).get(10)?.toString()).toBe('400')
+    expect(carryFromClosedMonth([{ entryId: 'gym', status: 'DISMISSED', scheduledAmount: d(300), carriedAmount: d(0), actualAmount: null }]).size).toBe(0)
   })
 })

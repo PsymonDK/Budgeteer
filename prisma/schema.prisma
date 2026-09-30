@@ -87,7 +87,14 @@ enum BudgetModelType {
 enum OccurrenceStatus {
   PENDING
   PAID
-  SKIPPED
+  SKIPPED   // Pay/No-pay: closed at month end, unpaid balance carried to the next month
+  DISMISSED // taken off the to-pay list by a member without marking it paid (see dismissReason)
+}
+
+// Why a member took an occurrence off the to-pay list
+enum DismissReason {
+  PAID_ELSEWHERE // paid, but not in a way the app tracks (e.g. from another account)
+  SKIPPED        // not paying it this month
 }
 
 // How an expense or savings entry is paid. AUTOMATIC (direct debit, standing order, card)
@@ -672,6 +679,7 @@ model ExpenseOccurrence {
   scheduledAmount Decimal          @db.Decimal(10, 2)
   carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
   status          OccurrenceStatus @default(PENDING)
+  dismissReason   DismissReason?
   paidAt          DateTime?
   actualAmount    Decimal?         @db.Decimal(10, 2)
   note            String?
@@ -690,6 +698,7 @@ model SavingsOccurrence {
   scheduledAmount Decimal          @db.Decimal(10, 2)
   carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
   status          OccurrenceStatus @default(PENDING)
+  dismissReason   DismissReason?
   paidAt          DateTime?
   actualAmount    Decimal?         @db.Decimal(10, 2)
   note            String?

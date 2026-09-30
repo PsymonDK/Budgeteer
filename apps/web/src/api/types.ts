@@ -206,6 +206,13 @@ export interface ReceiptConsumptionSummary {
   byMonth: Array<{ month: string; total: string }>
 }
 
+/**
+ * A month's paid state for an expense or savings item. SKIPPED: closed at a Pay/No-pay month
+ * end with the balance carried over. DISMISSED: taken off the to-pay list by a member.
+ */
+export type OccurrenceStatus = 'PENDING' | 'PAID' | 'SKIPPED' | 'DISMISSED'
+export type DismissReason = 'PAID_ELSEWHERE' | 'SKIPPED'
+
 /** One expense or savings payment in a month (GET /budget-years/:id/payments). */
 export interface MonthPayment {
   kind: 'expense' | 'savings'
@@ -219,8 +226,13 @@ export interface MonthPayment {
   paymentMethod: PaymentMethod
   /** Amount due this month, base currency */
   amount: string
-  /** Paid status for Pay/No-pay households; null otherwise */
-  status: 'PENDING' | 'PAID' | 'SKIPPED' | null
+  /**
+   * Paid status from the month's occurrence: manual items in every budget model, automatic
+   * ones too in Pay/No-pay. Null when the item has no occurrence.
+   */
+  status: OccurrenceStatus | null
+  /** Why it was taken off the to-pay list, when DISMISSED */
+  dismissReason: DismissReason | null
 }
 
 /** GET /budget-years/:id/payments */
@@ -228,10 +240,8 @@ export interface MonthPayments {
   budgetModel: 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
   year: number
   month: number
-  /** Whether items carry a paid status (Pay/No-pay) */
-  tracked: boolean
   /** Sorted by day, items without a day last */
   items: MonthPayment[]
-  /** Skipped (closed) items are left out; paidCount/unpaid count manual items, only when tracked */
-  totals: { count: number; due: string; manualCount: number; paidCount: number | null; unpaid: string | null }
+  /** Closed (SKIPPED) items are left out; doneCount (paid or dismissed) and unpaid count manual items */
+  totals: { count: number; due: string; manualCount: number; doneCount: number; unpaid: string }
 }

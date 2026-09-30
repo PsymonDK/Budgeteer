@@ -19,22 +19,25 @@ const ROW = 14
 type Phase = 'done' | 'due' | 'closed'
 type MonthState = 'past' | 'current' | 'future'
 
-/** Items the household ticks off itself: manually paid items in a Pay/No-pay household. */
-const ticksOff = (item: MonthPayment, tracked: boolean) => tracked && item.paymentMethod === 'MANUAL'
+/** Items the household ticks off itself: manually paid items with an occurrence this month. */
+const ticksOff = (item: MonthPayment) => item.paymentMethod === 'MANUAL' && item.status != null
 
 /**
- * Where the item stands. Items the household ticks off go by their paid status; everything
- * else (automatic items, and all items where payments aren't tracked) goes by the date.
+ * Where the item stands. Items the household ticks off go by their status (paid or dismissed
+ * is done); everything else (automatic items, and months before tracking) goes by the date.
  */
-function phaseOf(item: MonthPayment, tracked: boolean, monthState: MonthState, todayDay: number): Phase {
-  if (ticksOff(item, tracked)) return item.status === 'PAID' ? 'done' : item.status === 'SKIPPED' ? 'closed' : 'due'
+function phaseOf(item: MonthPayment, monthState: MonthState, todayDay: number): Phase {
+  if (ticksOff(item)) return item.status === 'PAID' || item.status === 'DISMISSED' ? 'done' : item.status === 'SKIPPED' ? 'closed' : 'due'
   if (monthState === 'past') return 'done'
   if (monthState === 'future') return 'due'
   return item.day != null && item.day <= todayDay ? 'done' : 'due'
 }
 
-function phaseLabel(item: MonthPayment, phase: Phase, tracked: boolean): string {
-  if (ticksOff(item, tracked)) return phase === 'done' ? 'Paid' : phase === 'closed' ? 'Carried over' : 'To pay'
+function phaseLabel(item: MonthPayment, phase: Phase): string {
+  if (ticksOff(item)) {
+    if (item.status === 'DISMISSED') return item.dismissReason === 'SKIPPED' ? 'Skipped this month' : 'Paid elsewhere'
+    return phase === 'done' ? 'Paid' : phase === 'closed' ? 'Carried over' : 'To pay'
+  }
   if (phase === 'due') return 'Coming up'
   return item.paymentMethod === 'MANUAL' ? 'Due date passed' : 'Gone out'
 }
@@ -88,7 +91,7 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
   const [active, setActive] = useState<number | null>(null)
   const [showList, setShowList] = useState(false)
 
-  const { year, month, tracked, items, totals } = data
+  const { year, month, items, totals } = data
   const lastDay = new Date(year, month, 0).getDate()
   const ym = year * 12 + month
   const todayYm = today.getFullYear() * 12 + today.getMonth() + 1
@@ -98,16 +101,16 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
   const dated = items.filter((i) => i.day != null)
   const undated = items.filter((i) => i.day == null)
   // Items without a day have no date to go by, so they only have a status when ticked off
-  const statusOf = (item: MonthPayment) => item.day == null && !ticksOff(item, tracked)
+  const statusOf = (item: MonthPayment) => item.day == null && !ticksOff(item)
     ? null
-    : phaseLabel(item, phaseOf(item, tracked, monthState, todayDay), tracked)
+    : phaseLabel(item, phaseOf(item, monthState, todayDay))
 
   // Stack marks that share a day
   const perDay = new Map<number, number>()
   const marks = dated.map((item) => {
     const level = perDay.get(item.day!) ?? 0
     perDay.set(item.day!, level + 1)
-    return { item, level, phase: phaseOf(item, tracked, monthState, todayDay) }
+    return { item, level, phase: phaseOf(item, monthState, todayDay) }
   })
   const maxStack = Math.max(1, ...perDay.values())
 
@@ -121,7 +124,7 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
 
   const summary = `Payments across ${MONTH_LONG[month - 1]}: ${dated.length} on a set day${
     totals.manualCount ? `, ${totals.manualCount} paid by hand` : ''}${
-    tracked && totals.paidCount != null && totals.manualCount ? ` (${totals.paidCount} ticked off)` : ''}${
+    totals.manualCount ? ` (${totals.doneCount} done)` : ''}${
     undated.length ? `, ${undated.length} without a set day` : ''}.${
     monthState === 'current' ? ` Today is the ${todayDay}${ordinalSuffix(todayDay)}.` : ''}`
 
@@ -133,16 +136,16 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
         <h3 className="text-sm font-semibold text-gray-100">{MONTH_LONG[month - 1]}'s payments</h3>
         <div className="flex items-baseline gap-3 text-sm text-gray-400">
           <span>
-            {tracked && totals.paidCount != null && totals.manualCount > 0 ? (
+            {totals.manualCount > 0 ? (
               <>
-                <b className="text-gray-100 font-semibold">{totals.paidCount} of {totals.manualCount}</b> manual paid
-                {totals.unpaid && parseFloat(totals.unpaid) > 0 && <> · <span className="tabular-nums">{fmt(totals.unpaid)}</span> to pay</>}
+                <b className="text-gray-100 font-semibold">{totals.doneCount} of {totals.manualCount}</b> manual done
+                {parseFloat(totals.unpaid) > 0 && <> · <span className="tabular-nums">{fmt(totals.unpaid)}</span> to pay</>}
                 {' '}· {totals.count} {totals.count === 1 ? 'payment' : 'payments'}
               </>
             ) : (
               <>
                 <b className="text-gray-100 font-semibold">{totals.count}</b> {totals.count === 1 ? 'payment' : 'payments'} · <span className="tabular-nums">{fmt(totals.due)}</span>
-                {totals.manualCount > 0 ? <> · {totals.manualCount} manual</> : totals.count > 0 && <> · all automatic</>}
+                {totals.count > 0 && <> · all automatic</>}
               </>
             )}
           </span>
@@ -243,7 +246,7 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
                   <div className="text-gray-400">
                     {tip.item.day} {MONTH_SHORT[month - 1]} · <span className="tabular-nums text-gray-200">{fmt(tip.item.amount)}</span>
                   </div>
-                  <div className="text-gray-400">{methodLabel(tip.item)} · {phaseLabel(tip.item, tip.phase, tracked)}</div>
+                  <div className="text-gray-400">{methodLabel(tip.item)} · {phaseLabel(tip.item, tip.phase)}</div>
                 </div>
               )}
             </div>
@@ -253,7 +256,7 @@ export function PaymentsTimeline({ data, fmt, today = new Date() }: { data: Mont
             </p>
           )}
 
-          <Legend tracked={tracked} showToday={monthState === 'current'} />
+          <Legend hasManual={totals.manualCount > 0} showToday={monthState === 'current'} />
 
           {undated.length > 0 && (
             <div className="border-t border-gray-800 pt-3">
@@ -304,7 +307,7 @@ function LegendMark({ manual, filled }: { manual: boolean; filled: boolean }) {
   )
 }
 
-function Legend({ tracked, showToday }: { tracked: boolean; showToday: boolean }) {
+function Legend({ hasManual, showToday }: { hasManual: boolean; showToday: boolean }) {
   return (
     <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-xs text-gray-400">
       <span className="inline-flex items-center gap-1.5"><KindSwatch kind="expense" />Expense</span>
@@ -313,7 +316,7 @@ function Legend({ tracked, showToday }: { tracked: boolean; showToday: boolean }
       <span className="inline-flex items-center gap-1.5"><LegendMark manual filled />Manual</span>
       <span className="inline-flex items-center gap-1.5">
         <LegendMark manual={false} filled={false} />
-        {tracked ? 'Hollow: to pay or coming up' : 'Hollow: coming up'}
+        {hasManual ? 'Hollow: to pay or coming up' : 'Hollow: coming up'}
       </span>
       {showToday && (
         <span className="inline-flex items-center gap-1.5">

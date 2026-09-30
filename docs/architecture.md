@@ -169,7 +169,7 @@ budgeteer/
 - expenseId, userId, pct (must sum to 100%)
 
 **expense_occurrences** — individual occurrence tracking for a recurring expense
-- expenseId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED`)
+- expenseId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED` | `DISMISSED`), dismissReason (`PAID_ELSEWHERE` | `SKIPPED`, nullable)
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **receipts** — actual consumption imports from scanned receipts/photos
@@ -213,7 +213,7 @@ budgeteer/
 - savingsEntryId, userId, pct (must sum to 100%)
 
 **savings_occurrences** — individual occurrence tracking for a recurring savings entry
-- savingsEntryId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED`)
+- savingsEntryId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED` | `DISMISSED`), dismissReason (`PAID_ELSEWHERE` | `SKIPPED`, nullable)
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **budget_transfers** — monthly inter-member transfer snapshots
@@ -222,9 +222,13 @@ budgeteer/
 - One record per budget year per month; recalculated (awaited) when income, expenses, savings or FX rates change
 - PAY_NO_PAY: a month's amount is everything due that month (scheduled + carried) across PENDING and PAID occurrences, so paying items doesn't shrink it; closed months keep their recorded amount
 
-**Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
-- Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
-- Members mark MANUAL items PAID one by one or all at once for a month (`actualAmount` = amount due); AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+**Occurrences and the to-pay list** (`expense_occurrences`, `savings_occurrences`)
+- Seeded from the current month through December on every recalculation (`syncOccurrences`); PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED/DISMISSED rows are history
+- PAY_NO_PAY: a row for every entry, each month's share of it (`calcOccurrenceScheduledAmount`); the rows drive the transfer and carry unpaid balances
+- AVERAGE / FORWARD_LOOKING: rows only for MANUAL entries, the bill as charged that month (`trackingScheduledAmount`: a quarterly bill in full in its months). Tracking only — their transfer calculation never reads occurrences. Unpaid rows are never closed; they stay on the list as overdue until ticked off or dismissed
+- The to-pay list (`GET /budget-years/:id/occurrences`) shows MANUAL items in every model; for the current month it also lists overdue PENDING items from earlier months of the budget year. PENDING rows with nothing due are placeholders and aren't listed (`isListable`)
+- Members mark MANUAL items PAID one by one or all at once (`actualAmount` = amount due; "mark all" for the current month includes overdue items), or DISMISS them as paid elsewhere or skipped; dismissed items count as done, are never carried over, and still count in a PAY_NO_PAY month's transfer. AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+- Switching budget model rewrites no history: PAY_NO_PAY adopts existing rows (re-syncing PENDING amounts), and the other models keep their manual rows
 - Month rollover (1st of the month automation) closes the previous month (`closePayNoPayMonth`, planned by `planMonthClose`): PENDING AUTOMATIC → PAID with the full amount due, PENDING MANUAL → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent. Switching an entry's payment method rewrites no rows; the next close applies it
 - At the year boundary December is closed without carry — the new year's expenses are separate rows
 
@@ -501,10 +505,10 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
-GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY manual items for a month (default: current), plus automaticCount
-GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day and payment method, sorted by day; manualCount, plus paid status and manual paid/unpaid totals for PAY_NO_PAY
-PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
-POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only
+GET    /budget-years/:id/occurrences?month=M             # any model: the month's manual items (default: current), overdue items from earlier months, totals, carriesOver, automaticCount (PAY_NO_PAY), manualEntryCount
+GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day, payment method and occurrence status, sorted by day; manualCount, doneCount (paid or dismissed) and unpaid for manual items
+PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING } or { status: DISMISSED, reason: PAID_ELSEWHERE | SKIPPED }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only; for the current month, overdue ones too
 
 GET    /categories
 POST   /categories
