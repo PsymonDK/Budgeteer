@@ -155,3 +155,4 @@ Thumbs.db
 
 # Claude Code
 .claude/worktrees/
+.claude/launch.json
