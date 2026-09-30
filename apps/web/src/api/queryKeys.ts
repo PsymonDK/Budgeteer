@@ -68,6 +68,8 @@ export const qk = {
   /** Prefix of every month's occurrences for a budget year. */
   occurrences: (budgetYearId: Id) => ['occurrences', budgetYearId] as const,
   occurrencesMonth: (budgetYearId: Id, month: number | 'current') => ['occurrences', budgetYearId, month] as const,
+  /** GET /budget-years/:id/payments — under the occurrences prefix so marking items paid refreshes it */
+  payments: (budgetYearId: Id, month: number | 'current') => ['occurrences', budgetYearId, 'payments', month] as const,
 
   // ── Personal income ─────────────────────────────────────────────────────────
   jobsAll: () => ['jobs'] as const,

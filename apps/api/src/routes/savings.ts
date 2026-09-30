@@ -14,6 +14,8 @@ import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 const OwnershipEnum = z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM'])
+// How it's paid: AUTOMATIC items are treated as paid at Pay/No-pay month close; MANUAL ones are ticked off
+const PaymentMethodEnum = z.enum(['AUTOMATIC', 'MANUAL'])
 
 const CustomSplitSchema = z.object({
   userId: z.string(),
@@ -24,6 +26,9 @@ const SavingsBaseSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
   frequency: FrequencyEnum,
+  // Day of the month it's paid, for the dashboard's payments timeline; null clears it
+  dueDay: z.number().int().min(1).max(31).nullable().optional(),
+  paymentMethod: PaymentMethodEnum,
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
   ownership: OwnershipEnum,
@@ -35,19 +40,20 @@ const SavingsBaseSchema = z.object({
 
 // The default lives only on the create schema: Zod 4 applies defaults inside
 // .partial() too, so an update without `ownership` would reset it to SHARED.
-export const CreateSavingsSchema = SavingsBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED') })
+export const CreateSavingsSchema = SavingsBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED'), paymentMethod: PaymentMethodEnum.default('AUTOMATIC') })
 
 export const UpdateSavingsSchema = SavingsBaseSchema.partial().refine(
   (d) => Object.keys(d).length > 0,
   { message: 'At least one field is required' }
 )
 
-const BulkUpdateSavingsSchema = z.object({
+export const BulkUpdateSavingsSchema = z.object({
   ids: z.array(z.string()).min(1, { message: 'At least one savings ID required' }),
+  paymentMethod: PaymentMethodEnum.optional(),
   categoryId: z.string().nullable().optional(),
   accountId: z.string().nullable().optional(),
 }).refine(
-  (d) => d.categoryId !== undefined || d.accountId !== undefined,
+  (d) => d.categoryId !== undefined || d.accountId !== undefined || d.paymentMethod !== undefined,
   { message: 'At least one field to update is required' }
 )
 
@@ -92,7 +98,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
-    const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
+    const { label, amount, frequency, dueDay, paymentMethod, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
 
     if (categoryId) {
       const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
@@ -122,6 +128,8 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           amount: new Decimal(amount),
           frequency,
           monthlyEquivalent,
+          dueDay: dueDay ?? null,
+          paymentMethod,
           notes,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
           originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
@@ -217,6 +225,8 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           frequency: newFrequency,
           monthlyEquivalent,
           notes: data.notes,
+          ...(data.dueDay !== undefined && { dueDay: data.dueDay }),
+          ...(data.paymentMethod !== undefined && { paymentMethod: data.paymentMethod }),
           currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
           originalAmount: newCurrency !== BASE_CURRENCY ? newAmount : null,
           rateUsed: newCurrency !== BASE_CURRENCY ? rate : null,
@@ -261,7 +271,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
     if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
-    const { ids, categoryId, accountId } = result.data
+    const { ids, categoryId, accountId, paymentMethod } = result.data
 
     if (categoryId !== undefined && categoryId !== null) {
       const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
@@ -278,6 +288,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       data: {
         ...(categoryId !== undefined && { categoryId }),
         ...(accountId !== undefined && { accountId }),
+        ...(paymentMethod !== undefined && { paymentMethod }),
       },
     })
 

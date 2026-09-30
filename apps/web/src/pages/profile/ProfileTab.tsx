@@ -9,14 +9,22 @@ import { useCurrencies, useHouseholds, useUserMe } from '../../api/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import Avatar from '../../components/Avatar'
 import { PageLoader } from '../../components/LoadingSpinner'
-import { inputClass } from '../../lib/styles'
+import { inputClass, segmentGroup, segmentBtn } from '../../lib/styles'
 import { cardClass } from './cardClass'
 import { StickyActions } from '../../components/StickyActions'
+import { useThemePreference, type ThemePreference } from '../../lib/theme'
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
 
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Day chart (light)' },
+  { value: 'dark', label: 'Night watch (dark)' },
+]
+
 export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] }) {
   const navigate = useNavigate()
+  const [themePref, setThemePref] = useThemePreference()
   const queryClient = useQueryClient()
   const { updateUser } = useAuth()
 
@@ -228,6 +236,24 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
       <div className={cardClass}>
         <h2 className="text-base font-semibold mb-4">Preferences</h2>
         <div className="space-y-4 max-w-sm">
+          <div>
+            <p id="appearance-label" className="block text-xs font-medium text-gray-400 mb-1">Appearance</p>
+            <div role="radiogroup" aria-labelledby="appearance-label" className={segmentGroup}>
+              {THEME_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={themePref === value}
+                  onClick={() => setThemePref(value)}
+                  className={segmentBtn(themePref === value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-500 mt-1.5">Saved on this device. System follows your device's light or dark setting.</p>
+          </div>
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Preferred currency</label>
             <select

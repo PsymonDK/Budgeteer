@@ -129,9 +129,9 @@ export function CategoriesPage() {
       <Page template="list">
         <PageHeader title="Categories" />
         {createWarning && (
-          <div className="mb-6 bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
+          <div className="mb-6 bg-orange-950 border border-orange-700 text-orange-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
             <span>{createWarning}</span>
-            <button onClick={() => setCreateWarning('')} className="text-amber-500 hover:text-amber-300 ml-4">×</button>
+            <button onClick={() => setCreateWarning('')} className="text-orange-500 hover:text-orange-300 ml-4">×</button>
           </div>
         )}
 
@@ -152,7 +152,7 @@ export function CategoriesPage() {
           {isLoading ? (
             <PageLoader />
           ) : customExpenseCategories.length === 0 ? (
-            <p className="text-gray-500 text-sm">Uncharted territory — no custom expense categories yet.</p>
+            <p className="text-gray-500 text-sm">No custom expense categories yet.</p>
           ) : (
             <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
               <div className="overflow-x-auto">

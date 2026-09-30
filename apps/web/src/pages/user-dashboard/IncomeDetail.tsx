@@ -3,14 +3,11 @@ import {
   Legend, ResponsiveContainer, Dot,
 } from 'recharts'
 import { SankeyChart } from '../../components/SankeyChart'
-import { legendInOrder } from '../../lib/charts'
+import { CHART, chartChrome, legendInOrder, personColor } from '../../lib/charts'
 import { segmentGroupPlain, segmentBtnSolid } from '../../lib/styles'
 import type { IncomeSankeyData, IncomeTrend } from './types'
 
-const JOB_COLORS = [
-  '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#84cc16',
-]
+// One colour per job, from the people/jobs order of the chart palette
 
 function formatMonth(yyyymm: string): string {
   const [year, mon] = yyyymm.split('-')
@@ -26,7 +23,10 @@ export function IncomeFlowCard({ sankeyData, baseCurrency }: { sankeyData: Incom
         <>
           {(() => {
             const has3Col = sankeyData.nodes.some((n) => n.id === 'net_pay' || n.id === 'am_bidrag')
-            return <SankeyChart data={sankeyData} currency={baseCurrency} height={has3Col ? 480 : 400} />
+            // Jobs take the theme's people colours (the API still sends fixed dark-theme hex colours)
+            let job = 0
+            const nodes = sankeyData.nodes.map((n) => (n.id.startsWith('job_') ? { ...n, color: personColor(job++) } : n))
+            return <SankeyChart data={{ ...sankeyData, nodes }} currency={baseCurrency} height={has3Col ? 480 : 400} />
           })()}
           {sankeyData.employerPensionMonthly && parseFloat(sankeyData.employerPensionMonthly) > 0 && (
             <p className="text-xs text-gray-500 mt-3">
@@ -85,22 +85,22 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
       {incomeTrend && incomeTrend.jobs.length > 0 ? (
         <ResponsiveContainer width="100%" height={250}>
           <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="month" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-            <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} />
+            <CartesianGrid {...chartChrome.grid} />
+            <XAxis dataKey="month" tick={chartChrome.tick} />
+            <YAxis tick={chartChrome.tick} />
             <RechartsTooltip
-              contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-              labelStyle={{ color: '#f3f4f6' }}
-              itemStyle={{ color: '#d1d5db' }}
+              contentStyle={chartChrome.tooltip.contentStyle}
+              labelStyle={chartChrome.tooltip.labelStyle}
+              itemStyle={chartChrome.tooltip.itemStyle}
             />
-            <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12 }}
+            <Legend wrapperStyle={chartChrome.legend}
               itemSorter={legendInOrder([...incomeTrend.jobs.map((job) => job.name), 'total'])} />
             {incomeTrend.jobs.map((job, i) => (
               <Line
                 key={job.id}
                 type="monotone"
                 dataKey={job.name}
-                stroke={JOB_COLORS[i % JOB_COLORS.length]}
+                stroke={personColor(i)}
                 strokeWidth={2}
                 dot={(props) => {
                   const { cx, cy, payload } = props
@@ -111,7 +111,7 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
                     const tipText = bonuses.map((b) => `${b.label}: ${fmt(b.amount)}`).join(', ')
                     return (
                       <g key={`dot-${job.id}-${monthKey}`}>
-                        <circle cx={cx} cy={cy} r={6} fill={JOB_COLORS[i % JOB_COLORS.length]} stroke="#fff" strokeWidth={1.5} />
+                        <circle cx={cx} cy={cy} r={6} fill={personColor(i)} stroke={CHART.text} strokeWidth={1.5} />
                         <title>{`Bonus: ${tipText}`}</title>
                       </g>
                     )
@@ -131,7 +131,7 @@ export function IncomeTrendCard({ incomeTrend, showGross, setShowGross, fmt }: I
                 }}
               />
             ))}
-            <Line type="monotone" dataKey="total" stroke="#ffffff" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Total" />
+            <Line type="monotone" dataKey="total" stroke={CHART.text} strokeWidth={2} strokeDasharray="5 5" dot={false} name="Total" />
           </LineChart>
         </ResponsiveContainer>
       ) : (

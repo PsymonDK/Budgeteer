@@ -1,6 +1,7 @@
 import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DetailPane, DetailRow, DetailSection } from '../../components/DetailPane'
+import { ordinalDay } from '../../components/entries/DueDayField'
 import { monthRangeLabel } from './helpers'
 import { MonthStrip, frequencyLabel } from './ExpensesTable'
 import type { Expense } from './types'
@@ -62,6 +63,8 @@ export function ExpenseDetail({ expense: e, isReadOnly, baseCurrency, onClose, o
         <DetailRow label="Per month"><span className="text-amber-400 font-semibold">{fmt(e.monthlyWhenActive)}</span></DetailRow>
         {differentAverage && <DetailRow label="Averaged over the year">{fmt(e.monthlyEquivalent)}</DetailRow>}
         <DetailRow label="Active">{range ?? 'All year'}</DetailRow>
+        {e.dueDay != null && <DetailRow label="Due">{ordinalDay(e.dueDay)} of the month</DetailRow>}
+        <DetailRow label="Paid">{e.paymentMethod === 'MANUAL' ? 'Manually' : 'Automatically'}</DetailRow>
       </DetailSection>
 
       <DetailSection title="Months charged">

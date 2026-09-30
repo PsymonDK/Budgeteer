@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { Decimal } from '@prisma/client/runtime/client'
-import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus, calcMonthlyInBase, expenseMonthSchedule } from './calculations'
+import { calcMonthlyEquivalent, calcForwardMonthlyNeed, deriveBudgetStatus, calcMonthlyInBase, expenseMonthSchedule, incomeSplitPct } from './calculations'
 
 // ── calcMonthlyEquivalent ─────────────────────────────────────────────────────
 
@@ -162,5 +162,21 @@ describe('expenseMonthSchedule', () => {
     const bi = expenseMonthSchedule({ ...base, frequency: 'BIANNUAL', startMonth: 7, monthlyEquivalent: d('50'), amount: d('600') })
     expect(bi[5]).toBeNull()
     expect(bi[11]).toBe('600.00')
+  })
+})
+
+// ── incomeSplitPct ────────────────────────────────────────────────────────────
+
+describe('incomeSplitPct', () => {
+  it('splits income into expenses, savings and surplus shares', () => {
+    expect(incomeSplitPct(10000, 6000, 1500)).toEqual({ expensesPct: '60.0', savingsPct: '15.0', surplusPct: '25.0' })
+  })
+
+  it('shows a negative surplus when spending exceeds income', () => {
+    expect(incomeSplitPct(1000, 1100, 100)?.surplusPct).toBe('-20.0')
+  })
+
+  it('is null without income', () => {
+    expect(incomeSplitPct(0, 500, 0)).toBeNull()
   })
 })

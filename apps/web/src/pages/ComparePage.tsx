@@ -159,7 +159,7 @@ export function ComparePage() {
   function rowStyle(status: ExpenseRow['status']) {
     if (status === 'new')     return 'bg-green-950/30 border-green-900/40'
     if (status === 'removed') return 'bg-red-950/30 border-red-900/40'
-    if (status === 'changed') return 'bg-amber-950/30 border-amber-900/40'
+    if (status === 'changed') return 'bg-orange-950/30 border-orange-900/40'
     return ''
   }
 
@@ -256,7 +256,7 @@ export function ComparePage() {
               const delta = parseFloat(line.delta)
               return (
                 <div key={key} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">{label}</p>
+                  <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-2">{label}</p>
                   <div className="flex items-baseline justify-between mb-1">
                     <span className="text-gray-500 text-xs">A</span>
                     <span className="text-gray-300 tabular-nums text-sm">{fmt(a, period)}</span>
@@ -341,7 +341,7 @@ export function ComparePage() {
                 {filteredExpenses.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-12 text-center text-gray-600">
-                      No plunder matches the current filters.
+                      No expenses match the current filters.
                     </td>
                   </tr>
                 ) : (

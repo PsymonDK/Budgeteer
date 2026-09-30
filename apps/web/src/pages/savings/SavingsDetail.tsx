@@ -1,6 +1,7 @@
 import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DetailPane, DetailRow, DetailSection } from '../../components/DetailPane'
+import { ordinalDay } from '../../components/entries/DueDayField'
 import { savingsFrequencyLabel } from './SavingsTable'
 import type { SavingsEntry } from './types'
 
@@ -51,6 +52,8 @@ export function SavingsDetail({ entry: e, isReadOnly, baseCurrency, onClose, onE
         </DetailRow>
         {e.currencyCode && e.rateUsed && <DetailRow label="Rate used">{e.rateUsed}</DetailRow>}
         <DetailRow label={`Per month (${baseCurrency})`}><span className="text-amber-400 font-semibold">{fmt(e.monthlyEquivalent)}</span></DetailRow>
+        {e.dueDay != null && <DetailRow label="Due">{ordinalDay(e.dueDay)} of the month</DetailRow>}
+        <DetailRow label="Paid">{e.paymentMethod === 'MANUAL' ? 'Manually' : 'Automatically'}</DetailRow>
       </DetailSection>
 
       <DetailSection title="Belongs to">

@@ -8,7 +8,7 @@ import { qk } from '../../api/queryKeys'
 import {
   useBudgetYearAccounts, useBudgetYears, useCategories, useCurrencies, useHouseholdDetail,
 } from '../../api/queries'
-import type { BudgetYear } from '../../api/types'
+import type { BudgetYear, PaymentMethod } from '../../api/types'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { PageHeader } from '../../components/PageHeader'
 import { CategoryFilter } from '../../components/CategoryFilter'
@@ -18,9 +18,10 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { AccountFilterChips, accountsIn } from '../../components/entries/AccountFilterChips'
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
+import { dueDayPayload } from '../../components/entries/DueDayField'
 import { useRowSelection } from '../../hooks/useRowSelection'
 import { useAddFromQuery } from '../../hooks/useAddFromQuery'
-import { primaryBtnSm, segmentGroup, segmentBtn } from '../../lib/styles'
+import { primaryBtnSm, secondaryBtn, segmentGroup, segmentBtn } from '../../lib/styles'
 import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { emptyForm, filterAndSortExpenses, formFromExpense } from './helpers'
@@ -35,6 +36,7 @@ import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 import { Page } from '../../components/Page'
+import { EmptyState } from '../../components/EmptyState'
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -267,15 +269,16 @@ export function ExpensesPage() {
   function handleBulkSubmit(e: FormEvent) {
     e.preventDefault()
     setBulkError('')
-    if (!bulkForm.categoryId && !bulkForm.accountId) {
+    if (!bulkForm.categoryId && !bulkForm.accountId && !bulkForm.paymentMethod) {
       setBulkError('Select at least one field to change')
       return
     }
-    const payload: { ids: string[]; categoryId?: string; accountId?: string | null } = {
+    const payload: { ids: string[]; categoryId?: string; accountId?: string | null; paymentMethod?: PaymentMethod } = {
       ids: [...selectedIds],
     }
     if (bulkForm.categoryId) payload.categoryId = bulkForm.categoryId
     if (bulkForm.accountId) payload.accountId = bulkForm.accountId === '__none__' ? null : bulkForm.accountId
+    if (bulkForm.paymentMethod) payload.paymentMethod = bulkForm.paymentMethod
     bulkUpdateMutation.mutate(payload)
   }
 
@@ -294,8 +297,9 @@ export function ExpensesPage() {
       frequencyPeriod: form.frequencyPeriod || undefined,
       startMonth: form.startMonth ? parseInt(form.startMonth, 10) : null,
       endMonth: form.endMonth ? parseInt(form.endMonth, 10) : null,
+      dueDay: dueDayPayload(form.dueDay, form.frequency),
       notes: form.notes || undefined,
-    } as ExpenseForm & { startMonth: number | null; endMonth: number | null }
+    } as ExpenseForm & { startMonth: number | null; endMonth: number | null; dueDay: number | null }
     if (editingExpense) updateMutation.mutate(payload)
     else createMutation.mutate(payload)
   }
@@ -386,9 +390,22 @@ export function ExpensesPage() {
             {expensesLoading ? (
               <PageLoader />
             ) : filtered.length === 0 ? (
-              <div className="text-center py-20 text-gray-500">
-                {expenses.length === 0 ? 'No plunder recorded yet. Add one to get started.' : 'No plunder matches the filter.'}
-              </div>
+              expenses.length === 0 ? (
+                <EmptyState
+                  title="No expenses yet"
+                  aside="The hold's empty. Add the first expense to start the ledger."
+                  action={!isReadOnly && <button onClick={openAdd} className={primaryBtnSm}>+ Add expense</button>}
+                />
+              ) : (
+                <EmptyState
+                  title="No expenses match these filters"
+                  action={
+                    <button onClick={() => { setFilterCategories(new Set()); setFilterAccounts(new Set()) }} className={secondaryBtn}>
+                      Clear filters
+                    </button>
+                  }
+                />
+              )
             ) : view === 'calendar' ? (
               <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (

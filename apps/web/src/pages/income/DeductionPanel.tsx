@@ -47,7 +47,7 @@ export function DeductionPanel({ gross, liveCalc, overrides, onOverrideChange, h
       <div className="flex items-center justify-between py-1.5 border-b border-gray-700/50 last:border-0">
         <div className="flex items-center gap-2">
           <span className="text-gray-300 text-sm">{label}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded ${isManual ? 'bg-amber-900/50 text-amber-400 border border-amber-700' : 'bg-gray-700 text-gray-400'}`}>
+          <span className={`text-xs px-1.5 py-0.5 rounded ${isManual ? 'bg-orange-900/50 text-orange-400 border border-orange-700' : 'bg-gray-700 text-gray-400'}`}>
             {isManual ? 'manual' : 'calc'}
           </span>
         </div>
@@ -96,7 +96,7 @@ export function DeductionPanel({ gross, liveCalc, overrides, onOverrideChange, h
       <DeductionRow label="ATP" field="atpAmount" calcValue={liveCalc.atp} />
       <div className="flex justify-between pt-2 border-t border-gray-600 font-semibold text-sm mt-1">
         <span className="text-white">Net pay</span>
-        <span className="tabular-nums text-amber-400">{fmt2(displayNet, baseCurrency)}</span>
+        <span className="tabular-nums text-gray-100">{fmt2(displayNet, baseCurrency)}</span>
       </div>
       {liveCalc.pensionEmployer > 0 && (
         <div className="flex justify-between pt-1 text-xs text-gray-500">

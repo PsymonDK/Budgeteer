@@ -1,3 +1,102 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Chart & Ledger colour tokens.
+ * Tailwind's gray / amber / red / green / emerald / blue / purple / orange scales and `white` point at
+ * these ramps (see tailwind.config.js), so existing classes follow the theme. Values are RGB channels so
+ * opacity modifiers like bg-gray-900/60 keep working. Chart series colours are --series-1..6.
+ *
+ * Night watch (dark) is the default. Day chart (light) applies when the system prefers light, unless the
+ * user picked Dark; data-theme="light" / "dark" on <html> (Profile → Appearance) overrides the system.
+ * Light ramps keep the same step roles (950 page, 900 cards, 100 text), so they run the other way.
+ */
+@layer base {
+  :root {
+    /* sea */
+    --sea-50: 244 247 248; --sea-100: 232 238 241; --sea-200: 214 224 230; --sea-300: 188 202 211; --sea-400: 151 170 183; --sea-500: 113 135 151; --sea-600: 79 101 117; --sea-700: 52 73 90; --sea-800: 31 49 64; --sea-900: 19 31 40; --sea-950: 10 19 25;
+    /* brass */
+    --brass-50: 251 245 232; --brass-100: 245 231 200; --brass-200: 237 211 158; --brass-300: 230 194 122; --brass-400: 221 170 78; --brass-500: 201 147 47; --brass-600: 169 122 34; --brass-700: 134 96 27; --brass-800: 101 72 23; --brass-900: 74 53 18; --brass-950: 43 31 12;
+    /* port */
+    --port-50: 253 241 240; --port-100: 251 224 221; --port-200: 246 193 188; --port-300: 241 154 146; --port-400: 238 107 96; --port-500: 224 73 61; --port-600: 194 55 44; --port-700: 158 44 36; --port-800: 125 38 32; --port-900: 96 32 28; --port-950: 52 16 13;
+    /* starboard */
+    --starboard-50: 237 250 243; --starboard-100: 211 242 226; --starboard-200: 168 228 198; --starboard-300: 123 212 167; --starboard-400: 76 195 138; --starboard-500: 47 166 113; --starboard-600: 35 133 91; --starboard-700: 30 106 74; --starboard-800: 27 84 60; --starboard-900: 22 67 49; --starboard-950: 11 38 28;
+    /* slate */
+    --slate-50: 238 243 252; --slate-100: 218 228 248; --slate-200: 184 203 241; --slate-300: 146 174 231; --slate-400: 111 147 220; --slate-500: 84 126 205; --slate-600: 64 100 176; --slate-700: 52 80 142; --slate-800: 44 67 113; --slate-900: 38 58 94; --slate-950: 23 35 58;
+    /* plum */
+    --plum-50: 250 240 246; --plum-100: 243 220 234; --plum-200: 231 185 213; --plum-300: 215 147 189; --plum-400: 194 113 165; --plum-500: 165 83 140; --plum-600: 138 65 116; --plum-700: 112 53 94; --plum-800: 90 44 76; --plum-900: 74 38 63; --plum-950: 44 19 37;
+    /* lantern */
+    --lantern-50: 254 246 236; --lantern-100: 253 235 211; --lantern-200: 250 211 166; --lantern-300: 246 188 126; --lantern-400: 240 165 90; --lantern-500: 227 136 58; --lantern-600: 196 109 40; --lantern-700: 156 84 33; --lantern-800: 122 66 29; --lantern-900: 94 53 26; --lantern-950: 52 25 10;
+    --white: 255 255 255;
+    --series-1: 189 135 28; --series-2: 84 126 205; --series-3: 200 102 78; --series-4: 0 165 150; --series-5: 165 83 140; --series-6: 123 161 67; --series-rest: 79 101 117;
+    color-scheme: dark;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      /* sea */
+      --sea-50: 12 22 28; --sea-100: 22 36 45; --sea-200: 38 54 63; --sea-300: 58 77 91; --sea-400: 78 98 114; --sea-500: 95 115 129; --sea-600: 131 151 164; --sea-700: 191 203 210; --sea-800: 216 224 228; --sea-900: 255 255 255; --sea-950: 232 237 239;
+      /* brass */
+      --brass-50: 36 25 4; --brass-100: 63 43 7; --brass-200: 92 63 10; --brass-300: 110 75 8; --brass-400: 138 94 7; --brass-500: 160 116 8; --brass-600: 184 145 47; --brass-700: 221 189 116; --brass-800: 237 217 168; --brass-900: 246 234 203; --brass-950: 251 245 232;
+      /* port */
+      --port-50: 52 16 13; --port-100: 82 24 19; --port-200: 110 31 25; --port-300: 140 38 30; --port-400: 169 47 37; --port-500: 194 55 44; --port-600: 217 89 77; --port-700: 235 142 133; --port-800: 246 193 188; --port-900: 251 224 221; --port-950: 253 241 240;
+      /* starboard */
+      --starboard-50: 11 38 28; --starboard-100: 15 54 36; --starboard-200: 19 71 47; --starboard-300: 22 89 58; --starboard-400: 27 112 72; --starboard-500: 35 133 91; --starboard-600: 54 165 109; --starboard-700: 111 201 155; --starboard-800: 168 228 198; --starboard-900: 211 242 226; --starboard-950: 237 250 243;
+      /* slate */
+      --slate-50: 23 35 58; --slate-100: 29 44 72; --slate-200: 38 58 94; --slate-300: 44 67 113; --slate-400: 52 80 142; --slate-500: 64 100 176; --slate-600: 95 133 210; --slate-700: 134 165 228; --slate-800: 184 203 241; --slate-900: 218 228 248; --slate-950: 238 243 252;
+      /* plum */
+      --plum-50: 44 19 37; --plum-100: 58 30 50; --plum-200: 74 38 63; --plum-300: 90 44 76; --plum-400: 112 53 94; --plum-500: 138 65 116; --plum-600: 184 100 156; --plum-700: 208 138 181; --plum-800: 231 185 213; --plum-900: 243 220 234; --plum-950: 250 240 246;
+      /* lantern */
+      --lantern-50: 52 25 10; --lantern-100: 71 40 14; --lantern-200: 94 53 18; --lantern-300: 124 68 21; --lantern-400: 154 84 24; --lantern-500: 184 105 31; --lantern-600: 217 139 58; --lantern-700: 242 176 106; --lantern-800: 250 211 166; --lantern-900: 253 235 211; --lantern-950: 254 246 236;
+      --white: 22 36 45;
+      --series-1: 176 122 0; --series-2: 62 102 179; --series-3: 186 90 66; --series-4: 0 140 126; --series-5: 139 59 116; --series-6: 105 142 47; --series-rest: 131 151 164;
+      color-scheme: light;
+    }
+  }
+
+  :root[data-theme="light"] {
+    /* sea */
+    --sea-50: 12 22 28; --sea-100: 22 36 45; --sea-200: 38 54 63; --sea-300: 58 77 91; --sea-400: 78 98 114; --sea-500: 95 115 129; --sea-600: 131 151 164; --sea-700: 191 203 210; --sea-800: 216 224 228; --sea-900: 255 255 255; --sea-950: 232 237 239;
+    /* brass */
+    --brass-50: 36 25 4; --brass-100: 63 43 7; --brass-200: 92 63 10; --brass-300: 110 75 8; --brass-400: 138 94 7; --brass-500: 160 116 8; --brass-600: 184 145 47; --brass-700: 221 189 116; --brass-800: 237 217 168; --brass-900: 246 234 203; --brass-950: 251 245 232;
+    /* port */
+    --port-50: 52 16 13; --port-100: 82 24 19; --port-200: 110 31 25; --port-300: 140 38 30; --port-400: 169 47 37; --port-500: 194 55 44; --port-600: 217 89 77; --port-700: 235 142 133; --port-800: 246 193 188; --port-900: 251 224 221; --port-950: 253 241 240;
+    /* starboard */
+    --starboard-50: 11 38 28; --starboard-100: 15 54 36; --starboard-200: 19 71 47; --starboard-300: 22 89 58; --starboard-400: 27 112 72; --starboard-500: 35 133 91; --starboard-600: 54 165 109; --starboard-700: 111 201 155; --starboard-800: 168 228 198; --starboard-900: 211 242 226; --starboard-950: 237 250 243;
+    /* slate */
+    --slate-50: 23 35 58; --slate-100: 29 44 72; --slate-200: 38 58 94; --slate-300: 44 67 113; --slate-400: 52 80 142; --slate-500: 64 100 176; --slate-600: 95 133 210; --slate-700: 134 165 228; --slate-800: 184 203 241; --slate-900: 218 228 248; --slate-950: 238 243 252;
+    /* plum */
+    --plum-50: 44 19 37; --plum-100: 58 30 50; --plum-200: 74 38 63; --plum-300: 90 44 76; --plum-400: 112 53 94; --plum-500: 138 65 116; --plum-600: 184 100 156; --plum-700: 208 138 181; --plum-800: 231 185 213; --plum-900: 243 220 234; --plum-950: 250 240 246;
+    /* lantern */
+    --lantern-50: 52 25 10; --lantern-100: 71 40 14; --lantern-200: 94 53 18; --lantern-300: 124 68 21; --lantern-400: 154 84 24; --lantern-500: 184 105 31; --lantern-600: 217 139 58; --lantern-700: 242 176 106; --lantern-800: 250 211 166; --lantern-900: 253 235 211; --lantern-950: 254 246 236;
+    --white: 22 36 45;
+    --series-1: 176 122 0; --series-2: 62 102 179; --series-3: 186 90 66; --series-4: 0 140 126; --series-5: 139 59 116; --series-6: 105 142 47; --series-rest: 131 151 164;
+    color-scheme: light;
+  }
+
+  ::selection {
+    background: rgb(var(--brass-400) / 0.35);
+  }
+}
+
+@layer components {
+  /* The dashboard's one framed hero: a graduated-scale border like the edge of an Admiralty chart */
+  .chart-frame {
+    position: relative;
+    padding: 7px;
+    border: 1px solid rgb(var(--sea-600));
+    background:
+      repeating-linear-gradient(90deg, rgb(var(--sea-600)) 0 28px, transparent 28px 56px) top / 100% 4px no-repeat,
+      repeating-linear-gradient(90deg, rgb(var(--sea-600)) 0 28px, transparent 28px 56px) bottom / 100% 4px no-repeat,
+      repeating-linear-gradient(180deg, rgb(var(--sea-600)) 0 28px, transparent 28px 56px) left / 4px 100% no-repeat,
+      repeating-linear-gradient(180deg, rgb(var(--sea-600)) 0 28px, transparent 28px 56px) right / 4px 100% no-repeat,
+      rgb(var(--sea-900));
+  }
+
+  /* Surplus: what's left, drawn as a hatched band rather than another series colour */
+  .hatch-surplus {
+    background: repeating-linear-gradient(135deg, rgb(var(--sea-600)) 0 2px, transparent 2px 6px), rgb(var(--sea-800));
+    box-shadow: inset 0 0 0 1px rgb(var(--sea-600));
+  }
+}

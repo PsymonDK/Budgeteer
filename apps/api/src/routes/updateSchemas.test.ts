@@ -4,8 +4,8 @@ vi.mock('../lib/prisma', () => ({ prisma: {}, notDeleted: { deletedAt: null }, i
 vi.mock('../plugins/authenticate', () => ({ authenticate: vi.fn() }))
 vi.mock('../lib/budgetTransfer', () => ({ recalculateTransfer: vi.fn() }))
 
-import { CreateExpenseSchema, UpdateExpenseSchema } from './expenses'
-import { CreateSavingsSchema, UpdateSavingsSchema } from './savings'
+import { BulkUpdateExpenseSchema, CreateExpenseSchema, UpdateExpenseSchema } from './expenses'
+import { BulkUpdateSavingsSchema, CreateSavingsSchema, UpdateSavingsSchema } from './savings'
 import { CreateJobSchema, UpdateJobSchema } from './jobs'
 
 // Zod 4 applies .default() values inside .partial() schemas too. Update schemas
@@ -52,5 +52,61 @@ describe('create schemas keep their defaults', () => {
     const base = { label: 'Rent', amount: 100, frequency: 'MONTHLY', categoryId: 'c1' }
     expect(CreateExpenseSchema.safeParse({ ...base, startMonth: 9, endMonth: 3 }).success).toBe(false)
     expect(UpdateExpenseSchema.safeParse({ startMonth: 9, endMonth: 3 }).success).toBe(false)
+  })
+})
+
+describe('dueDay', () => {
+  const expense = { label: 'Rent', amount: 100, frequency: 'MONTHLY', categoryId: 'c1' }
+  const savings = { label: 'Buffer', amount: 100, frequency: 'MONTHLY' }
+
+  it('accepts days 1–31 and null (clears it)', () => {
+    for (const dueDay of [1, 15, 31, null]) {
+      expect(CreateExpenseSchema.safeParse({ ...expense, dueDay }).success).toBe(true)
+      expect(CreateSavingsSchema.safeParse({ ...savings, dueDay }).success).toBe(true)
+      expect(UpdateExpenseSchema.safeParse({ dueDay }).success).toBe(true)
+      expect(UpdateSavingsSchema.safeParse({ dueDay }).success).toBe(true)
+    }
+  })
+
+  it('rejects days outside 1–31 and fractions', () => {
+    for (const dueDay of [0, 32, -1, 1.5]) {
+      expect(CreateExpenseSchema.safeParse({ ...expense, dueDay }).success).toBe(false)
+      expect(CreateSavingsSchema.safeParse({ ...savings, dueDay }).success).toBe(false)
+      expect(UpdateExpenseSchema.safeParse({ dueDay }).success).toBe(false)
+      expect(UpdateSavingsSchema.safeParse({ dueDay }).success).toBe(false)
+    }
+  })
+
+  it('stays out of updates that leave it out', () => {
+    expect('dueDay' in UpdateExpenseSchema.parse({ label: 'Rent' })).toBe(false)
+    expect('dueDay' in UpdateSavingsSchema.parse({ label: 'Buffer' })).toBe(false)
+  })
+})
+
+describe('paymentMethod', () => {
+  const expense = { label: 'Rent', amount: 100, frequency: 'MONTHLY', categoryId: 'c1' }
+  const savings = { label: 'Buffer', amount: 100, frequency: 'MONTHLY' }
+
+  it('defaults to AUTOMATIC on create', () => {
+    expect(CreateExpenseSchema.parse(expense).paymentMethod).toBe('AUTOMATIC')
+    expect(CreateSavingsSchema.parse(savings).paymentMethod).toBe('AUTOMATIC')
+  })
+
+  it('accepts MANUAL and rejects other values', () => {
+    expect(CreateExpenseSchema.parse({ ...expense, paymentMethod: 'MANUAL' }).paymentMethod).toBe('MANUAL')
+    expect(UpdateSavingsSchema.parse({ paymentMethod: 'MANUAL' }).paymentMethod).toBe('MANUAL')
+    expect(CreateExpenseSchema.safeParse({ ...expense, paymentMethod: 'CARD' }).success).toBe(false)
+    expect(UpdateExpenseSchema.safeParse({ paymentMethod: 'manual' }).success).toBe(false)
+  })
+
+  it('stays out of updates that leave it out', () => {
+    expect('paymentMethod' in UpdateExpenseSchema.parse({ label: 'Rent' })).toBe(false)
+    expect('paymentMethod' in UpdateSavingsSchema.parse({ label: 'Buffer' })).toBe(false)
+  })
+
+  it('is enough on its own for a bulk edit', () => {
+    expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'], paymentMethod: 'MANUAL' }).success).toBe(true)
+    expect(BulkUpdateSavingsSchema.safeParse({ ids: ['s1'], paymentMethod: 'AUTOMATIC' }).success).toBe(true)
+    expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'] }).success).toBe(false)
   })
 })

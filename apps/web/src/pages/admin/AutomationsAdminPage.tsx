@@ -129,7 +129,7 @@ export function AutomationsAdminPage() {
     <Page template="list">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold mb-1 flex items-center gap-2">
+          <h1 className="font-display text-3xl leading-tight mb-1 flex items-center gap-2">
             <Zap size={20} className="text-amber-400" />
             Automations
           </h1>
@@ -183,7 +183,7 @@ export function AutomationsAdminPage() {
                       }`}
                     >
                       <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-[#fff] transition-transform ${
                           a.isEnabled ? 'translate-x-4' : 'translate-x-1'
                         }`}
                       />

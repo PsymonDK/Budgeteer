@@ -12,7 +12,8 @@ interface AvatarProps {
   className?: string
 }
 
-const PALETTE = ['#1e3a5f','#b45309','#be4040','#0f766e','#7c3aed','#0369a1','#047857','#9d174d']
+// Deep steps of the Chart & Ledger ramps, so white initials stay readable
+const PALETTE = ['#34508E', '#86601B', '#9E2C24', '#0E6B63', '#70355E', '#2C4371', '#1E6A4A', '#5A2C4C']
 
 function nameToColour(name: string): string {
   let h = 0
@@ -55,7 +56,7 @@ export default function Avatar({ user, size = 32, className = '' }: AvatarProps)
   return (
     <div
       style={{ ...style, background: bg, fontSize }}
-      className={`flex items-center justify-center text-white font-semibold select-none ${ringClass} ${className}`}
+      className={`flex items-center justify-center text-[#fff] font-semibold select-none ${ringClass} ${className}`}
     >
       {initials}
     </div>

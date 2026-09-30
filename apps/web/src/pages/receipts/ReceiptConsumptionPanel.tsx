@@ -31,7 +31,7 @@ export function ReceiptConsumptionPanel({ householdId }: { householdId: string }
           <h3 className="text-sm font-semibold text-gray-100">Receipt consumption</h3>
           <p className="mt-1 text-xs text-gray-500">
             {summary ? `${summary.itemCount} confirmed line${summary.itemCount === 1 ? '' : 's'} · ${fmt(summary.total)}` : 'Confirmed receipt lines'}
-            {isFetching && !isLoading ? <span className="text-amber-300"> · Updating</span> : null}
+            {isFetching && !isLoading ? <span className="text-orange-300"> · Updating</span> : null}
           </p>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-[minmax(180px,1fr)_auto_auto] gap-2">
@@ -60,7 +60,7 @@ export function ReceiptConsumptionPanel({ householdId }: { householdId: string }
 
       <div className="mt-4">
         {!customRangeValid ? (
-          <div className="rounded-lg border border-amber-800/60 bg-amber-900/20 px-3 py-6 text-center text-sm text-amber-200">
+          <div className="rounded-lg border border-orange-800/60 bg-orange-900/20 px-3 py-6 text-center text-sm text-orange-200">
             Choose a custom start date before or equal to the end date.
           </div>
         ) : isLoading ? (
@@ -145,7 +145,7 @@ export function ReceiptConsumptionPanel({ householdId }: { householdId: string }
             </div>
 
             {summary.warnings.length > 0 && (
-              <div className="space-y-1 rounded-lg border border-amber-800/60 bg-amber-900/20 px-3 py-2 text-xs text-amber-200">
+              <div className="space-y-1 rounded-lg border border-orange-800/60 bg-orange-900/20 px-3 py-2 text-xs text-orange-200">
                 {summary.warnings.map((warning) => (
                   <p key={warning} className="flex gap-2"><TriangleAlert size={14} className="mt-0.5 shrink-0" /> {warning}</p>
                 ))}

@@ -26,7 +26,7 @@ export function ReceiptFlowSection({
     <div className="flex flex-col">
       <div className="flex flex-col gap-3 mb-3 @xl:flex-row @xl:items-end @xl:justify-between">
         <div>
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Receipt consumption flow</h2>
+          <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Receipt consumption flow</h2>
           <p className="text-xs text-gray-500 mt-1">
             {receiptSummary ? `${receiptSummary.itemCount} confirmed receipt lines · ${fmt(receiptSummary.total)}` : 'Confirmed receipt lines'}
           </p>

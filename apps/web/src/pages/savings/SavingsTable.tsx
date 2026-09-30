@@ -2,6 +2,7 @@ import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DataTable, RowActionButton, type DataColumn } from '../../components/DataTable'
 import { AccountBadge, OwnershipBadges } from '../../components/entries/EntryBadges'
+import { ManualBadge } from '../../components/entries/PaymentMethodField'
 import { FREQUENCIES } from '../../lib/constants'
 import type { SavingsEntry } from './types'
 
@@ -63,12 +64,14 @@ export function SavingsTable({
           {e.ownership === 'SHARED' && <span className="text-xs text-gray-500">Shared</span>}
           <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
           <AccountBadge account={e.account} />
+          <ManualBadge paymentMethod={e.paymentMethod} />
         </span>
       ),
       summary: (e) => (
         <>
           <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
           <AccountBadge account={e.account} />
+          <ManualBadge paymentMethod={e.paymentMethod} />
         </>
       ),
     },
@@ -84,12 +87,12 @@ export function SavingsTable({
     {
       key: 'monthly', header: '/ month', align: 'right',
       cell: (e) => (
-        <span className="text-amber-400 tabular-nums font-medium whitespace-nowrap">
+        <span className="text-gray-100 tabular-nums font-medium whitespace-nowrap">
           {fmt(parseFloat(e.monthlyEquivalent), '')}
           <span className="ml-1 text-xs text-gray-500">{baseCurrency}</span>
         </span>
       ),
-      footer: <span className="text-amber-400 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
+      footer: <span className="text-gray-100 font-bold tabular-nums whitespace-nowrap">{fmt(totalMonthly)}</span>,
     },
   ]
 

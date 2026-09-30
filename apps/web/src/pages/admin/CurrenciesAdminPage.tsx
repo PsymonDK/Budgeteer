@@ -120,7 +120,7 @@ export function CurrenciesAdminPage() {
       cell: (c) => (
         <span className="font-mono font-semibold text-white">
           {c.code}
-          {c.isBase && <span className="ml-2 text-xs bg-amber-900/50 text-amber-300 px-1.5 py-0.5 rounded-full font-sans">base</span>}
+          {c.isBase && <span className="ml-2 text-xs bg-gray-800 text-gray-300 px-1.5 py-0.5 rounded-full font-sans">base</span>}
         </span>
       ),
     },

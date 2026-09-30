@@ -12,7 +12,7 @@ interface MemberObligationsProps {
 export function MemberObligations({ memberSplits, meId, memberBreakdownMap, fmt }: MemberObligationsProps) {
   return (
     <div className="flex flex-col">
-      <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Monthly obligations</h2>
+      <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Monthly obligations</h2>
       <div className={`grid gap-4 ${memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 @xl:grid-cols-2'}`}>
         {memberSplits.map((m) => {
           const isMe = m.userId === meId
@@ -41,9 +41,9 @@ export function MemberObligations({ memberSplits, meId, memberBreakdownMap, fmt 
               ) : (
                 <div className="mb-4" />
               )}
-              <div className={`flex justify-between items-baseline border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
+              <div className={`flex flex-wrap justify-between items-baseline gap-x-3 gap-y-1 border-t pt-3 ${isMe ? 'border-amber-800/40' : 'border-gray-800'}`}>
                 <span className="text-xs text-gray-500 uppercase tracking-wide">Amount to transfer / mo</span>
-                <span className={`text-xl font-bold tabular-nums ${isMe ? 'text-amber-400' : 'text-white'}`}>
+                <span className={`font-display text-2xl tabular-nums whitespace-nowrap ${isMe ? 'text-amber-400' : 'text-gray-100'}`}>
                   {fmt(memberBd?.monthlyTotal ?? parseFloat(m.monthlyTotalOwed))}
                 </span>
               </div>

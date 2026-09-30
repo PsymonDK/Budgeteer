@@ -5,6 +5,8 @@ import { FormError } from '../../components/FormError'
 import { AccountSelect } from '../../components/AccountSelect'
 import { OwnershipFields } from '../../components/OwnershipFields'
 import { EntryAmountFields } from '../../components/entries/EntryAmountFields'
+import { DueDayField } from '../../components/entries/DueDayField'
+import { PaymentMethodField } from '../../components/entries/PaymentMethodField'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { EntryForm } from './types'
 import { StickyActions } from '../../components/StickyActions'
@@ -100,6 +102,17 @@ export function SavingsFormModal({
             members={members}
             value={form}
             onChange={(next) => setForm({ ...form, ...next })}
+          />
+
+          <PaymentMethodField
+            value={form.paymentMethod}
+            onChange={(paymentMethod) => setForm({ ...form, paymentMethod })}
+          />
+
+          <DueDayField
+            value={form.dueDay}
+            frequency={form.frequency}
+            onChange={(dueDay) => setForm({ ...form, dueDay })}
           />
 
           <div>

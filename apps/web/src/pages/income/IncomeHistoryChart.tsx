@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
-import { legendInOrder } from '../../lib/charts'
+import { ENTITY, chartChrome, legendInOrder } from '../../lib/charts'
 import { toLocalISOMonth } from '../../lib/dates'
 import { segmentGroupPlain, segmentBtnSolid } from '../../lib/styles'
 import type { Granularity, HistoryBucket } from './types'
@@ -76,18 +76,18 @@ export function IncomeHistoryChart({ targetUserId, fmt }: IncomeHistoryChartProp
       ) : (
         <ResponsiveContainer width="100%" height={260}>
           <ComposedChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="period" tick={{ fill: '#9ca3af', fontSize: 11 }} />
-            <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+            <CartesianGrid {...chartChrome.grid} />
+            <XAxis dataKey="period" tick={chartChrome.tick} />
+            <YAxis tick={chartChrome.tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
             <Tooltip
-              contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: 8 }}
-              labelStyle={{ color: '#f9fafb', fontWeight: 600 }}
-              itemStyle={{ color: '#d1d5db' }}
+              contentStyle={chartChrome.tooltip.contentStyle}
+              labelStyle={chartChrome.tooltip.labelStyle}
+              itemStyle={chartChrome.tooltip.itemStyle}
               formatter={(value) => fmt(Number(value))}
             />
-            <Legend wrapperStyle={{ fontSize: 12, color: '#9ca3af' }} itemSorter={legendInOrder(['bonuses', 'gross', 'net'])} />
-            <Bar dataKey="bonuses" name="Bonuses" fill="#d97706" opacity={0.7} radius={[3, 3, 0, 0]} />
-            <Line type="monotone" dataKey={showGross ? 'gross' : 'net'} name={showGross ? 'Gross income' : 'Net income'} stroke="#fbbf24" strokeWidth={2} dot={false} />
+            <Legend wrapperStyle={chartChrome.legend} itemSorter={legendInOrder(['bonuses', 'gross', 'net'])} />
+            <Bar dataKey="bonuses" name="Bonuses" fill={ENTITY.bonuses} opacity={0.7} radius={[3, 3, 0, 0]} />
+            <Line type="monotone" dataKey={showGross ? 'gross' : 'net'} name={showGross ? 'Gross income' : 'Net income'} stroke={ENTITY.income} strokeWidth={2} dot={false} />
           </ComposedChart>
         </ResponsiveContainer>
       )}

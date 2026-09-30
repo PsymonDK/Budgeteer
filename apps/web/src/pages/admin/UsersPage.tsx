@@ -277,7 +277,7 @@ export function AdminUsersPage() {
               </Field>
             )}
             {createForm.isProxy && (
-              <p className="text-xs text-amber-400/80 bg-amber-950/30 border border-amber-900/50 rounded px-3 py-2">
+              <p className="text-xs text-orange-400/80 bg-orange-950/30 border border-orange-900/50 rounded px-3 py-2">
                 Proxy users cannot log in directly. A bookkeeper or admin can enter income on their behalf.
               </p>
             )}

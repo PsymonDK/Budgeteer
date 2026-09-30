@@ -152,7 +152,7 @@ export function MembersSection({ householdId: id, household, isAdmin, me }: Memb
                   <td className="px-4 py-3 text-gray-300">{m.user.email}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded ${
-                      m.role === 'ADMIN' ? 'bg-amber-900/50 text-amber-300' : 'bg-gray-800 text-gray-400'
+                      m.role === 'ADMIN' ? 'bg-gray-800 text-gray-100 ring-1 ring-inset ring-gray-600' : 'bg-gray-800 text-gray-400'
                     }`}>
                       {m.role === 'ADMIN' ? 'Admin' : 'Member'}
                     </span>

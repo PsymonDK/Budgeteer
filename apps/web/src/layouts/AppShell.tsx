@@ -4,6 +4,7 @@ import { Ellipsis, PanelLeftClose, PanelLeftOpen, Plus, X, type LucideIcon } fro
 import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { BrandMark } from '../components/BrandMark'
 
 export interface ShellNavItem {
   label: string
@@ -101,8 +102,9 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
     <div className="h-dvh bg-gray-950 text-white flex flex-col overflow-hidden">
       <header className="bg-gray-900 border-b border-gray-800 pt-[env(safe-area-inset-top)] flex-shrink-0">
         <div className="min-h-14 px-4 sm:px-6 flex items-center gap-3">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors whitespace-nowrap">
-            ☠️<span className="hidden sm:inline"> Budgeteer</span>
+          <Link to="/" aria-label="Budgeteer home" className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg hover:opacity-90 transition-opacity">
+            <BrandMark size={26} />
+            <span className="hidden sm:inline font-display text-xl leading-none text-gray-100">Budgeteer</span>
           </Link>
           {context && (
             <div className="min-w-0 flex items-center gap-3">

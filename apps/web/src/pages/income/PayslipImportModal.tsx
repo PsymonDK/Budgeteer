@@ -236,7 +236,7 @@ export function PayslipImportModal({ jobId, jobName, onClose, onExtracted }: Pay
       {/* ── AI tab ── */}
       {tab === 'ai' && (
         <div className="space-y-4">
-          <div className="bg-amber-950/50 border border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-300">
+          <div className="bg-orange-950/50 border border-orange-700 rounded-lg px-4 py-3 text-sm text-orange-300">
             <p className="font-medium mb-1">Privacy warning</p>
             <p>This will send your payslip data to Anthropic's API. Your payslip contains personal financial information including salary, tax, and pension details. Only proceed if you consent to this data leaving your system.</p>
           </div>

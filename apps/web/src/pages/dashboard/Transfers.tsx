@@ -1,41 +1,9 @@
-import { ArrowRightLeft } from 'lucide-react'
 import type { BudgetTransfer } from '../../hooks/useTransfers'
 import type { TransferBreakdown } from '../../hooks/useTransferBreakdown'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 type Fmt = (v: number | string) => string
-
-/** Next pending budget transfer with a "Mark as Paid" action. */
-export function TransferTile({ nextPending, onMarkPaid, fmt }: { nextPending: BudgetTransfer | null; onMarkPaid: (t: BudgetTransfer) => void; fmt: Fmt }) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <ArrowRightLeft size={16} className="text-amber-400" />
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">
-            {nextPending
-              ? `Transfer due — ${MONTH_NAMES[nextPending.month - 1]} ${nextPending.year}`
-              : 'Transfer'}
-          </h2>
-        </div>
-      </div>
-      {nextPending ? (
-        <div className="flex items-center justify-between">
-          <span className="text-2xl font-bold text-amber-400">{fmt(nextPending.calculatedAmount)}</span>
-          <button
-            onClick={() => onMarkPaid(nextPending)}
-            className="bg-amber-500 hover:bg-amber-400 text-gray-950 font-medium text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            Mark as Paid
-          </button>
-        </div>
-      ) : (
-        <p className="text-gray-500 text-sm">All transfers paid</p>
-      )}
-    </div>
-  )
-}
 
 interface TransferHistoryProps {
   transfers: BudgetTransfer[]
@@ -52,7 +20,7 @@ export function TransferHistory({ transfers, collapsed: historyCollapsed, onTogg
     <div>
       <button
         onClick={onToggleCollapsed}
-        className="flex items-center gap-2 text-sm font-medium text-gray-400 uppercase tracking-wide mb-3 hover:text-gray-300 transition-colors"
+        className="flex items-center gap-2 font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3 hover:text-gray-300 transition-colors"
       >
         <span>Transfer History</span>
         <span className="text-gray-600">{historyCollapsed ? '▸' : '▾'}</span>
@@ -88,7 +56,7 @@ export function TransferHistory({ transfers, collapsed: historyCollapsed, onTogg
                     <td className="px-4 py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                         t.status === 'PAID' ? 'bg-green-900/50 text-green-300' :
-                        t.status === 'ADJUSTED' ? 'bg-amber-900/50 text-amber-300' :
+                        t.status === 'ADJUSTED' ? 'bg-orange-900/50 text-orange-300' :
                         'bg-gray-800 text-gray-400'
                       }`}>
                         {t.status}
@@ -131,7 +99,7 @@ export function TransferByAccount({ breakdown, fmt }: { breakdown: TransferBreak
   if (!breakdown || breakdown.byAccount.length === 0) return null
   return (
     <div className="flex flex-col">
-      <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Transfer by account</h2>
+      <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Transfer by account</h2>
       <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -179,7 +147,7 @@ export function MarkPaidDialog({ transfer: markPaidTransfer, amount: markPaidAmo
         <p className="text-gray-400 text-sm mb-4">
           {MONTH_NAMES[(markPaidTransfer.month - 1) % 12]} {markPaidTransfer.year}
         </p>
-        <label className="block text-xs text-gray-400 uppercase tracking-wide mb-1">
+        <label className="block font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-1">
           Actual amount transferred
         </label>
         <input

@@ -19,6 +19,16 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Recharts** — budget visualisations
 - **D3 / Sankey** — income and receipt consumption flow diagrams
 
+### Visual identity (Chart & Ledger)
+- **Colour tokens**: `src/index.css` defines RGB-channel ramps as CSS variables — `sea` (neutrals), `brass` (primary actions, your money), `port` (deficit, destructive), `starboard` (surplus, success), `slate` (savings, info), `plum` (custom splits), `lantern` (warnings, needs attention). `tailwind.config.js` points Tailwind's `gray`, `amber`, `red`, `green`/`emerald`, `blue`, `purple` and `orange` scales at them, so existing classes use the palette and a light theme can redefine the variables.
+- **Type**: self-hosted with `@fontsource` (no third-party font requests) — Schibsted Grotesk (`font-sans`, interface), Libre Caslon Display (`font-display`, page titles and headline figures), Libre Caslon Text italic (`font-serif`, the pirate voice, sparingly), IBM Plex Mono (`font-mono`, labels, column heads, currency codes). Latin subsets only.
+- **Light and dark themes**: Night watch (dark) is the default; Day chart (light) redefines the same variables. Light ramps keep each step's role (950 page, 900 cards, 800 borders, 400 secondary text, 100 primary text), so they run the other way and components need no `dark:` variants; Tailwind's `white` is a variable too (white in dark, ink in light) because it is used as primary text — use `#fff` literally only where white must stay white (avatar initials, switch knobs). Chart colours (`lib/charts.ts`) are CSS-variable strings (`--series-1..6`, sea steps), so charts follow the theme; don't append hex alpha to them. Profile → Appearance offers System / Day chart / Night watch, stored per browser in `localStorage` (`budgeteer.theme`, `lib/theme.ts`) and applied by a small script in `index.html` before the first paint; System uses `prefers-color-scheme`, a choice sets `data-theme` on `<html>`. Toasts follow the same choice.
+- **One meaning per colour**: brass (`amber-*`) is only for primary actions and money you act on (the transfer due, your share); figures and totals use neutral ink; warnings use lantern (`orange-*`); selected filters and toggles use the neutrals.
+- **Components** (`lib/styles.ts`): primary (brass, dark text), secondary (outlined), danger (port outline with a faint fill) buttons with a shared keyboard focus ring; inputs on an inset background; segmented toggles as an inset track with the active option raised. `StatusBadge` adds a shape marker per budget-year status (filled dot active, ring future, diamond simulation, square retired) so status reads without colour.
+- **Voice**: headlines, labels and buttons say plainly what happens; the pirate voice goes in secondary lines. `components/EmptyState.tsx` renders a plain title, an optional italic Caslon `aside` for the pirate line, and the next action.
+- **Brand mark**: `components/BrandMark.tsx` (compass-rose doubloon, `currentColor`) in the header, footer and login page; `public/favicon.svg` is the same mark.
+- **Chart colours** (`lib/charts.ts`): one categorical palette of six colours in a fixed order, checked for colour-vision-deficiency separation — assign in order, and anything past the sixth series uses the neutral `SERIES_REST`. `ENTITY` fixes colours per thing (income teal, expenses brass, savings slate, surplus sage, bonuses plum); `chartChrome` gives every Recharts chart the same grid, axis, tooltip and legend styling. No hex colours outside `lib/charts.ts` and the avatar palette.
+
 ### App shell and breakpoints
 - **`layouts/AppShell.tsx`** is the frame for all signed-in areas. `HouseholdLayout`, `GlobalLayout` (personal pages) and `AdminLayout` only pass it their navigation, header content and phone tab-bar setup.
 - **Size classes**: below 640px a bottom tab bar (optional centre quick action, "More" opens the full menu as a drawer); 640–1023px a 64px icon rail; from 1024px a 224px sidebar (248px from 2200px), which users can collapse to the rail (stored per browser in `localStorage`, `budgeteer.sidebarCollapsed`).
@@ -32,6 +42,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
   - `form`: profile, household settings, change password, new receipt — 56rem, centred
 - **Container queries** (`@tailwindcss/container-queries`): components that sit in variable-width cells style themselves by their own width (`@container` + `@xl:…`), not the viewport.
 - **Dashboard widget grid** (`components/WidgetGrid.tsx`): the household and personal dashboards are a `<WidgetGrid>` of `<Widget span={{ 2, 3, 4, 6 }}>` tiles. The grid has 1 column, then 2 from 600px, 3 from 960px, 4 from 1400px and 6 from 2200px of its own width, and packs rows densely; each widget sets how many columns it spans at each count. A widget whose content renders nothing takes no cell. Widget content fills the cell height, so tiles in a row line up; long lists (the dashboard expense list) scroll inside their tile instead of stretching the row.
+- **Dashboard month hero** (`pages/dashboard/MonthHero.tsx`): the household dashboard's first widget, spanning the grid, in a graduated chart-frame border (`.chart-frame` in `index.css`). It shows the surplus and the income split bar (`incomeSplit` from the summary), the next pending transfer with Mark as paid, and `PaymentsTimeline` — the month's payments from `/budget-years/:id/payments` as dots on a 1–N day line (filled once paid, or once the day has passed for untracked households), a today marker in the current month, a "No set day" list, and a List view as the text alternative. The SVG is drawn at its measured pixel width so labels stay 10px at every size.
 - **List tables** (`components/DataTable.tsx`): Expenses, Savings, Trash and the admin pages (users, households, currencies, categories) render a `DataTable` from column definitions. Each column has a priority and appears by the table's own width (1 always, 2 from 520px, 3 from 780px, 4 from 1150px, 5 from 1500px); a hidden column's `summary` shows under the row label instead, so tables have no minimum width and phones never scroll sideways. It also handles sorting, row selection for bulk edit, per-column footers and hover-revealed row actions (always visible on touch screens).
 - **Detail pane** (`components/DetailPane.tsx`): from 1440px, clicking an expense or savings row opens it in a side pane beside the list (`ListWithDetail` + `DetailPane`); below that, a click opens the edit form. The selection is kept in `?selected=` (`useDetailSelection`). Pane content only displays API values — no calculations.
 - **Dialogs** (`components/Modal.tsx`): below 640px every `Modal` (and `ConfirmDialog`, which builds on it) is a bottom sheet — full width, anchored to the bottom edge with the safe-area inset, title bar pinned while the content scrolls; from 640px it is a centred dialog. The dialog is a container, so form grids inside add columns with `@sm:`/`@xl:` only when the dialog is wide enough. It has `role="dialog"`, moves focus inside on open and returns it on close. The two hand-built overlays (Mark as Paid, automation run history) follow the same sheet layout.
@@ -149,6 +160,8 @@ budgeteer/
 
 **expenses** — recurring expenses on a budget year
 - budgetYearId, categoryId, label, amount, frequency, frequencyPeriod, startMonth, endMonth, monthlyEquivalent, forwardMonthlyEquivalent, notes
+- dueDay (nullable, 1–31) — day of the month it's paid, for the dashboard's payments timeline; days past a month's end fall on its last day; ignored for WEEKLY/FORTNIGHTLY
+- paymentMethod (`AUTOMATIC` | `MANUAL`, default AUTOMATIC) — how it's paid; in PAY_NO_PAY households only MANUAL items are listed to tick off, AUTOMATIC ones are marked paid at month close
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -192,6 +205,7 @@ budgeteer/
 
 **savings_entries** — planned savings on a budget year
 - budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, forwardMonthlyEquivalent, notes
+- dueDay (nullable, 1–31), paymentMethod — as on expenses
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable), categoryId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -210,8 +224,8 @@ budgeteer/
 
 **Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
 - Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
-- Members mark items PAID one by one or all at once for a month (`actualAmount` = amount due)
-- Month rollover (1st of the month automation) closes the previous month: PENDING → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent
+- Members mark MANUAL items PAID one by one or all at once for a month (`actualAmount` = amount due); AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+- Month rollover (1st of the month automation) closes the previous month (`closePayNoPayMonth`, planned by `planMonthClose`): PENDING AUTOMATIC → PAID with the full amount due, PENDING MANUAL → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent. Switching an entry's payment method rewrites no rows; the next close applies it
 - At the year boundary December is closed without carry — the new year's expenses are separate rows
 
 **currencies** — admin-managed catalog of available currencies
@@ -435,7 +449,7 @@ PUT    /households/:id/members/:memberId
 DELETE /households/:id/members/:memberId
 GET    /households/:id/budget-years
 POST   /households/:id/budget-years
-GET    /households/:id/summary
+GET    /households/:id/summary                          # totals, surplus, savingsRate, incomeSplit (% of income), flows, member splits
 GET    /households/:id/trash                            # trashed expenses and savings entries
 POST   /households/:id/trash/:kind/:itemId/restore      # kind = expense | savings (not in RETIRED years)
 GET    /households/:id/income-summary
@@ -487,9 +501,10 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
-GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY items for a month (default: current)
+GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY manual items for a month (default: current), plus automaticCount
+GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day and payment method, sorted by day; manualCount, plus paid status and manual paid/unpaid totals for PAY_NO_PAY
 PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
-POST   /budget-years/:id/occurrences/mark-all-paid       # { month }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only
 
 GET    /categories
 POST   /categories

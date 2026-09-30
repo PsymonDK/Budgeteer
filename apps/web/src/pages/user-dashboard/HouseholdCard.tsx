@@ -18,7 +18,7 @@ export function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { hou
           <div className="flex items-center gap-2 flex-wrap mb-3">
             <h3 className="text-base font-semibold text-white truncate">{h.name}</h3>
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              h.myRole === 'ADMIN' ? 'bg-amber-900/50 text-amber-300' : 'bg-gray-800 text-gray-400'
+              h.myRole === 'ADMIN' ? 'bg-gray-800 text-gray-100 ring-1 ring-inset ring-gray-600' : 'bg-gray-800 text-gray-400'
             }`}>
               {h.myRole === 'ADMIN' ? 'Admin' : 'Member'}
             </span>
@@ -38,7 +38,7 @@ export function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { hou
           {(h.warnings.expensesExceedIncome || h.warnings.noSavings) && (
             <div className="flex gap-2 mt-3 flex-wrap">
               {h.warnings.expensesExceedIncome && (
-                <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded-full px-2 py-0.5">
+                <span className="flex items-center gap-1 text-xs text-orange-400 bg-orange-900/20 border border-orange-800/30 rounded-full px-2 py-0.5">
                   <TriangleAlert size={10} /> Expenses exceed income
                 </span>
               )}

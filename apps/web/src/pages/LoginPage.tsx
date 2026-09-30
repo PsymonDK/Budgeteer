@@ -4,6 +4,7 @@ import axios from 'axios'
 import { useAuth } from '../contexts/AuthContext'
 import { inputClass } from '../lib/styles'
 import { FormError } from '../components/FormError'
+import { BrandMark } from '../components/BrandMark'
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -35,7 +36,10 @@ export function LoginPage() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-amber-400">☠️ Personal Budgeteer</h1>
+          <h1 className="inline-flex items-center gap-3 font-display text-4xl text-gray-100">
+            <BrandMark size={40} cutout="rgb(var(--sea-950))" />
+            Budgeteer
+          </h1>
           <p className="text-gray-400 mt-2">Your treasure map to financial freedom</p>
         </div>
 

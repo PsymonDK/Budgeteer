@@ -17,6 +17,7 @@ import { IncomeFlowCard, IncomeTrendCard } from './IncomeDetail'
 import type { IncomeSankeyData, IncomeTrend, NewHousehold, PersonalDashboard, UserSummary } from './types'
 import { Page } from '../../components/Page'
 import { Widget, WidgetGrid } from '../../components/WidgetGrid'
+import { EmptyState } from '../../components/EmptyState'
 
 /** Personal dashboard: income/expense/savings tiles, households and income detail. */
 export function UserDashboardPage() {
@@ -89,7 +90,7 @@ export function UserDashboardPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+            <h1 className="font-display text-3xl leading-tight text-white">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
           <div className="flex items-center gap-3">
@@ -130,11 +131,11 @@ export function UserDashboardPage() {
                 <div className="flex flex-col">
                   <h2 className="text-base font-semibold text-gray-200 mb-4">Your households</h2>
                   {households.length === 0 ? (
-                    <div className="flex-1 text-center py-16 text-gray-500">
-                      <PiggyBank size={40} className="mx-auto mb-4 opacity-30" />
-                      <p className="text-lg mb-2">No crews assembled yet</p>
-                      <p className="text-sm">Create a household to get started.</p>
-                    </div>
+                    <EmptyState
+                      icon={<PiggyBank size={36} strokeWidth={1.5} />}
+                      title="No households yet"
+                      aside="Every ship needs a crew. Create a household to begin."
+                    />
                   ) : (
                     <div className="space-y-3">
                       {households.map((h) => (

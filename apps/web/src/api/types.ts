@@ -14,6 +14,9 @@ export type CategoryType = 'EXPENSE' | 'SAVINGS'
 /** Ownership of an expense or savings entry. */
 export type Ownership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
 
+/** How an expense or savings entry is paid; MANUAL ones are listed to tick off in Pay/No-pay households */
+export type PaymentMethod = 'AUTOMATIC' | 'MANUAL'
+
 // ── Households ────────────────────────────────────────────────────────────────
 
 /** A membership row as included by GET /households and GET /households/:id. */
@@ -201,4 +204,34 @@ export interface ReceiptConsumptionSummary {
   byCategory: Array<{ categoryId: string | null; categoryName: string; categoryIcon: string | null; total: string; itemCount: number }>
   bySubcategory: Array<{ categoryId: string | null; categoryName: string; subcategoryId: string | null; subcategoryName: string; total: string; itemCount: number }>
   byMonth: Array<{ month: string; total: string }>
+}
+
+/** One expense or savings payment in a month (GET /budget-years/:id/payments). */
+export interface MonthPayment {
+  kind: 'expense' | 'savings'
+  entryId: string
+  label: string
+  categoryName: string | null
+  /** Day of the month, already clamped to the month's length; null = no set day */
+  day: number | null
+  /** Set for entries paid several times a month; they have no single day */
+  recurrence: 'WEEKLY' | 'FORTNIGHTLY' | null
+  paymentMethod: PaymentMethod
+  /** Amount due this month, base currency */
+  amount: string
+  /** Paid status for Pay/No-pay households; null otherwise */
+  status: 'PENDING' | 'PAID' | 'SKIPPED' | null
+}
+
+/** GET /budget-years/:id/payments */
+export interface MonthPayments {
+  budgetModel: 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
+  year: number
+  month: number
+  /** Whether items carry a paid status (Pay/No-pay) */
+  tracked: boolean
+  /** Sorted by day, items without a day last */
+  items: MonthPayment[]
+  /** Skipped (closed) items are left out; paidCount/unpaid count manual items, only when tracked */
+  totals: { count: number; due: string; manualCount: number; paidCount: number | null; unpaid: string | null }
 }

@@ -35,7 +35,7 @@ export function AccountFilterChips({ accounts, selected, setSelected, className 
           })}
           className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
             selected.has(a.id)
-              ? 'bg-amber-400 border-amber-400 text-gray-950 font-medium'
+              ? 'bg-gray-200 border-gray-200 text-gray-950 font-medium'
               : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
           }`}
         >

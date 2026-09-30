@@ -12,6 +12,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { HouseholdLayout } from './layouts/HouseholdLayout'
 import { GlobalLayout } from './layouts/GlobalLayout'
 import { AdminLayout } from './layouts/AdminLayout'
+import { useThemePreference } from './lib/theme'
 
 // Route pages load on demand (one chunk each) so the initial bundle only holds
 // the shell: layouts, auth, login and the error pages.
@@ -49,13 +50,19 @@ function page(element: ReactNode) {
 
 const queryClient = new QueryClient()
 
+/** Toasts follow Profile → Appearance (System / light / dark). */
+function ThemedToaster() {
+  const [theme] = useThemePreference()
+  return <Toaster theme={theme} richColors position="top-right" />
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
           <HouseholdProvider>
-          <Toaster theme="dark" richColors position="top-right" />
+          <ThemedToaster />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route

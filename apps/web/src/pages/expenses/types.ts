@@ -1,4 +1,4 @@
-import type { AccountInfo, Category, CustomSplitInput, Ownership } from '../../api/types'
+import type { AccountInfo, Category, CustomSplitInput, Ownership, PaymentMethod } from '../../api/types'
 import type { Frequency } from '../../lib/constants'
 
 /** GET /budget-years/:id/expenses */
@@ -10,6 +10,9 @@ export interface Expense {
   frequencyPeriod: string | null
   startMonth: number | null
   endMonth: number | null
+  /** Day of the month it's paid (1–31); null = no set day */
+  dueDay: number | null
+  paymentMethod: PaymentMethod
   monthlyEquivalent: string
   monthlyWhenActive: string
   amountInBase: string
@@ -38,6 +41,9 @@ export interface ExpenseForm {
   frequencyPeriod: string
   startMonth: string
   endMonth: string
+  /** '' = no set day */
+  dueDay: string
+  paymentMethod: PaymentMethod
   notes: string
   currencyCode: string
   ownership: Ownership
