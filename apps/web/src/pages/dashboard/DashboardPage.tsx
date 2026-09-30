@@ -166,7 +166,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <h1 className="text-2xl font-semibold mb-1">{household?.name ?? '…'}</h1>
+      <h1 className="font-display text-3xl leading-tight mb-1">{household?.name ?? '…'}</h1>
       <p className="text-gray-400 text-sm mb-6">Dashboard</p>
 
       {/* DASH-003: Warning banners */}
@@ -242,7 +242,7 @@ export function DashboardPage() {
             {sankeyData && sankeyData.links.length > 0 && (
               <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 4 }}>
                 <div className="flex flex-col">
-                  <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
+                  <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Income flow</h2>
                   <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5">
                     <SankeyChart data={sankeyData} currency={baseCurrency} />
                   </div>

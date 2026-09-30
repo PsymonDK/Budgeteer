@@ -5,6 +5,7 @@ import type {
   ConfirmReceiptBody, HeaderDraft, LineDraft, Receipt, ReceiptConfidence, ReceiptHeaderUpdate, ReceiptLineItem,
   ReceiptLineUpdate, ReceiptMappingImportStatus, ReceiptStatus,
 } from './types'
+import { SERIES, SERIES_REST } from '../../lib/charts'
 
 export const EMPTY_MANUAL_LINE: LineDraft = {
   label: '',
@@ -57,7 +58,8 @@ export const RECEIPT_PERIOD_OPTIONS: Array<{ value: ReceiptSummaryPeriod; label:
   { value: 'custom', label: 'Custom' },
 ]
 
-export const CATEGORY_COLORS = ['#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#a78bfa']
+/** Receipt category colours: the chart palette in order, then the neutral for "the rest". */
+export const CATEGORY_COLORS = [...SERIES, SERIES_REST, SERIES_REST, SERIES_REST, SERIES_REST]
 
 // ── Drafts ────────────────────────────────────────────────────────────────────
 

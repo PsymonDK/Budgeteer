@@ -89,18 +89,18 @@ export function HouseholdIncomePage() {
           {/* Summary cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Total / month</p>
+              <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-1">Total / month</p>
               <p className="text-2xl font-bold text-amber-400">{fmt(totalMonthly)}</p>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Members contributing</p>
+              <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-1">Members contributing</p>
               <p className="text-2xl font-bold text-white">
                 {summary.members.filter((m) => parseFloat(m.monthlyAllocated) > 0).length}
                 <span className="text-gray-500 text-base font-normal"> / {summary.members.length}</span>
               </p>
             </div>
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-              <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Annual equivalent</p>
+              <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-1">Annual equivalent</p>
               <p className="text-2xl font-bold text-white">{fmt(totalMonthly * 12)}</p>
             </div>
           </div>

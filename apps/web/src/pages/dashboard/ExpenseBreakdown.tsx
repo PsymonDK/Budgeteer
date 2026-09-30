@@ -22,7 +22,7 @@ export function ExpenseList({ summary, expenses, expenseView, setExpenseView, ho
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between gap-3 mb-3">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Expenses</h2>
+        <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Expenses</h2>
         {/* DASH-002: monthly / actual toggle */}
         <div className={segmentGroup}>
           <button
@@ -115,7 +115,7 @@ export function CategoryBreakdown({ summary, expenses, fmt }: BreakdownProps) {
   if (summary.expenses.byCategory.length === 0) return null
   return (
     <div className="flex flex-col">
-      <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">By category</h2>
+      <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">By category</h2>
       <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-2">
         {summary.expenses.byCategory.map((c) => {
           const pct = expenses > 0 ? (parseFloat(c.totalMonthly) / expenses) * 100 : 0
@@ -148,7 +148,7 @@ export function AccountBreakdown({ summary, expenses, fmt }: BreakdownProps) {
   if (!(summary.expenses.byAccount?.length > 0)) return null
   return (
     <div className="flex flex-col">
-      <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">By account</h2>
+      <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">By account</h2>
       <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-2">
         {summary.expenses.byAccount.map((a) => {
           const pct = expenses > 0 ? (parseFloat(a.totalMonthly) / expenses) * 100 : 0

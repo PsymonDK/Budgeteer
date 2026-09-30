@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { PiggyBank, Briefcase, Receipt } from 'lucide-react'
 import { Sparkline } from '../../components/Sparkline'
 import type { PersonalDashboard } from './types'
+import { ENTITY } from '../../lib/charts'
 
 interface PrimaryTilesProps {
   dashboard: PersonalDashboard | undefined
@@ -23,9 +24,9 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
       >
         <div className="flex items-center gap-2 mb-3">
           <Briefcase size={14} className="text-amber-400" />
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Income</p>
+          <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest font-medium">Income</p>
         </div>
-        <p className="text-2xl font-bold text-amber-400">{pfmt(dashboard?.income.grossMonthly ?? '0')}</p>
+        <p className="font-display text-3xl text-gray-100 tabular-nums">{pfmt(dashboard?.income.grossMonthly ?? '0')}</p>
         <p className="text-xs text-gray-500 mt-0.5">Net: <span className="text-gray-300">{pfmt(dashboard?.income.netMonthly ?? '0')}</span></p>
         <div className="mt-3 space-y-1">
           <div className="flex justify-between text-xs">
@@ -44,7 +45,7 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
         </div>
         {showSparklines && dashboard && dashboard.income.sparkline.length >= 2 && (
           <div className="mt-4">
-            <Sparkline data={dashboard.income.sparkline.map((s) => ({ value: s.gross }))} color="#f59e0b" />
+            <Sparkline data={dashboard.income.sparkline.map((s) => ({ value: s.gross }))} color={ENTITY.income} />
           </div>
         )}
         <p className="text-xs text-gray-600 mt-2">{periodLabel}</p>
@@ -54,9 +55,9 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
           <Receipt size={14} className="text-red-400" />
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Expenses</p>
+          <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest font-medium">Expenses</p>
         </div>
-        <p className="text-2xl font-bold text-red-400">{pfmt(dashboard?.expenses.total.monthlyEquivalent ?? '0')}</p>
+        <p className="font-display text-3xl text-gray-100 tabular-nums">{pfmt(dashboard?.expenses.total.monthlyEquivalent ?? '0')}</p>
         <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
         <div className="mt-3 space-y-1">
           <div className="flex justify-between text-xs">
@@ -70,7 +71,7 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
         </div>
         {showSparklines && dashboard && dashboard.expenses.householdShare.sparkline.length >= 2 && (
           <div className="mt-4">
-            <Sparkline data={dashboard.expenses.householdShare.sparkline.map((s) => ({ value: s.amount }))} color="#ef4444" />
+            <Sparkline data={dashboard.expenses.householdShare.sparkline.map((s) => ({ value: s.amount }))} color={ENTITY.expenses} />
           </div>
         )}
       </div>
@@ -79,9 +80,9 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-3">
           <PiggyBank size={14} className="text-blue-400" />
-          <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">Savings</p>
+          <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest font-medium">Savings</p>
         </div>
-        <p className="text-2xl font-bold text-blue-400">{pfmt(dashboard?.savings.monthlyEquivalent ?? '0')}</p>
+        <p className="font-display text-3xl text-blue-400 tabular-nums">{pfmt(dashboard?.savings.monthlyEquivalent ?? '0')}</p>
         <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>
         <div className="mt-3 space-y-1">
           <div className="flex justify-between text-xs">
@@ -95,7 +96,7 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
         </div>
         {showSparklines && dashboard && dashboard.savings.sparkline.length >= 2 && (
           <div className="mt-4">
-            <Sparkline data={dashboard.savings.sparkline.map((s) => ({ value: s.amount }))} color="#3b82f6" />
+            <Sparkline data={dashboard.savings.sparkline.map((s) => ({ value: s.amount }))} color={ENTITY.savings} />
           </div>
         )}
       </div>
@@ -107,9 +108,9 @@ export function PrimaryTiles({ dashboard, showSparklines, pfmt, periodLabel }: P
         return (
           <div className={`rounded-xl border p-5 ${pos ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-red-950/30 border-red-900/50'}`}>
             <div className="flex items-center gap-2 mb-3">
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-medium">{pos ? 'Surplus' : 'Deficit'}</p>
+              <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest font-medium">{pos ? 'Surplus' : 'Deficit'}</p>
             </div>
-            <p className={`text-2xl font-bold ${pos ? 'text-emerald-400' : 'text-red-400'}`}>
+            <p className={`font-display text-3xl tabular-nums ${pos ? 'text-emerald-400' : 'text-red-400'}`}>
               {!pos && '−'}{pfmt(Math.abs(surplusAmt).toFixed(2))}
             </p>
             <p className="text-xs text-gray-600 mt-0.5">{periodLabel}</p>

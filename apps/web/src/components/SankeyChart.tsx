@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { sankey, sankeyLinkHorizontal, SankeyNode, SankeyLink } from 'd3-sankey'
+import { CHART, ENTITY, SERIES, SERIES_REST } from '../lib/charts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -29,20 +30,17 @@ interface SankeyExtLink {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const FALLBACK_COLORS = [
-  '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
-  '#ec4899', '#06b6d4', '#84cc16',
-]
+const FALLBACK_COLORS = [...SERIES]
 
 // Fixed colors for well-known deduction node IDs
 const NODE_ID_COLORS: Record<string, string> = {
-  brutto_benefits: '#8b5cf6',
-  am_bidrag: '#ef4444',
-  a_skat: '#f97316',
-  pension_employee: '#eab308',
-  atp: '#6b7280',
-  other_deductions: '#9ca3af',
-  net_pay: '#10b981',
+  brutto_benefits: SERIES[5],
+  am_bidrag: SERIES[4],
+  a_skat: SERIES[2],
+  pension_employee: SERIES[1],
+  atp: SERIES_REST,
+  other_deductions: CHART.muted,
+  net_pay: ENTITY.income,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -141,7 +139,7 @@ export function SankeyChart({ data, currency = '', height: heightProp }: { data:
         <svg width={width} height={height} style={{ fontFamily: 'inherit' }}>
           {links.map((link, i) => {
             const srcId = (link.source as unknown as SankeyExtNode).id
-            const color = colorMap.get(srcId) ?? '#6b7280'
+            const color = colorMap.get(srcId) ?? SERIES_REST
             const d = linkPath(link as unknown as SankeyLink<SankeyNode<SankeyExtNode, SankeyExtLink>, SankeyExtLink>)
             return (
               <path key={i} d={d ?? ''} fill="none" stroke={color} strokeOpacity={0.35}
@@ -164,10 +162,10 @@ export function SankeyChart({ data, currency = '', height: heightProp }: { data:
                 <rect x={x0} y={y0} height={Math.max(1, y1 - y0)} width={x1 - x0} fill={color} fillOpacity={0.9} rx={2}>
                   <title>{`${node.name}: ${fmt(nodeValue)}`}</title>
                 </rect>
-                <text x={labelX} y={midY - 7} textAnchor={anchor} dominantBaseline="middle" fontSize={11} fill="#d1d5db">
+                <text x={labelX} y={midY - 7} textAnchor={anchor} dominantBaseline="middle" fontSize={11} fill={CHART.text}>
                   {node.name}
                 </text>
-                <text x={labelX} y={midY + 7} textAnchor={anchor} dominantBaseline="middle" fontSize={10} fill="#9ca3af">
+                <text x={labelX} y={midY + 7} textAnchor={anchor} dominantBaseline="middle" fontSize={10} fill={CHART.muted}>
                   {fmt(nodeValue)}
                 </text>
               </g>

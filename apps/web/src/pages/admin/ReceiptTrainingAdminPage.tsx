@@ -157,7 +157,7 @@ export function ReceiptTrainingAdminPage() {
     <Page template="list">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-semibold">Receipt training</h1>
+          <h1 className="font-display text-3xl leading-tight">Receipt training</h1>
           <p className="text-sm text-gray-500 mt-1">Maintain system receipt vocabulary, category mappings, and subcategories.</p>
         </div>
         <label className="w-full lg:w-80">

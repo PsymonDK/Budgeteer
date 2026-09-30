@@ -63,7 +63,7 @@ export function HouseholdNameHeader({ householdId: id, household, isAdmin }: { h
         </form>
       ) : (
         <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold">{household.name}</h1>
+          <h1 className="font-display text-4xl leading-tight">{household.name}</h1>
           {isAdmin && (
             <button onClick={startEditName} className="text-gray-500 hover:text-gray-300 transition-colors text-sm">
               Edit

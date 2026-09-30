@@ -62,7 +62,7 @@ export function ChangePasswordPage() {
             </div>
           )}
 
-          <h1 className="text-2xl font-semibold mb-6">Change password</h1>
+          <h1 className="font-display text-3xl leading-tight mb-6">Change password</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

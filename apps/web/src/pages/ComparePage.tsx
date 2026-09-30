@@ -256,7 +256,7 @@ export function ComparePage() {
               const delta = parseFloat(line.delta)
               return (
                 <div key={key} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-2">{label}</p>
+                  <p className="font-mono text-[11px] text-gray-400 uppercase tracking-widest mb-2">{label}</p>
                   <div className="flex items-baseline justify-between mb-1">
                     <span className="text-gray-500 text-xs">A</span>
                     <span className="text-gray-300 tabular-nums text-sm">{fmt(a, period)}</span>

@@ -1,4 +1,5 @@
 import { AreaChart, Area, ResponsiveContainer } from 'recharts'
+import { ENTITY } from '../lib/charts'
 
 interface SparklineProps {
   data: { value: number }[]
@@ -6,7 +7,7 @@ interface SparklineProps {
   height?: number
 }
 
-export function Sparkline({ data, color = '#f59e0b', height = 40 }: SparklineProps) {
+export function Sparkline({ data, color = ENTITY.income, height = 40 }: SparklineProps) {
   if (data.length < 2) return null
   return (
     <ResponsiveContainer width="100%" height={height}>

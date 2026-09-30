@@ -1,3 +1,31 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Chart & Ledger colour tokens (Night watch, the dark theme).
+ * Tailwind's gray / amber / red / green / emerald / blue / purple scales point at these ramps
+ * (see tailwind.config.js), so existing classes pick up the palette. Values are RGB channels so
+ * opacity modifiers like bg-gray-900/60 keep working. A light theme redefines the same variables.
+ */
+@layer base {
+  :root {
+    /* sea */
+    --sea-50: 244 247 248; --sea-100: 232 238 241; --sea-200: 214 224 230; --sea-300: 188 202 211; --sea-400: 151 170 183; --sea-500: 113 135 151; --sea-600: 79 101 117; --sea-700: 52 73 90; --sea-800: 31 49 64; --sea-900: 19 31 40; --sea-950: 10 19 25;
+    /* brass */
+    --brass-50: 251 245 232; --brass-100: 245 231 200; --brass-200: 237 211 158; --brass-300: 230 194 122; --brass-400: 221 170 78; --brass-500: 201 147 47; --brass-600: 169 122 34; --brass-700: 134 96 27; --brass-800: 101 72 23; --brass-900: 74 53 18; --brass-950: 43 31 12;
+    /* port */
+    --port-50: 253 241 240; --port-100: 251 224 221; --port-200: 246 193 188; --port-300: 241 154 146; --port-400: 238 107 96; --port-500: 224 73 61; --port-600: 194 55 44; --port-700: 158 44 36; --port-800: 125 38 32; --port-900: 96 32 28; --port-950: 52 16 13;
+    /* starboard */
+    --starboard-50: 237 250 243; --starboard-100: 211 242 226; --starboard-200: 168 228 198; --starboard-300: 123 212 167; --starboard-400: 76 195 138; --starboard-500: 47 166 113; --starboard-600: 35 133 91; --starboard-700: 30 106 74; --starboard-800: 27 84 60; --starboard-900: 22 67 49; --starboard-950: 11 38 28;
+    /* slate */
+    --slate-50: 238 243 252; --slate-100: 218 228 248; --slate-200: 184 203 241; --slate-300: 146 174 231; --slate-400: 111 147 220; --slate-500: 84 126 205; --slate-600: 64 100 176; --slate-700: 52 80 142; --slate-800: 44 67 113; --slate-900: 38 58 94; --slate-950: 23 35 58;
+    /* plum */
+    --plum-50: 250 240 246; --plum-100: 243 220 234; --plum-200: 231 185 213; --plum-300: 215 147 189; --plum-400: 194 113 165; --plum-500: 165 83 140; --plum-600: 138 65 116; --plum-700: 112 53 94; --plum-800: 90 44 76; --plum-900: 74 38 63; --plum-950: 44 19 37;
+    color-scheme: dark;
+  }
+
+  ::selection {
+    background: rgb(var(--brass-400) / 0.35);
+  }
+}

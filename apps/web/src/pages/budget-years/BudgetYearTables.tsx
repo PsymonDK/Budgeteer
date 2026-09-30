@@ -18,7 +18,7 @@ interface RegularYearsTableProps {
 export function RegularYearsTable({ householdId, years: regularYears, isAdmin, currentYear, onCopy, onRetire, onPromote, onDelete }: RegularYearsTableProps) {
   return (
     <section className="mb-8">
-      <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Budget Years</h2>
+      <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Budget Years</h2>
       {regularYears.length === 0 ? (
         <div className="text-gray-600 text-sm py-8 text-center bg-gray-900 border border-gray-800 rounded-xl">
           Your treasure chest is empty — no budget years yet.
@@ -121,7 +121,7 @@ export function SimulationsTable({ householdId, simulations, canCreate, onNewSim
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Simulations</h2>
+        <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Simulations</h2>
         {canCreate && (
           <button
             onClick={onNewSimulation}

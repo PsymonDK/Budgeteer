@@ -19,6 +19,12 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Recharts** — budget visualisations
 - **D3 / Sankey** — income and receipt consumption flow diagrams
 
+### Visual identity (Chart & Ledger)
+- **Colour tokens**: `src/index.css` defines RGB-channel ramps as CSS variables — `sea` (neutrals), `brass` (primary actions, your money), `port` (deficit, destructive), `starboard` (surplus, success), `slate` (savings, info), `plum` (custom splits). `tailwind.config.js` points Tailwind's `gray`, `amber`, `red`, `green`/`emerald`, `blue` and `purple` scales at them, so existing classes use the palette and a light theme can redefine the variables.
+- **Type**: self-hosted with `@fontsource` (no third-party font requests) — Schibsted Grotesk (`font-sans`, interface), Libre Caslon Display (`font-display`, page titles and headline figures), Libre Caslon Text italic (`font-serif`, the pirate voice, sparingly), IBM Plex Mono (`font-mono`, labels, column heads, currency codes). Latin subsets only.
+- **Brand mark**: `components/BrandMark.tsx` (compass-rose doubloon, `currentColor`) in the header, footer and login page; `public/favicon.svg` is the same mark.
+- **Chart colours** (`lib/charts.ts`): one categorical palette of six colours in a fixed order, checked for colour-vision-deficiency separation — assign in order, and anything past the sixth series uses the neutral `SERIES_REST`. `ENTITY` fixes colours per thing (income teal, expenses brass, savings slate, surplus sage, bonuses plum); `chartChrome` gives every Recharts chart the same grid, axis, tooltip and legend styling. No hex colours outside `lib/charts.ts` and the avatar palette.
+
 ### App shell and breakpoints
 - **`layouts/AppShell.tsx`** is the frame for all signed-in areas. `HouseholdLayout`, `GlobalLayout` (personal pages) and `AdminLayout` only pass it their navigation, header content and phone tab-bar setup.
 - **Size classes**: below 640px a bottom tab bar (optional centre quick action, "More" opens the full menu as a drawer); 640–1023px a 64px icon rail; from 1024px a 224px sidebar (248px from 2200px), which users can collapse to the rail (stored per browser in `localStorage`, `budgeteer.sidebarCollapsed`).

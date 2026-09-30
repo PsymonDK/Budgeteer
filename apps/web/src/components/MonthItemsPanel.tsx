@@ -79,7 +79,7 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
           <ListChecks size={16} className="text-amber-400" />
-          <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Items this month</h2>
+          <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Items this month</h2>
         </div>
         <div className="flex items-center gap-1 text-sm text-gray-300">
           <button

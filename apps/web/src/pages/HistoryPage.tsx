@@ -7,7 +7,7 @@ import {
 import { ChevronUp, ChevronDown } from 'lucide-react'
 import { api } from '../api/client'
 import { qk } from '../api/queryKeys'
-import { legendInOrder } from '../lib/charts'
+import { ENTITY, chartChrome, legendInOrder } from '../lib/charts'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
@@ -38,10 +38,10 @@ interface TrendRow {
 
 
 const CHART_COLOURS = {
-  income:   '#f59e0b',
-  expenses: '#6366f1',
-  savings:  '#10b981',
-  surplus:  '#34d399',
+  income:   ENTITY.income,
+  expenses: ENTITY.expenses,
+  savings:  ENTITY.savings,
+  surplus:  ENTITY.surplus,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -117,7 +117,7 @@ export function HistoryPage() {
           {/* HIST-002: Trend chart */}
           <section className="mb-10">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Year-over-year trend</h2>
+              <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Year-over-year trend</h2>
               {allCategories.length > 0 && (
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">Expenses filter:</span>
@@ -159,17 +159,17 @@ export function HistoryPage() {
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart data={chartData} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                    <XAxis dataKey="year" tick={{ fill: '#9ca3af', fontSize: 12 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: '#9ca3af', fontSize: 11 }} axisLine={false} tickLine={false}
+                    <CartesianGrid {...chartChrome.grid} />
+                    <XAxis dataKey="year" tick={{ ...chartChrome.tick, fontSize: 12 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={chartChrome.tick} axisLine={false} tickLine={false}
                       tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)} />
                     <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-                      labelStyle={{ color: '#f3f4f6', fontWeight: 600 }}
-                      itemStyle={{ color: '#d1d5db' }}
+                      contentStyle={chartChrome.tooltip.contentStyle}
+                      labelStyle={chartChrome.tooltip.labelStyle}
+                      itemStyle={chartChrome.tooltip.itemStyle}
                       formatter={(value) => fmt(Number(value))}
                     />
-                    <Legend wrapperStyle={{ color: '#9ca3af', fontSize: 12, paddingTop: 16 }}
+                    <Legend wrapperStyle={{ ...chartChrome.legend, paddingTop: 16 }}
                       itemSorter={legendInOrder(['income', 'expenses', 'savings'])} />
                     <Bar dataKey="income"   name="Income"   fill={CHART_COLOURS.income}   radius={[3,3,0,0]} />
                     <Bar dataKey="expenses" name={filterCategoryId ? (allCategories.find(([id]) => id === filterCategoryId)?.[1] ?? 'Expenses') : 'Expenses'}
@@ -183,7 +183,7 @@ export function HistoryPage() {
 
           {/* HIST-001: Timeline */}
           <section>
-            <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-4">Timeline</h2>
+            <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-4">Timeline</h2>
             <div className="space-y-3">
               {[...trends].reverse().map((row) => {
                 const isExpanded = expandedYearId === row.budgetYearId

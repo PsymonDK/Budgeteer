@@ -101,7 +101,7 @@ export function DataTable<T extends { id: string }>({
                 </th>
               )}
               {columns.map((c) => (
-                <th key={c.key} className={`px-3 @[520px]/table:px-4 py-3 font-medium whitespace-nowrap ${cellClass(c)}`}>
+                <th key={c.key} className={`px-3 @[520px]/table:px-4 py-3 font-mono text-[11px] font-medium uppercase tracking-wider whitespace-nowrap ${cellClass(c)}`}>
                   {sort && c.sortKey ? (
                     <button
                       onClick={() => sort.onSort(c.sortKey!)}

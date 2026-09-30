@@ -89,7 +89,7 @@ export function UserDashboardPage() {
         {/* Header */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+            <h1 className="font-display text-3xl leading-tight text-white">Dashboard</h1>
             <p className="text-sm text-gray-500 mt-0.5">Your personal financial snapshot</p>
           </div>
           <div className="flex items-center gap-3">
