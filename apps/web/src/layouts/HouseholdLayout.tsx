@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useMemo } from 'react'
 import {
   LayoutDashboard, TrendingUp, PiggyBank, Receipt, ScanLine, Tag,
-  Calendar, Clock, BarChart2, Settings, Trash2,
+  Calendar, Clock, ChartNoAxesColumn, Settings, Trash,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
@@ -40,10 +40,10 @@ export function HouseholdLayout() {
       },
       {
         title: 'Plan & look back',
-        items: [item('Budget years', 'budget-years', Calendar), item('History', 'history', Clock), item('Compare', 'compare', BarChart2)],
+        items: [item('Budget years', 'budget-years', Calendar), item('History', 'history', Clock), item('Compare', 'compare', ChartNoAxesColumn)],
       },
     ]
-    const footerItems = [item('Categories', 'categories', Tag), item('Trash', 'trash', Trash2), item('Settings', 'settings', Settings)]
+    const footerItems = [item('Categories', 'categories', Tag), item('Trash', 'trash', Trash), item('Settings', 'settings', Settings)]
     const quickActions: ShellQuickAction[] = [
       { label: 'Add expense', icon: Receipt, onSelect: () => navigate(`${base}/expenses?add=1`) },
       { label: 'Add savings', icon: PiggyBank, onSelect: () => navigate(`${base}/savings?add=1`) },

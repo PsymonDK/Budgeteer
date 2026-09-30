@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ChevronLeft, Home, LayoutDashboard, ScanLine, TrendingUp } from 'lucide-react'
+import { ChevronLeft, House, LayoutDashboard, ScanLine, TrendingUp } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
 import { useHouseholds } from '../api/queries'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
@@ -22,7 +22,7 @@ export function GlobalLayout() {
     if (households.length > 0) {
       sections.push({
         title: 'Households',
-        items: households.map((h) => ({ label: h.name, to: `/households/${h.id}`, icon: Home })),
+        items: households.map((h) => ({ label: h.name, to: `/households/${h.id}`, icon: House })),
       })
     }
     return { sections, tabs: [overview, { ...income, label: 'Income' }] }

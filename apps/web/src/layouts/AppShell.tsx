@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, X, type LucideIcon } from 'lucide-react'
+import { Ellipsis, PanelLeftClose, PanelLeftOpen, Plus, X, type LucideIcon } from 'lucide-react'
 import { AppFooter } from '../components/AppFooter'
 import HeaderUserMenu from '../components/HeaderUserMenu'
 import { useMediaQuery } from '../hooks/useMediaQuery'
@@ -309,7 +309,7 @@ function TabBar({ tabs, quickAction, onQuickAction, onMore, moreActive }: {
   if (onMore) {
     cells.push(
       <button key="more" type="button" onClick={onMore} className={`flex flex-col items-center justify-center gap-1 min-h-14 text-[11px] ${moreActive ? 'text-white font-medium' : 'text-gray-500'}`}>
-        <MoreHorizontal size={20} />
+        <Ellipsis size={20} />
         <span>More</span>
       </button>,
     )

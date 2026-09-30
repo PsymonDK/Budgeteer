@@ -1,9 +1,9 @@
-import { Bot, Coins, Home, Tag, Users, Zap } from 'lucide-react'
+import { Bot, Coins, House, Tag, Users, Zap } from 'lucide-react'
 import { AppShell, type ShellNavItem } from './AppShell'
 
 const ADMIN_NAV: ShellNavItem[] = [
   { label: 'Users',            to: '/admin/users',            icon: Users },
-  { label: 'Households',       to: '/admin/households',       icon: Home },
+  { label: 'Households',       to: '/admin/households',       icon: House },
   { label: 'Currencies',       to: '/admin/currencies',       icon: Coins },
   { label: 'Categories',       to: '/admin/categories',       icon: Tag },
   { label: 'Receipt training', to: '/admin/receipt-training', icon: Bot },

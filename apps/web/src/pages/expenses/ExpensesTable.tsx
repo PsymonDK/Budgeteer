@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DataTable, RowActionButton, type DataColumn } from '../../components/DataTable'
 import { AccountBadge, OwnershipBadges } from '../../components/entries/EntryBadges'
@@ -139,7 +139,7 @@ export function ExpensesTable({
       rowActions={isReadOnly ? undefined : (e) => (
         <>
           <RowActionButton label={`Edit ${e.label}`} hideWhenNarrow onClick={() => onEdit(e)}><Pencil size={15} /></RowActionButton>
-          <RowActionButton label={`Move ${e.label} to trash`} tone="danger" onClick={() => onDelete(e)}><Trash2 size={15} /></RowActionButton>
+          <RowActionButton label={`Move ${e.label} to trash`} tone="danger" onClick={() => onDelete(e)}><Trash size={15} /></RowActionButton>
         </>
       )}
       rowClassName={(e) => (isPast(e) ? 'opacity-50' : '')}

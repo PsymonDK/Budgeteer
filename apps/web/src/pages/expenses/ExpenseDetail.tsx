@@ -1,4 +1,4 @@
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DetailPane, DetailRow, DetailSection } from '../../components/DetailPane'
 import { monthRangeLabel } from './helpers'
@@ -43,7 +43,7 @@ export function ExpenseDetail({ expense: e, isReadOnly, baseCurrency, onClose, o
             onClick={() => onDelete(e)}
             className="inline-flex items-center gap-2 border border-gray-700 text-gray-300 hover:text-red-400 hover:border-red-800 text-sm px-3 py-2 rounded-lg transition-colors"
           >
-            <Trash2 size={14} /> Move to trash
+            <Trash size={14} /> Move to trash
           </button>
         </>
       )}
