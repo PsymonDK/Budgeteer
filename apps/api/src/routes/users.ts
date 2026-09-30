@@ -11,7 +11,7 @@ import { ACCESS_TOKEN_TTL, REFRESH_COOKIE, issueSession, refreshCookieOptions, r
 const UpdateMeSchema = z
   .object({
     name: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
     currentPassword: z.string(),
   })
   .partial()
@@ -31,7 +31,7 @@ const UpdatePreferencesSchema = z
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
 
 const CreateUserSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   name: z.string().min(1),
   password: z.string().min(8).optional(),
   isProxy: z.boolean().optional(),
@@ -40,7 +40,7 @@ const CreateUserSchema = z.object({
 const UpdateUserSchema = z
   .object({
     name: z.string().min(1),
-    email: z.string().email(),
+    email: z.email(),
     isActive: z.boolean(),
     isProxy: z.boolean(),
     role: z.enum(['SYSTEM_ADMIN', 'BOOKKEEPER', 'USER']),
@@ -86,7 +86,7 @@ export async function userRoutes(fastify: FastifyInstance) {
   fastify.post('/users', { preHandler: requireAdmin }, async (request, reply) => {
     const result = CreateUserSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
     const { email, name, password, isProxy } = result.data
 
@@ -116,7 +116,7 @@ export async function userRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     const result = UpdateUserSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const existing = await prisma.user.findUnique({ where: { id } })
@@ -159,7 +159,7 @@ export async function userRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string }
     const result = z.object({ password: z.string().min(8) }).safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const existing = await prisma.user.findUnique({ where: { id } })
@@ -205,7 +205,7 @@ export async function userRoutes(fastify: FastifyInstance) {
     const { sub: userId } = request.user
     const result = UpdateMeSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const user = await prisma.user.findUnique({ where: { id: userId } })
@@ -241,7 +241,7 @@ export async function userRoutes(fastify: FastifyInstance) {
     const { sub: userId } = request.user
     const result = UpdatePreferencesSchema.safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const prefs = await prisma.userPreferences.upsert({
@@ -259,7 +259,7 @@ export async function userRoutes(fastify: FastifyInstance) {
       newPassword: z.string().min(8),
     }).safeParse(request.body)
     if (!result.success) {
-      return reply.status(400).send({ error: 'Invalid request body', details: result.error.flatten() })
+      return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
     const { sub: userId } = request.user

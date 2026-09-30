@@ -54,7 +54,7 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
   fastify.get('/budget-years/:id/occurrences', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const query = MonthQuerySchema.safeParse(request.query)
-    if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: query.error.flatten() })
+    if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: z.flattenError(query.error) })
 
     const budgetYear = await loadBudgetYear(id, request, reply, false)
     if (!budgetYear) return
@@ -80,7 +80,7 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     const kind: OccurrenceKind = kindResult.data
 
     const body = UpdateOccurrenceSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const budgetYear = await loadBudgetYear(id, request, reply, true)
     if (!budgetYear) return
@@ -110,7 +110,7 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
   fastify.post('/budget-years/:id/occurrences/mark-all-paid', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = MarkAllPaidSchema.safeParse(request.body)
-    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: body.error.flatten() })
+    if (!body.success) return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(body.error) })
 
     const budgetYear = await loadBudgetYear(id, request, reply, true)
     if (!budgetYear) return
