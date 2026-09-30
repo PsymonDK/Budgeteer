@@ -8,6 +8,7 @@ import { EntryAmountFields } from '../../components/entries/EntryAmountFields'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { MONTH_OPTIONS } from './helpers'
 import type { ExpenseForm } from './types'
+import { StickyActions } from '../../components/StickyActions'
 
 interface ExpenseFormModalProps {
   isEditing: boolean
@@ -38,7 +39,8 @@ export function ExpenseFormModal({
       onClose={onClose}
       size="lg"
     >
-      <div className="max-h-[70vh] overflow-y-auto">
+      {/* The Modal scrolls; no inner scroll box, so the Save bar sticks to the sheet edge */}
+      <>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
@@ -153,7 +155,7 @@ export function ExpenseFormModal({
           </div>
 
           <FormError message={error} />
-          <div className="flex gap-3 pt-2">
+          <StickyActions>
             <button
               type="submit"
               disabled={pending}
@@ -168,9 +170,9 @@ export function ExpenseFormModal({
             >
               Cancel
             </button>
-          </div>
+          </StickyActions>
         </form>
-      </div>
+      </>
     </Modal>
   )
 }

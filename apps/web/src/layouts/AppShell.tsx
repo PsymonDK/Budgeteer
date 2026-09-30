@@ -153,7 +153,7 @@ export function AppShell({ context, actions, sections = [], footerItems = [], ta
             would otherwise widen the whole document on phones. */}
         <div
           ref={scrollRef}
-          className={`relative flex-1 min-w-0 overflow-y-auto flex flex-col ${hasTabBar ? 'pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0' : ''}`}
+          className={`relative flex-1 min-w-0 overflow-y-auto flex flex-col ${hasTabBar ? 'pb-[calc(3.5rem+1px+env(safe-area-inset-bottom))] sm:pb-0' : ''}`}
         >
           <div className="flex-1">
             <Outlet key={outletKey} />

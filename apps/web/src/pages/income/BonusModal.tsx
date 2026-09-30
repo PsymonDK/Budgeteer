@@ -4,6 +4,7 @@ import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { BudgetMode, Job } from './types'
 import type { BonusEditor } from './useIncomeEditors'
+import { StickyActions } from '../../components/StickyActions'
 
 interface BonusModalProps {
   editor: BonusEditor
@@ -83,14 +84,14 @@ export function BonusModal({ editor, jobs, currencies, baseCurrency }: BonusModa
           </div>
         )}
         <FormError message={bonusError} />
-        <div className="flex gap-3 pt-2">
+        <StickyActions>
           <button type="submit" disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
             className={`flex-1 ${primaryBtn}`}>
             {createBonusMutation.isPending || updateBonusMutation.isPending ? 'Saving…' : editingBonus ? 'Save changes' : 'Add bonus'}
           </button>
           <button type="button" onClick={closeBonus}
             className={`flex-1 ${secondaryBtn}`}>Cancel</button>
-        </div>
+        </StickyActions>
       </form>
     </Modal>
   )

@@ -7,6 +7,7 @@ import { OwnershipFields } from '../../components/OwnershipFields'
 import { EntryAmountFields } from '../../components/entries/EntryAmountFields'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { EntryForm } from './types'
+import { StickyActions } from '../../components/StickyActions'
 
 interface SavingsFormModalProps {
   isEditing: boolean
@@ -37,7 +38,8 @@ export function SavingsFormModal({
       onClose={onClose}
       size="lg"
     >
-      <div className="max-h-[70vh] overflow-y-auto">
+      {/* The Modal scrolls; no inner scroll box, so the Save bar sticks to the sheet edge */}
+      <>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Label</label>
@@ -114,7 +116,7 @@ export function SavingsFormModal({
           </div>
 
           <FormError message={error} />
-          <div className="flex gap-3 pt-2">
+          <StickyActions>
             <button
               type="submit"
               disabled={pending}
@@ -129,9 +131,9 @@ export function SavingsFormModal({
             >
               Cancel
             </button>
-          </div>
+          </StickyActions>
         </form>
-      </div>
+      </>
     </Modal>
   )
 }

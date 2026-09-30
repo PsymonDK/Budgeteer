@@ -4,6 +4,7 @@ import { Modal } from '../Modal'
 import { FormError } from '../FormError'
 import { AccountSelect } from '../AccountSelect'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
+import { StickyActions } from '../StickyActions'
 
 export interface BulkEditForm {
   categoryId: string
@@ -70,7 +71,7 @@ export function BulkEditModal({
           </div>
         )}
         <FormError message={error} />
-        <div className="flex gap-3 pt-2">
+        <StickyActions>
           <button
             type="submit"
             disabled={pending}
@@ -85,7 +86,7 @@ export function BulkEditModal({
           >
             Cancel
           </button>
-        </div>
+        </StickyActions>
       </form>
     </Modal>
   )
