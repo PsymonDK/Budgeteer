@@ -2,9 +2,14 @@ import { FastifyInstance } from 'fastify'
 import { prisma } from '../lib/prisma'
 import { authenticate } from '../plugins/authenticate'
 import { Decimal } from '@prisma/client/runtime/client'
-import { calcIncomeForYear, getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
+import { getIncomeReferenceDate, JOB_INCOME_INCLUDE } from '../lib/incomeCalc'
 import { toNum } from '../lib/decimal'
-import { partitionByOwnership } from '../lib/ownership'
+import {
+  loadUserBudgetShare,
+  loadUserBudgetSharesByHousehold,
+  totalExpensesOf,
+  totalSavingsOf,
+} from '../lib/userBudgetShare'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 import {
   budgetMonthlyIncomeForJob,
@@ -145,17 +150,24 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const year = today.getFullYear()
     const month = today.getMonth() + 1
 
-    // Jobs employed this month (a job with a future endDate still counts)
-    const activeJobs = (await prisma.job.findMany({ where: { userId }, include: JOB_INCOME_INCLUDE }))
-      .filter((job) => isJobActiveInMonth(job, year, month))
+    // Jobs employed this month (a job with a future endDate still counts), with
+    // the budget-basis income the dashboard cards use
+    const { jobs, incomes: budgetIncomes } = await loadAllocationOverview(userId, today)
+    const activeJobs = jobs.filter((job) => isJobActiveInMonth(job, year, month))
 
     // This month's salary (or override) per job in base currency, plus the
-    // record it came from for its payslip deduction lines. Bonuses are left
-    // out: the flow is built from the payslip.
+    // record it came from for its payslip deduction lines, plus the yearly
+    // average of budget-included bonuses — the same income as the dashboard
+    // cards. The payslip lines cover the salary only, so a bonus's tax
+    // (gross − net) is shown as A-skat.
     const jobIncomes = activeJobs.map((job) => {
       const income = monthlyIncomeForJob(job, year, month, 'none')
-      const gross = income.gross.toNumber()
-      const net = income.net.toNumber()
+      const bonus = budgetIncomes.get(job.id)
+      const bonusGross = bonus?.bonusGross.toNumber() ?? 0
+      const bonusNet = bonus?.bonusNet.toNumber() ?? 0
+      const bonusTaxes = Math.max(0, bonusGross - bonusNet)
+      const gross = income.gross.toNumber() + bonusGross
+      const net = income.net.toNumber() + bonusNet
 
       const record = income.source === 'override'
         ? job.overrides.find((o) => o.year === year && o.month === month) ?? null
@@ -183,7 +195,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       })() : null
       const pensionEmployer = record?.pensionEmployerMonthly ? toNum(record.pensionEmployerMonthly) : 0
 
-      return { job, gross, net, deductions, pensionEmployer }
+      return { job, gross, net, bonusTaxes, deductions, pensionEmployer }
     })
 
     const totalIncome = jobIncomes.reduce((s, { gross }) => s + gross, 0)
@@ -208,7 +220,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
             household: {
               select: {
                 id: true,
-                name: true,
                 budgetYears: { where: { status: { in: [...LIVE_STATUSES] } }, select: { id: true, year: true, status: true } },
               },
             },
@@ -220,89 +231,54 @@ export async function profileRoutes(fastify: FastifyInstance) {
       (a) => pickDefaultBudgetYear(a.budgetYear.household.budgetYears)?.id === a.budgetYearId
     )
 
-    // Group allocations by household
-    const householdMap = new Map<
-      string,
-      { householdId: string; householdName: string; allocatedAmount: number; allocatedNet: number; budgetYearId: string }
-    >()
+    // The user's share of each household's expenses and savings — the same
+    // figures as the dashboard cards (see loadUserBudgetSharesByHousehold), so
+    // the diagram and the cards agree.
+    const { shares: householdShares } = await loadUserBudgetSharesByHousehold(userId)
 
-    for (const alloc of allocations) {
-      const pct = toNum(alloc.allocationPct) / 100
-      const monthly = jobIncomeMap.get(alloc.jobId) ?? 0
-      const monthlyNet = jobNetIncomeMap.get(alloc.jobId) ?? 0
-      const allocated = monthly * pct
-      const allocatedNet = monthlyNet * pct
-      const hhId = alloc.budgetYear.household.id
-      const hhName = alloc.budgetYear.household.name
-      const existing = householdMap.get(hhId)
-      if (existing) {
-        existing.allocatedAmount += allocated
-        existing.allocatedNet += allocatedNet
-      } else {
-        householdMap.set(hhId, {
-          householdId: hhId,
-          householdName: hhName,
-          allocatedAmount: allocated,
-          allocatedNet: allocatedNet,
-          budgetYearId: alloc.budgetYearId,
-        })
-      }
-    }
-
-    const totalAllocated = [...householdMap.values()].reduce((s, h) => s + h.allocatedAmount, 0)
-    const unallocatedAmount = totalIncome - totalAllocated
-
-    // For each household, compute user's share of expenses/savings/taxes/surplus
-    const householdDetails = await Promise.all(
-      [...householdMap.values()].map(async (hh) => {
-        const [expenseRows, savingsRows, allAllocations] = await Promise.all([
-          prisma.expense.findMany({ where: { budgetYearId: hh.budgetYearId } }),
-          prisma.savingsEntry.findMany({ where: { budgetYearId: hh.budgetYearId } }),
-          prisma.householdIncomeAllocation.findMany({
-            where: { budgetYearId: hh.budgetYearId },
-            include: { job: { include: JOB_INCOME_INCLUDE } },
-          }),
-        ])
-
-        const totalExpenses = expenseRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
-        const totalSavings = savingsRows.reduce((s, e) => s + toNum(e.monthlyEquivalent), 0)
-
-        // Same basis as the user's own jobs above: this month's salary, no bonuses
-        const allAllocGross = allAllocations.map((alloc) =>
-          monthlyIncomeForJob(alloc.job, year, month, 'none').gross.toNumber() * toNum(alloc.allocationPct) / 100
-        )
-        const totalHouseholdGross = allAllocGross.reduce((s, v) => s + v, 0)
-        const userSharePct = totalHouseholdGross > 0 ? hh.allocatedAmount / totalHouseholdGross : 0
-
-        const expenses = totalExpenses * userSharePct
-        const savings = totalSavings * userSharePct
-        const taxes = hh.allocatedAmount - hh.allocatedNet
-        const surplus = Math.max(0, hh.allocatedNet - expenses - savings)
-
-        return { ...hh, totalHouseholdGross, taxes, expenses, savings, surplus }
-      })
+    // Allocated income per job and the budget it pays for. A household's
+    // expenses and savings are spread over the jobs allocated to it by allocated
+    // gross; a household none of the user's income is allocated to (e.g. only a
+    // personal item there) is spread over all jobs by gross.
+    const jobFlows = new Map(
+      jobIncomes.map(({ job }) => [job.id, { allocatedGross: 0, allocatedNet: 0, expenses: 0, savings: 0 }])
     )
-
-    // Accumulate per-job contributions to each aggregate bucket across all households
-    const jobBuckets = new Map<string, { taxes: number; expenses: number; savings: number; surplus: number }>()
-    for (const { job } of jobIncomes) {
-      jobBuckets.set(job.id, { taxes: 0, expenses: 0, savings: 0, surplus: 0 })
+    for (const alloc of allocations) {
+      const flow = jobFlows.get(alloc.jobId)
+      if (!flow) continue
+      const pct = toNum(alloc.allocationPct) / 100
+      flow.allocatedGross += (jobIncomeMap.get(alloc.jobId) ?? 0) * pct
+      flow.allocatedNet += (jobNetIncomeMap.get(alloc.jobId) ?? 0) * pct
     }
-
-    for (const hh of householdDetails) {
-      if (hh.allocatedAmount <= 0) continue
-      for (const alloc of allocations.filter((a) => a.budgetYear.household.id === hh.householdId)) {
-        const gross = jobIncomeMap.get(alloc.jobId) ?? 0
-        const allocated = gross * toNum(alloc.allocationPct) / 100
-        const frac = hh.allocatedAmount > 0 ? allocated / hh.allocatedAmount : 0
-        const bucket = jobBuckets.get(alloc.jobId)
-        if (!bucket) continue
-        bucket.taxes += hh.taxes * frac
-        bucket.expenses += hh.expenses * frac
-        bucket.savings += hh.savings * frac
-        bucket.surplus += hh.surplus * frac
+    for (const { householdId, share } of householdShares) {
+      let weights = new Map<string, number>()
+      for (const alloc of allocations) {
+        if (alloc.budgetYear.household.id !== householdId) continue
+        const allocated = (jobIncomeMap.get(alloc.jobId) ?? 0) * toNum(alloc.allocationPct) / 100
+        weights.set(alloc.jobId, (weights.get(alloc.jobId) ?? 0) + allocated)
+      }
+      if (![...weights.values()].some((w) => w > 0)) {
+        weights = new Map(jobIncomes.map(({ job, gross }) => [job.id, gross]))
+      }
+      const weightSum = [...weights.values()].reduce((s, w) => s + w, 0)
+      if (weightSum <= 0) continue
+      for (const [jobId, weight] of weights) {
+        const flow = jobFlows.get(jobId)
+        if (!flow) continue
+        flow.expenses += totalExpensesOf(share) * weight / weightSum
+        flow.savings += totalSavingsOf(share) * weight / weightSum
       }
     }
+
+    const flows = [...jobFlows.values()]
+    const totalAllocated = flows.reduce((s, f) => s + f.allocatedGross, 0)
+    const totalAllocatedNet = flows.reduce((s, f) => s + f.allocatedNet, 0)
+    const unallocatedAmount = totalIncome - totalAllocated
+    const aggExpenses = flows.reduce((s, f) => s + f.expenses, 0)
+    const aggSavings = flows.reduce((s, f) => s + f.savings, 0)
+    // A flow can't be negative: when expenses and savings exceed allocated net
+    // income there is simply no surplus node.
+    const aggSurplus = Math.max(0, totalAllocatedNet - aggExpenses - aggSavings)
 
     const JOB_COLOR_PALETTE = [
       '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6',
@@ -312,10 +288,6 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const nodes: { id: string; name: string; color?: string }[] = []
     const links: { source: string; target: string; value: number }[] = []
 
-    const aggExpenses = householdDetails.reduce((s, h) => s + h.expenses, 0)
-    const aggSavings = householdDetails.reduce((s, h) => s + h.savings, 0)
-    const aggSurplus = householdDetails.reduce((s, h) => s + h.surplus, 0)
-
     // Job nodes (shared between both layout modes)
     jobIncomes.forEach(({ job, gross }, i) => {
       if (gross <= 0) return
@@ -324,14 +296,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
 
     // ── 3-column layout: Jobs → Deduction nodes + Net Pay → Expenses/Savings/Surplus ──
     if (useGranularLayout) {
-      // Aggregate deduction totals across all jobs
+      // Aggregate deduction totals across all jobs. A job without deduction
+      // data sends its whole gross − net to A-skat, one with deduction data
+      // the tax on its bonuses.
+      const taxesToASkat = ({ gross, net, bonusTaxes, deductions }: (typeof jobIncomes)[number]) =>
+        deductions ? bonusTaxes : Math.max(0, gross - net)
       const aggAmBidrag = jobIncomes.reduce((s, { deductions }) => s + (deductions?.amBidrag ?? 0), 0)
-      const aggASkat = jobIncomes.reduce((s, { deductions }) => s + (deductions?.aSkat ?? 0), 0)
+      const aggASkat = jobIncomes.reduce((s, j) => s + (j.deductions?.aSkat ?? 0) + taxesToASkat(j), 0)
       const aggPensionEmployee = jobIncomes.reduce((s, { deductions }) => s + (deductions?.pensionEmployee ?? 0), 0)
       const aggAtp = jobIncomes.reduce((s, { deductions }) => s + (deductions?.atp ?? 0), 0)
       const aggBrutto = jobIncomes.reduce((s, { deductions }) => s + (deductions?.bruttoDeduction ?? 0), 0)
       const aggOther = jobIncomes.reduce((s, { deductions }) => s + (deductions?.otherDeductions ?? 0), 0)
       const totalNetPay = jobIncomes.reduce((s, { net }) => s + net, 0)
+      const unallocatedNet = totalNetPay - totalAllocatedNet
 
       // Middle column: deduction nodes
       if (aggBrutto > 0) nodes.push({ id: 'brutto_benefits', name: 'Brutto Benefits' })
@@ -346,36 +323,31 @@ export async function profileRoutes(fastify: FastifyInstance) {
       if (aggExpenses > 0) nodes.push({ id: 'expenses', name: 'Expenses' })
       if (aggSavings > 0) nodes.push({ id: 'savings', name: 'Savings' })
       if (aggSurplus > 0) nodes.push({ id: 'surplus', name: 'Surplus' })
-      if (unallocatedAmount > 0) nodes.push({ id: 'unallocated', name: 'Unallocated' })
+      if (unallocatedNet > 0) nodes.push({ id: 'unallocated', name: 'Unallocated' })
 
       // Links: job → deduction nodes + net_pay
-      for (const { job, gross, net, deductions } of jobIncomes) {
+      for (const jobIncome of jobIncomes) {
+        const { job, gross, net, deductions } = jobIncome
         if (gross <= 0) continue
         const jobId = `job_${job.id}`
 
+        const aSkat = (deductions?.aSkat ?? 0) + taxesToASkat(jobIncome)
+        if (aSkat > 0) links.push({ source: jobId, target: 'a_skat', value: aSkat })
         if (deductions) {
           if (deductions.bruttoDeduction > 0) links.push({ source: jobId, target: 'brutto_benefits', value: deductions.bruttoDeduction })
           if (deductions.amBidrag > 0) links.push({ source: jobId, target: 'am_bidrag', value: deductions.amBidrag })
-          if (deductions.aSkat > 0) links.push({ source: jobId, target: 'a_skat', value: deductions.aSkat })
           if (deductions.pensionEmployee > 0) links.push({ source: jobId, target: 'pension_employee', value: deductions.pensionEmployee })
           if (deductions.atp > 0) links.push({ source: jobId, target: 'atp', value: deductions.atp })
           if (deductions.otherDeductions > 0) links.push({ source: jobId, target: 'other_deductions', value: deductions.otherDeductions })
-        } else {
-          // Job without deduction data — its taxes component flows to a_skat as fallback
-          const bucket = jobBuckets.get(job.id)!
-          if (bucket.taxes > 0) links.push({ source: jobId, target: 'a_skat', value: bucket.taxes })
         }
         if (net > 0) links.push({ source: jobId, target: 'net_pay', value: net })
       }
 
       // Links: net_pay → right-side nodes
-      // Proportions from household budget, applied to total net pay
       if (totalNetPay > 0) {
         if (aggExpenses > 0) links.push({ source: 'net_pay', target: 'expenses', value: aggExpenses })
         if (aggSavings > 0) links.push({ source: 'net_pay', target: 'savings', value: aggSavings })
         if (aggSurplus > 0) links.push({ source: 'net_pay', target: 'surplus', value: aggSurplus })
-        // Unallocated: scale the gross unallocated proportionally to net
-        const unallocatedNet = unallocatedAmount * (totalNetPay / totalIncome)
         if (unallocatedNet > 0) links.push({ source: 'net_pay', target: 'unallocated', value: unallocatedNet })
       }
 
@@ -390,27 +362,26 @@ export async function profileRoutes(fastify: FastifyInstance) {
     }
 
     // ── 2-column layout (fallback): Jobs → Taxes + Expenses + Savings + Surplus ──
-    const aggTaxes = householdDetails.reduce((s, h) => s + h.taxes, 0)
+    const jobSurplus = (f: (typeof flows)[number]) => Math.max(0, f.allocatedNet - f.expenses - f.savings)
 
-    if (aggTaxes > 0) nodes.push({ id: 'taxes', name: 'Taxes' })
+    if (flows.some((f) => f.allocatedGross - f.allocatedNet > 0)) nodes.push({ id: 'taxes', name: 'Taxes' })
     if (aggExpenses > 0) nodes.push({ id: 'expenses', name: 'Expenses' })
     if (aggSavings > 0) nodes.push({ id: 'savings', name: 'Savings' })
-    if (aggSurplus > 0) nodes.push({ id: 'surplus', name: 'Surplus' })
+    if (flows.some((f) => jobSurplus(f) > 0)) nodes.push({ id: 'surplus', name: 'Surplus' })
     if (unallocatedAmount > 0) nodes.push({ id: 'unallocated', name: 'Unallocated' })
 
     for (const { job, gross } of jobIncomes) {
       if (gross <= 0) continue
-      const bucket = jobBuckets.get(job.id)!
-      if (bucket.taxes > 0) links.push({ source: `job_${job.id}`, target: 'taxes', value: bucket.taxes })
-      if (bucket.expenses > 0) links.push({ source: `job_${job.id}`, target: 'expenses', value: bucket.expenses })
-      if (bucket.savings > 0) links.push({ source: `job_${job.id}`, target: 'savings', value: bucket.savings })
-      if (bucket.surplus > 0) links.push({ source: `job_${job.id}`, target: 'surplus', value: bucket.surplus })
-
-      const jobAllocated = allocations
-        .filter((a) => a.jobId === job.id)
-        .reduce((s, a) => s + gross * parseFloat(a.allocationPct.toString()) / 100, 0)
-      const jobUnallocated = gross - jobAllocated
-      if (jobUnallocated > 0) links.push({ source: `job_${job.id}`, target: 'unallocated', value: jobUnallocated })
+      const flow = jobFlows.get(job.id)!
+      const jobId = `job_${job.id}`
+      const taxes = flow.allocatedGross - flow.allocatedNet
+      const surplus = jobSurplus(flow)
+      if (taxes > 0) links.push({ source: jobId, target: 'taxes', value: taxes })
+      if (flow.expenses > 0) links.push({ source: jobId, target: 'expenses', value: flow.expenses })
+      if (flow.savings > 0) links.push({ source: jobId, target: 'savings', value: flow.savings })
+      if (surplus > 0) links.push({ source: jobId, target: 'surplus', value: surplus })
+      const jobUnallocated = gross - flow.allocatedGross
+      if (jobUnallocated > 0) links.push({ source: jobId, target: 'unallocated', value: jobUnallocated })
     }
 
     return reply.send({
@@ -452,22 +423,11 @@ export async function profileRoutes(fastify: FastifyInstance) {
       return { month: monthStr, gross: money(gross), net: money(net) }
     })
 
-    // ── Households the user belongs to (active/future budget years) ──────────
-    const memberships = await prisma.householdMember.findMany({
-      where: { userId },
-      include: {
-        household: {
-          include: {
-            budgetYears: {
-              where: { status: { in: ['ACTIVE', 'FUTURE'] } },
-              orderBy: { year: 'asc' },
-            },
-          },
-        },
-      },
-    })
-
     // ── Expenses & Savings ────────────────────────────────────────────────────
+    // The user's share of each household's default budget year — the same
+    // figures the income flow diagram uses (see loadUserBudgetSharesByHousehold).
+    const { householdIds, shares: householdShares } = await loadUserBudgetSharesByHousehold(userId)
+
     let personalExpenses = 0
     let householdShareExpenses = 0
     let personalSavings = 0
@@ -477,49 +437,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const expenseYearMap = new Map<number, number>() // year -> user's total expense share
     const savingsYearMap = new Map<number, number>() // year -> user's total savings share
 
-    for (const membership of memberships) {
-      const activeBY = pickDefaultBudgetYear(membership.household.budgetYears)
-      if (!activeBY) continue
-
-      const [expenses, savings, incomeResult] = await Promise.all([
-        prisma.expense.findMany({
-          where: { budgetYearId: activeBY.id },
-          include: { customSplits: true },
-        }),
-        prisma.savingsEntry.findMany({
-          where: { budgetYearId: activeBY.id },
-          include: { customSplits: true },
-        }),
-        calcIncomeForYear(activeBY.id, getIncomeReferenceDate(activeBY.year, activeBY.status)),
-      ])
-
-      const totalHouseholdGross = incomeResult.totalMonthlyGross
-      const userMember = incomeResult.members.find((m) => m.userId === userId)
-      const userGross = userMember?.monthlyAllocatedGross ?? 0
-      const sharePct = totalHouseholdGross > 0 ? userGross / totalHouseholdGross : 0
-
-      const expPartition = partitionByOwnership(expenses)
-      const savPartition = partitionByOwnership(savings)
-
-      personalExpenses += expPartition.individual.get(userId) ?? 0
-      householdShareExpenses += expPartition.shared * sharePct + (expPartition.custom.get(userId) ?? 0)
-      personalSavings += savPartition.individual.get(userId) ?? 0
-      householdShareSavings += savPartition.shared * sharePct + (savPartition.custom.get(userId) ?? 0)
+    for (const { budgetYear, share } of householdShares) {
+      personalExpenses += share.personalExpenses
+      householdShareExpenses += share.householdShareExpenses
+      personalSavings += share.personalSavings
+      householdShareSavings += share.householdShareSavings
 
       // Accumulate current budget year into sparkline maps
-      const yr = activeBY.year
-      expenseYearMap.set(yr, (expenseYearMap.get(yr) ?? 0) +
-        (expPartition.individual.get(userId) ?? 0) +
-        expPartition.shared * sharePct +
-        (expPartition.custom.get(userId) ?? 0))
-      savingsYearMap.set(yr, (savingsYearMap.get(yr) ?? 0) +
-        (savPartition.individual.get(userId) ?? 0) +
-        savPartition.shared * sharePct +
-        (savPartition.custom.get(userId) ?? 0))
+      const yr = budgetYear.year
+      expenseYearMap.set(yr, (expenseYearMap.get(yr) ?? 0) + totalExpensesOf(share))
+      savingsYearMap.set(yr, (savingsYearMap.get(yr) ?? 0) + totalSavingsOf(share))
     }
 
     // Also collect up to 5 prior non-simulation budget years for sparklines
-    const householdIds = memberships.map((m) => m.householdId)
     if (householdIds.length > 0) {
       const historicalYears = await prisma.budgetYear.findMany({
         where: {
@@ -543,24 +473,9 @@ export async function profileRoutes(fastify: FastifyInstance) {
       }
 
       for (const by of toCompute) {
-        const [expenses, savings, incomeResult] = await Promise.all([
-          prisma.expense.findMany({ where: { budgetYearId: by.id }, include: { customSplits: true } }),
-          prisma.savingsEntry.findMany({ where: { budgetYearId: by.id }, include: { customSplits: true } }),
-          calcIncomeForYear(by.id, getIncomeReferenceDate(by.year, by.status)),
-        ])
-        const totalHouseholdGross = incomeResult.totalMonthlyGross
-        const userGross = incomeResult.members.find((m) => m.userId === userId)?.monthlyAllocatedGross ?? 0
-        const sharePct = totalHouseholdGross > 0 ? userGross / totalHouseholdGross : 0
-        const expPartition = partitionByOwnership(expenses)
-        const savPartition = partitionByOwnership(savings)
-        expenseYearMap.set(by.year,
-          (expPartition.individual.get(userId) ?? 0) +
-          expPartition.shared * sharePct +
-          (expPartition.custom.get(userId) ?? 0))
-        savingsYearMap.set(by.year,
-          (savPartition.individual.get(userId) ?? 0) +
-          savPartition.shared * sharePct +
-          (savPartition.custom.get(userId) ?? 0))
+        const share = await loadUserBudgetShare(by, userId)
+        expenseYearMap.set(by.year, totalExpensesOf(share))
+        savingsYearMap.set(by.year, totalSavingsOf(share))
       }
     }
 
