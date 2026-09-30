@@ -32,6 +32,10 @@ updates:
     ignore:
       - dependency-name: tailwindcss
         update-types: ['version-update:semver-major']
+      # Node's type definitions follow the Node version the app runs on (22, see
+      # docker/ and CI); bump this major together with the runtime
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   # Workflow actions (e.g. the pinned Trivy action), in one weekly PR
   - package-ecosystem: github-actions
