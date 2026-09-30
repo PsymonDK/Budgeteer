@@ -7,7 +7,6 @@ import { qk } from '../../api/queryKeys'
 import { useHouseholdDetail, useReceiptSummary } from '../../api/queries'
 import { useAuth } from '../../contexts/AuthContext'
 import { PageLoader } from '../../components/LoadingSpinner'
-import { SankeyChart } from '../../components/SankeyChart'
 import { MonthItemsPanel } from '../../components/MonthItemsPanel'
 import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { useTransfers, type BudgetTransfer } from '../../hooks/useTransfers'
@@ -201,15 +200,16 @@ export function DashboardPage() {
         <>
           {/* Spans per column count (2 / 3 / 4 / 6). Order matters: the grid fills gaps with later, smaller tiles. */}
           <WidgetGrid>
-            {/* The month: surplus and income split, the transfer due, and the payments timeline */}
+            {/* The month: surplus and income split, the transfer due, and the income flow */}
             <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 4 }}>
               <MonthHero
-                budgetYearId={summary.budgetYear.id}
+                year={summary.budgetYear.year}
                 income={income}
                 expenses={expenses}
                 savings={savings}
                 surplus={surplus}
                 incomeSplit={summary.incomeSplit}
+                incomeFlow={sankeyData}
                 nextPending={nextPending}
                 myShare={me ? memberBreakdownMap.get(me.id)?.monthlyTotal ?? null : null}
                 onMarkPaid={openMarkPaid}
@@ -234,18 +234,6 @@ export function DashboardPage() {
             {summary?.budgetYear?.id && (
               <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 3 }}>
                 <MonthItemsPanel budgetYearId={summary.budgetYear.id} fmt={fmt} />
-              </Widget>
-            )}
-
-            {/* VIZ-001: Income flow diagram */}
-            {sankeyData && sankeyData.links.length > 0 && (
-              <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 4 }}>
-                <div className="flex flex-col">
-                  <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest mb-3">Income flow</h2>
-                  <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5">
-                    <SankeyChart data={sankeyData} currency={baseCurrency} />
-                  </div>
-                </div>
               </Widget>
             )}
 
