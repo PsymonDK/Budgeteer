@@ -3,6 +3,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import {
   carryFromClosedMonth,
   effectiveCurrentMonth,
+  planMonthClose,
   planOccurrenceSync,
   sumMonthObligations,
   unpaidAmount,
@@ -95,5 +96,27 @@ describe('carry-over', () => {
     const closed = [{ entryId: 'rent', status: 'SKIPPED', scheduledAmount: d(1000), carriedAmount: d(1000), actualAmount: null }]
     expect(carryFromClosedMonth(closed).get('rent')?.toString()).toBe('2000')
     expect(carryFromClosedMonth(closed).get('rent')?.toString()).toBe('2000')
+  })
+})
+
+describe('planMonthClose', () => {
+  const pending = (id: string, paymentMethod: 'AUTOMATIC' | 'MANUAL', scheduled: number, carried = 0) =>
+    ({ id, paymentMethod, scheduledAmount: d(scheduled), carriedAmount: d(carried) })
+
+  it('pays automatic items in full and closes manual ones as skipped', () => {
+    const plan = planMonthClose([pending('rent', 'AUTOMATIC', 1000), pending('gym', 'MANUAL', 300)])
+    expect(plan.skip).toEqual(['gym'])
+    expect(plan.autoPay.map((p) => [p.id, p.actualAmount.toString()])).toEqual([['rent', '1000']])
+  })
+
+  it('settles an automatic item\'s carried balance too, so nothing carries on', () => {
+    const plan = planMonthClose([pending('power', 'AUTOMATIC', 300, 150)])
+    expect(plan.autoPay[0].actualAmount.toString()).toBe('450')
+    const closed = [{ entryId: 'power', status: 'PAID', scheduledAmount: d(300), carriedAmount: d(150), actualAmount: d(450) }]
+    expect(carryFromClosedMonth(closed).size).toBe(0)
+  })
+
+  it('has nothing to do once every row is closed', () => {
+    expect(planMonthClose([])).toEqual({ skip: [], autoPay: [] })
   })
 })

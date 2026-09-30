@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma, notDeleted } from './prisma'
 import { calcForwardMonthlyNeed, calcOccurrenceScheduledAmount, activeMonthCount } from './calculations'
+import { dueAmount } from './occurrences'
 
 type ScheduleSource = { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }
 
@@ -275,17 +276,48 @@ async function syncPayNoPayOccurrences(
   ])
 }
 
-/** Marks every PENDING occurrence of a month SKIPPED (closed). Safe to run repeatedly. */
+/**
+ * How a month's still-PENDING occurrences close: items paid automatically (direct debit,
+ * standing order) count as paid in full, so they never carry over; manual items close
+ * as SKIPPED and their unpaid balance carries into the next month.
+ */
+export function planMonthClose(
+  pending: { id: string; paymentMethod: 'AUTOMATIC' | 'MANUAL'; scheduledAmount: Decimal; carriedAmount: Decimal }[],
+): { skip: string[]; autoPay: { id: string; actualAmount: Decimal }[] } {
+  const plan: { skip: string[]; autoPay: { id: string; actualAmount: Decimal }[] } = { skip: [], autoPay: [] }
+  for (const occ of pending) {
+    if (occ.paymentMethod === 'AUTOMATIC') plan.autoPay.push({ id: occ.id, actualAmount: dueAmount(occ) })
+    else plan.skip.push(occ.id)
+  }
+  return plan
+}
+
+/**
+ * Closes a month: PENDING manual occurrences become SKIPPED, PENDING automatic ones PAID
+ * (see planMonthClose). Only PENDING rows are touched, so it's safe to run repeatedly.
+ */
 export async function closePayNoPayMonth(budgetYearId: string, year: number, month: number): Promise<void> {
-  await Promise.all([
-    prisma.expenseOccurrence.updateMany({
+  const [expenseOccs, savingsOccs] = await Promise.all([
+    prisma.expenseOccurrence.findMany({
       where: { expense: { budgetYearId, ...notDeleted }, year, month, status: 'PENDING' },
-      data: { status: 'SKIPPED' },
+      select: { id: true, scheduledAmount: true, carriedAmount: true, expense: { select: { paymentMethod: true } } },
     }),
-    prisma.savingsOccurrence.updateMany({
+    prisma.savingsOccurrence.findMany({
       where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month, status: 'PENDING' },
-      data: { status: 'SKIPPED' },
+      select: { id: true, scheduledAmount: true, carriedAmount: true, savingsEntry: { select: { paymentMethod: true } } },
     }),
+  ])
+  const expPlan = planMonthClose(expenseOccs.map((o) => ({ ...o, paymentMethod: o.expense.paymentMethod })))
+  const savPlan = planMonthClose(savingsOccs.map((o) => ({ ...o, paymentMethod: o.savingsEntry.paymentMethod })))
+  const paidAt = new Date()
+
+  await prisma.$transaction([
+    prisma.expenseOccurrence.updateMany({ where: { id: { in: expPlan.skip }, status: 'PENDING' }, data: { status: 'SKIPPED' } }),
+    prisma.savingsOccurrence.updateMany({ where: { id: { in: savPlan.skip }, status: 'PENDING' }, data: { status: 'SKIPPED' } }),
+    ...expPlan.autoPay.map((p) =>
+      prisma.expenseOccurrence.update({ where: { id: p.id }, data: { status: 'PAID', paidAt, actualAmount: p.actualAmount } })),
+    ...savPlan.autoPay.map((p) =>
+      prisma.savingsOccurrence.update({ where: { id: p.id }, data: { status: 'PAID', paidAt, actualAmount: p.actualAmount } })),
   ])
 }
 

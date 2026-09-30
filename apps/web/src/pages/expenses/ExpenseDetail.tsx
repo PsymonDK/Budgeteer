@@ -64,6 +64,7 @@ export function ExpenseDetail({ expense: e, isReadOnly, baseCurrency, onClose, o
         {differentAverage && <DetailRow label="Averaged over the year">{fmt(e.monthlyEquivalent)}</DetailRow>}
         <DetailRow label="Active">{range ?? 'All year'}</DetailRow>
         {e.dueDay != null && <DetailRow label="Due">{ordinalDay(e.dueDay)} of the month</DetailRow>}
+        <DetailRow label="Paid">{e.paymentMethod === 'MANUAL' ? 'Manually' : 'Automatically'}</DetailRow>
       </DetailSection>
 
       <DetailSection title="Months charged">

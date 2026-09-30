@@ -90,6 +90,13 @@ enum OccurrenceStatus {
   SKIPPED
 }
 
+// How an expense or savings entry is paid. AUTOMATIC (direct debit, standing order, card)
+// is treated as paid at Pay/No-pay month close; MANUAL items are listed to tick off.
+enum PaymentMethod {
+  AUTOMATIC
+  MANUAL
+}
+
 enum ReceiptStatus {
   DRAFT
   CONFIRMED
@@ -494,6 +501,7 @@ model Expense {
   forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
   // Day of the month it's paid (1–31), for the dashboard's payments timeline; null = no set day
   dueDay            Int?
+  paymentMethod     PaymentMethod @default(AUTOMATIC)
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)
@@ -538,6 +546,7 @@ model SavingsEntry {
   forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
   // Day of the month it's paid (1–31), for the dashboard's payments timeline; null = no set day
   dueDay            Int?
+  paymentMethod     PaymentMethod @default(AUTOMATIC)
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)

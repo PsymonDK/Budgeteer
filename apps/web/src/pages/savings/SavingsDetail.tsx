@@ -53,6 +53,7 @@ export function SavingsDetail({ entry: e, isReadOnly, baseCurrency, onClose, onE
         {e.currencyCode && e.rateUsed && <DetailRow label="Rate used">{e.rateUsed}</DetailRow>}
         <DetailRow label={`Per month (${baseCurrency})`}><span className="text-amber-400 font-semibold">{fmt(e.monthlyEquivalent)}</span></DetailRow>
         {e.dueDay != null && <DetailRow label="Due">{ordinalDay(e.dueDay)} of the month</DetailRow>}
+        <DetailRow label="Paid">{e.paymentMethod === 'MANUAL' ? 'Manually' : 'Automatically'}</DetailRow>
       </DetailSection>
 
       <DetailSection title="Belongs to">

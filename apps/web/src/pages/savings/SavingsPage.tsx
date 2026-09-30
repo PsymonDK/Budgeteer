@@ -29,6 +29,7 @@ import { FilteredList, type FilterFacet } from '../../components/FilterColumn'
 import { ACCOUNT_TYPE_LABELS } from '../../lib/constants'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
+import type { PaymentMethod } from '../../api/types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
 import { Page } from '../../components/Page'
 
@@ -126,6 +127,7 @@ export function SavingsPage() {
         amount: parseFloat(data.amount),
         frequency: data.frequency,
         dueDay: dueDayPayload(data.dueDay, data.frequency),
+        paymentMethod: data.paymentMethod,
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
         ownership: data.ownership,
@@ -156,6 +158,7 @@ export function SavingsPage() {
         amount: parseFloat(data.amount),
         frequency: data.frequency,
         dueDay: dueDayPayload(data.dueDay, data.frequency),
+        paymentMethod: data.paymentMethod,
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
         ownership: data.ownership,
@@ -228,6 +231,7 @@ export function SavingsPage() {
       amount: e.originalAmount ?? e.amount,
       frequency: e.frequency,
       dueDay: e.dueDay?.toString() ?? '',
+      paymentMethod: e.paymentMethod,
       notes: e.notes ?? '',
       currencyCode: e.currencyCode ?? baseCurrency,
       ownership: e.ownership ?? 'SHARED',
@@ -243,15 +247,16 @@ export function SavingsPage() {
   function handleBulkSubmit(e: FormEvent) {
     e.preventDefault()
     setBulkError('')
-    if (!bulkForm.categoryId && !bulkForm.accountId) {
+    if (!bulkForm.categoryId && !bulkForm.accountId && !bulkForm.paymentMethod) {
       setBulkError('Select at least one field to change')
       return
     }
-    const payload: { ids: string[]; categoryId?: string | null; accountId?: string | null } = {
+    const payload: { ids: string[]; categoryId?: string | null; accountId?: string | null; paymentMethod?: PaymentMethod } = {
       ids: [...selectedIds],
     }
     if (bulkForm.categoryId) payload.categoryId = bulkForm.categoryId === '__none__' ? null : bulkForm.categoryId
     if (bulkForm.accountId) payload.accountId = bulkForm.accountId === '__none__' ? null : bulkForm.accountId
+    if (bulkForm.paymentMethod) payload.paymentMethod = bulkForm.paymentMethod
     bulkUpdateMutation.mutate(payload)
   }
 

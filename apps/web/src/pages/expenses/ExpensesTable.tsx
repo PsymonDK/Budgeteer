@@ -2,6 +2,7 @@ import { Pencil, Trash } from 'lucide-react'
 import { CategoryIcon } from '../../components/CategoryIcon'
 import { DataTable, RowActionButton, type DataColumn } from '../../components/DataTable'
 import { AccountBadge, OwnershipBadges } from '../../components/entries/EntryBadges'
+import { ManualBadge } from '../../components/entries/PaymentMethodField'
 import { FREQUENCIES } from '../../lib/constants'
 import { MONTH_SHORT, monthRangeLabel } from './helpers'
 import type { Expense, SortKey } from './types'
@@ -99,12 +100,14 @@ export function ExpensesTable({
           {e.ownership === 'SHARED' && <span className="text-xs text-gray-500">Shared</span>}
           <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
           <AccountBadge account={e.account} />
+          <ManualBadge paymentMethod={e.paymentMethod} />
         </span>
       ),
       summary: (e) => (
         <>
           <OwnershipBadges ownership={e.ownership} ownedBy={e.ownedBy} />
           <AccountBadge account={e.account} />
+          <ManualBadge paymentMethod={e.paymentMethod} />
         </>
       ),
     },

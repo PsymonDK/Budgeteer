@@ -27,7 +27,7 @@ export function monthRangeLabel(startMonth: number | null, endMonth: number | nu
 
 export const emptyForm = (baseCurrency: string): ExpenseForm => ({
   label: '', amount: '', frequency: 'MONTHLY', categoryId: '', frequencyPeriod: '',
-  startMonth: '', endMonth: '', dueDay: '', notes: '',
+  startMonth: '', endMonth: '', dueDay: '', paymentMethod: 'AUTOMATIC', notes: '',
   currencyCode: baseCurrency, ownership: 'SHARED', ownedByUserId: null, customSplits: [],
   accountId: null,
 })
@@ -42,6 +42,7 @@ export function formFromExpense(expense: Expense, baseCurrency: string): Expense
     startMonth: expense.startMonth?.toString() ?? '',
     endMonth: expense.endMonth?.toString() ?? '',
     dueDay: expense.dueDay?.toString() ?? '',
+    paymentMethod: expense.paymentMethod,
     notes: expense.notes ?? '',
     currencyCode: expense.currencyCode ?? baseCurrency,
     ownership: expense.ownership ?? 'SHARED',

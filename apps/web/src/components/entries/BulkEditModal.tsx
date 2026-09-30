@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react'
-import type { AccountInfo, Category } from '../../api/types'
+import type { AccountInfo, Category, PaymentMethod } from '../../api/types'
 import { Modal } from '../Modal'
 import { FormError } from '../FormError'
 import { AccountSelect } from '../AccountSelect'
@@ -9,9 +9,11 @@ import { StickyActions } from '../StickyActions'
 export interface BulkEditForm {
   categoryId: string
   accountId: string
+  /** '' = unchanged */
+  paymentMethod: '' | PaymentMethod
 }
 
-export const emptyBulkForm = (): BulkEditForm => ({ categoryId: '', accountId: '' })
+export const emptyBulkForm = (): BulkEditForm => ({ categoryId: '', accountId: '', paymentMethod: '' })
 
 interface BulkEditModalProps {
   title: string
@@ -31,7 +33,7 @@ interface BulkEditModalProps {
   onClose: () => void
 }
 
-/** Change the category and/or account of the selected expenses or savings entries. */
+/** Change the category, account and/or payment method of the selected expenses or savings entries. */
 export function BulkEditModal({
   title, form, setForm, categories, showCategory, allowClearCategory, hasAccounts,
   personalAccounts, householdAccounts, error, pending, onSubmit, onClose,
@@ -70,6 +72,19 @@ export function BulkEditModal({
             </AccountSelect>
           </div>
         )}
+        <div>
+          <label htmlFor="bulk-payment-method" className="block text-xs font-medium text-gray-400 mb-1">How it's paid</label>
+          <select
+            id="bulk-payment-method"
+            value={form.paymentMethod}
+            onChange={(e) => setForm({ ...form, paymentMethod: e.target.value as BulkEditForm['paymentMethod'] })}
+            className={inputClass}
+          >
+            <option value="">— unchanged —</option>
+            <option value="AUTOMATIC">Automatic</option>
+            <option value="MANUAL">Manual</option>
+          </select>
+        </div>
         <FormError message={error} />
         <StickyActions>
           <button

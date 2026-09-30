@@ -14,6 +14,9 @@ export type CategoryType = 'EXPENSE' | 'SAVINGS'
 /** Ownership of an expense or savings entry. */
 export type Ownership = 'SHARED' | 'INDIVIDUAL' | 'CUSTOM'
 
+/** How an expense or savings entry is paid; MANUAL ones are listed to tick off in Pay/No-pay households */
+export type PaymentMethod = 'AUTOMATIC' | 'MANUAL'
+
 // ── Households ────────────────────────────────────────────────────────────────
 
 /** A membership row as included by GET /households and GET /households/:id. */
@@ -213,6 +216,7 @@ export interface MonthPayment {
   day: number | null
   /** Set for entries paid several times a month; they have no single day */
   recurrence: 'WEEKLY' | 'FORTNIGHTLY' | null
+  paymentMethod: PaymentMethod
   /** Amount due this month, base currency */
   amount: string
   /** Paid status for Pay/No-pay households; null otherwise */
@@ -228,6 +232,6 @@ export interface MonthPayments {
   tracked: boolean
   /** Sorted by day, items without a day last */
   items: MonthPayment[]
-  /** Skipped (closed) items are left out; paidCount/unpaid only when tracked */
-  totals: { count: number; due: string; paidCount: number | null; unpaid: string | null }
+  /** Skipped (closed) items are left out; paidCount/unpaid count manual items, only when tracked */
+  totals: { count: number; due: string; manualCount: number; paidCount: number | null; unpaid: string | null }
 }

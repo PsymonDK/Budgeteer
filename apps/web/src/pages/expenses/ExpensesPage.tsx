@@ -8,7 +8,7 @@ import { qk } from '../../api/queryKeys'
 import {
   useBudgetYearAccounts, useBudgetYears, useCategories, useCurrencies, useHouseholdDetail,
 } from '../../api/queries'
-import type { BudgetYear } from '../../api/types'
+import type { BudgetYear, PaymentMethod } from '../../api/types'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { PageHeader } from '../../components/PageHeader'
 import { CategoryFilter } from '../../components/CategoryFilter'
@@ -269,15 +269,16 @@ export function ExpensesPage() {
   function handleBulkSubmit(e: FormEvent) {
     e.preventDefault()
     setBulkError('')
-    if (!bulkForm.categoryId && !bulkForm.accountId) {
+    if (!bulkForm.categoryId && !bulkForm.accountId && !bulkForm.paymentMethod) {
       setBulkError('Select at least one field to change')
       return
     }
-    const payload: { ids: string[]; categoryId?: string; accountId?: string | null } = {
+    const payload: { ids: string[]; categoryId?: string; accountId?: string | null; paymentMethod?: PaymentMethod } = {
       ids: [...selectedIds],
     }
     if (bulkForm.categoryId) payload.categoryId = bulkForm.categoryId
     if (bulkForm.accountId) payload.accountId = bulkForm.accountId === '__none__' ? null : bulkForm.accountId
+    if (bulkForm.paymentMethod) payload.paymentMethod = bulkForm.paymentMethod
     bulkUpdateMutation.mutate(payload)
   }
 

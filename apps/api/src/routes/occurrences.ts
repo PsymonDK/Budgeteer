@@ -17,8 +17,9 @@ const MarkAllPaidSchema = z.object({ month: z.number().int().min(1).max(12) })
 const KindSchema = z.enum(['expense', 'savings'])
 
 // PAY_NO_PAY households track each expense/savings item per month. These routes let
-// members see a month's items and mark them paid one by one or all at once; unpaid
-// items carry into the next month at rollover.
+// members see a month's manually paid items and mark them paid one by one or all at
+// once; unpaid items carry into the next month at rollover. Automatically paid items
+// aren't listed: they're marked paid when the month closes.
 export async function occurrenceRoutes(fastify: FastifyInstance) {
   async function loadBudgetYear(id: string, request: { user: { sub: string; role: string } }, reply: FastifyReply, forWrite: boolean) {
     const budgetYear = await assertBudgetYearAccess(id, request.user.sub, request.user.role === 'SYSTEM_ADMIN')
@@ -33,14 +34,17 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     return budgetYear
   }
 
+  // Manually paid entries only; automatic ones are settled at month close
+  const manual = { paymentMethod: 'MANUAL' as const }
+
   async function listItems(budgetYearId: string, year: number, month: number): Promise<OccurrenceItem[]> {
     const [expenseOccs, savingsOccs] = await Promise.all([
       prisma.expenseOccurrence.findMany({
-        where: { expense: { budgetYearId, ...notDeleted }, year, month },
+        where: { expense: { budgetYearId, ...notDeleted, ...manual }, year, month },
         include: { expense: { select: { id: true, label: true, category: { select: { name: true } } } } },
       }),
       prisma.savingsOccurrence.findMany({
-        where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month },
+        where: { savingsEntry: { budgetYearId, ...notDeleted, ...manual }, year, month },
         include: { savingsEntry: { select: { id: true, label: true, category: { select: { name: true } } } } },
       }),
     ])
@@ -61,7 +65,12 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return
 
     const month = query.data.month ?? Math.min(12, effectiveCurrentMonth(budgetYear.year))
-    const items = await listItems(id, budgetYear.year, month)
+    const automatic = { paymentMethod: 'AUTOMATIC' as const }
+    const [items, automaticExpenses, automaticSavings] = await Promise.all([
+      listItems(id, budgetYear.year, month),
+      prisma.expenseOccurrence.count({ where: { expense: { budgetYearId: id, ...notDeleted, ...automatic }, year: budgetYear.year, month } }),
+      prisma.savingsOccurrence.count({ where: { savingsEntry: { budgetYearId: id, ...notDeleted, ...automatic }, year: budgetYear.year, month } }),
+    ])
 
     return reply.send({
       budgetModel: budgetYear.household.budgetModel,
@@ -70,6 +79,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
       isReadOnly: budgetYear.status === 'RETIRED',
       items,
       totals: occurrenceTotals(items),
+      // Automatically paid items this month, not listed above
+      automaticCount: automaticExpenses + automaticSavings,
     })
   })
 
@@ -122,9 +133,19 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return
 
     const occ = kind === 'expense'
-      ? await prisma.expenseOccurrence.findFirst({ where: { id: occurrenceId, expense: { budgetYearId: id, ...notDeleted } } })
-      : await prisma.savingsOccurrence.findFirst({ where: { id: occurrenceId, savingsEntry: { budgetYearId: id, ...notDeleted } } })
+      ? await prisma.expenseOccurrence.findFirst({
+        where: { id: occurrenceId, expense: { budgetYearId: id, ...notDeleted } },
+        include: { expense: { select: { paymentMethod: true } } },
+      })
+      : await prisma.savingsOccurrence.findFirst({
+        where: { id: occurrenceId, savingsEntry: { budgetYearId: id, ...notDeleted } },
+        include: { savingsEntry: { select: { paymentMethod: true } } },
+      })
     if (!occ) return reply.status(404).send({ error: 'Occurrence not found' })
+    const paymentMethod = 'expense' in occ ? occ.expense.paymentMethod : occ.savingsEntry.paymentMethod
+    if (paymentMethod === 'AUTOMATIC') {
+      return reply.status(409).send({ error: 'This item is paid automatically; it is marked paid when the month closes', code: 'OCCURRENCE_AUTOMATIC' })
+    }
     if (occ.status === 'SKIPPED') {
       return reply.status(409).send({ error: 'This month is closed; its unpaid amount was carried to the next month', code: 'OCCURRENCE_CLOSED' })
     }
@@ -142,7 +163,7 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
     return reply.send({ item: items.find((i) => i.id === occurrenceId) ?? null, totals: occurrenceTotals(items) })
   })
 
-  // POST /budget-years/:id/occurrences/mark-all-paid — mark every pending item of a month paid
+  // POST /budget-years/:id/occurrences/mark-all-paid — mark every pending manual item of a month paid
   fastify.post('/budget-years/:id/occurrences/mark-all-paid', { preHandler: authenticate }, async (request, reply) => {
     const { id } = request.params as { id: string }
     const body = MarkAllPaidSchema.safeParse(request.body)
@@ -157,8 +178,8 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
 
     await prisma.$transaction(async (tx) => {
       const [expenseOccs, savingsOccs] = await Promise.all([
-        tx.expenseOccurrence.findMany({ where: { expense: { budgetYearId: id, ...notDeleted }, year, month, status: 'PENDING' } }),
-        tx.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId: id, ...notDeleted }, year, month, status: 'PENDING' } }),
+        tx.expenseOccurrence.findMany({ where: { expense: { budgetYearId: id, ...notDeleted, ...manual }, year, month, status: 'PENDING' } }),
+        tx.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId: id, ...notDeleted, ...manual }, year, month, status: 'PENDING' } }),
       ])
       for (const o of expenseOccs) {
         await tx.expenseOccurrence.update({ where: { id: o.id }, data: { status: 'PAID', paidAt, actualAmount: dueAmount(o) } })

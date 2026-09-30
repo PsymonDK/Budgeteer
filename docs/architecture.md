@@ -161,6 +161,7 @@ budgeteer/
 **expenses** — recurring expenses on a budget year
 - budgetYearId, categoryId, label, amount, frequency, frequencyPeriod, startMonth, endMonth, monthlyEquivalent, forwardMonthlyEquivalent, notes
 - dueDay (nullable, 1–31) — day of the month it's paid, for the dashboard's payments timeline; days past a month's end fall on its last day; ignored for WEEKLY/FORTNIGHTLY
+- paymentMethod (`AUTOMATIC` | `MANUAL`, default AUTOMATIC) — how it's paid; in PAY_NO_PAY households only MANUAL items are listed to tick off, AUTOMATIC ones are marked paid at month close
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -204,7 +205,7 @@ budgeteer/
 
 **savings_entries** — planned savings on a budget year
 - budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, forwardMonthlyEquivalent, notes
-- dueDay (nullable, 1–31) — as on expenses
+- dueDay (nullable, 1–31), paymentMethod — as on expenses
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable), categoryId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -223,8 +224,8 @@ budgeteer/
 
 **Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
 - Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
-- Members mark items PAID one by one or all at once for a month (`actualAmount` = amount due)
-- Month rollover (1st of the month automation) closes the previous month: PENDING → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent
+- Members mark MANUAL items PAID one by one or all at once for a month (`actualAmount` = amount due); AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+- Month rollover (1st of the month automation) closes the previous month (`closePayNoPayMonth`, planned by `planMonthClose`): PENDING AUTOMATIC → PAID with the full amount due, PENDING MANUAL → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent. Switching an entry's payment method rewrites no rows; the next close applies it
 - At the year boundary December is closed without carry — the new year's expenses are separate rows
 
 **currencies** — admin-managed catalog of available currencies
@@ -500,10 +501,10 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
-GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY items for a month (default: current)
-GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day, sorted by day; paid status + paid/unpaid totals for PAY_NO_PAY
+GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY manual items for a month (default: current), plus automaticCount
+GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day and payment method, sorted by day; manualCount, plus paid status and manual paid/unpaid totals for PAY_NO_PAY
 PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
-POST   /budget-years/:id/occurrences/mark-all-paid       # { month }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only
 
 GET    /categories
 POST   /categories

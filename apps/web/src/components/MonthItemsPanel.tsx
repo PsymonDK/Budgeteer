@@ -27,14 +27,17 @@ interface MonthItems {
   isReadOnly: boolean
   items: OccurrenceItem[]
   totals: { due: string; paid: string; unpaid: string }
+  /** Automatically paid items this month; not listed, they're marked paid when the month closes */
+  automaticCount: number
 }
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 /**
- * Pay/No-pay item checklist for one month. Each expense and savings item is marked
- * paid on its own (or all at once); whatever is still unpaid when the month closes
- * carries into the next month. Renders nothing for other budget models.
+ * Pay/No-pay reminder list of what to pay by hand this month. Only manually paid expense
+ * and savings items are listed; each is marked paid on its own (or all at once), and
+ * whatever is still unpaid when the month closes carries into the next month. Automatic
+ * items are marked paid at month close. Renders nothing for other budget models.
  */
 export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; fmt: (v: number | string) => string }) {
   const queryClient = useQueryClient()
@@ -79,7 +82,7 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">
           <ListChecks size={16} className="text-amber-400" />
-          <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">Items this month</h2>
+          <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">To pay by hand</h2>
         </div>
         <div className="flex items-center gap-1 text-sm text-gray-300">
           <button
@@ -103,7 +106,9 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
       </div>
 
       {data.items.length === 0 ? (
-        <p className="text-gray-500 text-sm">No items scheduled for this month.</p>
+        <p className="text-gray-500 text-sm">
+          Nothing to pay by hand this month. Set an expense or savings entry to Manual to get a reminder here.
+        </p>
       ) : (
         <>
           <ul className="divide-y divide-gray-800">
@@ -155,6 +160,12 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
             )}
           </div>
         </>
+      )}
+
+      {data.automaticCount > 0 && (
+        <p className="text-xs text-gray-500 mt-3">
+          {data.automaticCount} automatic {data.automaticCount === 1 ? 'payment is' : 'payments are'} marked paid when the month closes.
+        </p>
       )}
     </div>
   )

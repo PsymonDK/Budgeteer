@@ -10,6 +10,8 @@ import { recalculateTransfer } from '../lib/budgetTransfer'
 
 const FrequencyEnum = z.enum(['WEEKLY', 'FORTNIGHTLY', 'MONTHLY', 'QUARTERLY', 'BIANNUAL', 'ANNUAL'])
 const OwnershipEnum = z.enum(['SHARED', 'INDIVIDUAL', 'CUSTOM'])
+// How it's paid: AUTOMATIC items are treated as paid at Pay/No-pay month close; MANUAL ones are ticked off
+const PaymentMethodEnum = z.enum(['AUTOMATIC', 'MANUAL'])
 
 const CustomSplitSchema = z.object({
   userId: z.string(),
@@ -26,6 +28,7 @@ const ExpenseBaseSchema = z.object({
   endMonth: z.number().int().min(1).max(12).nullable().optional(),
   // Day of the month it's paid, for the dashboard's payments timeline; null clears it
   dueDay: z.number().int().min(1).max(31).nullable().optional(),
+  paymentMethod: PaymentMethodEnum,
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
   ownership: OwnershipEnum,
@@ -41,19 +44,20 @@ const monthRangeRefinement = (d: { startMonth?: number | null; endMonth?: number
 
 // The default lives only on the create schema: Zod 4 applies defaults inside
 // .partial() too, so an update without `ownership` would reset it to SHARED.
-export const CreateExpenseSchema = ExpenseBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED') })
+export const CreateExpenseSchema = ExpenseBaseSchema.extend({ ownership: OwnershipEnum.default('SHARED'), paymentMethod: PaymentMethodEnum.default('AUTOMATIC') })
   .refine(monthRangeRefinement, { message: 'startMonth must be ≤ endMonth', path: ['endMonth'] })
 
 export const UpdateExpenseSchema = ExpenseBaseSchema.partial()
   .refine((d) => Object.keys(d).length > 0, { message: 'At least one field is required' })
   .refine(monthRangeRefinement, { message: 'startMonth must be ≤ endMonth', path: ['endMonth'] })
 
-const BulkUpdateExpenseSchema = z.object({
+export const BulkUpdateExpenseSchema = z.object({
   ids: z.array(z.string()).min(1, { message: 'At least one expense ID required' }),
+  paymentMethod: PaymentMethodEnum.optional(),
   categoryId: z.string().optional(),
   accountId: z.string().nullable().optional(),
 }).refine(
-  (d) => d.categoryId !== undefined || d.accountId !== undefined,
+  (d) => d.categoryId !== undefined || d.accountId !== undefined || d.paymentMethod !== undefined,
   { message: 'At least one field to update is required' }
 )
 
@@ -110,7 +114,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
     if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, dueDay, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, dueDay, paymentMethod, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
 
     const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE')
     if (!category) return reply.status(400).send({ error: 'Category not found' })
@@ -142,6 +146,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           startMonth: startMonth ?? null,
           endMonth: endMonth ?? null,
           dueDay: dueDay ?? null,
+          paymentMethod,
           notes: notes ?? null,
           monthlyEquivalent,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
@@ -286,7 +291,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
     if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
-    const { ids, categoryId, accountId } = result.data
+    const { ids, categoryId, accountId, paymentMethod } = result.data
 
     if (categoryId !== undefined) {
       const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE')
@@ -303,6 +308,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
       data: {
         ...(categoryId !== undefined && { categoryId }),
         ...(accountId !== undefined && { accountId }),
+        ...(paymentMethod !== undefined && { paymentMethod }),
       },
     })
 

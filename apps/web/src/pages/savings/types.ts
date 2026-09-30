@@ -1,4 +1,4 @@
-import type { AccountInfo, Category, CustomSplitInput, Ownership } from '../../api/types'
+import type { AccountInfo, Category, CustomSplitInput, Ownership, PaymentMethod } from '../../api/types'
 import type { Frequency } from '../../lib/constants'
 
 /** GET /budget-years/:id/savings */
@@ -10,6 +10,7 @@ export interface SavingsEntry {
   monthlyEquivalent: string
   /** Day of the month it's paid (1–31); null = no set day */
   dueDay: number | null
+  paymentMethod: PaymentMethod
   notes: string | null
   currencyCode: string | null
   originalAmount: string | null
@@ -30,6 +31,7 @@ export interface EntryForm {
   frequency: Frequency
   /** '' = no set day */
   dueDay: string
+  paymentMethod: PaymentMethod
   notes: string
   currencyCode: string
   ownership: Ownership
@@ -40,6 +42,6 @@ export interface EntryForm {
 }
 
 export const emptyForm = (baseCurrency: string): EntryForm => ({
-  label: '', amount: '', frequency: 'MONTHLY', dueDay: '', notes: '', currencyCode: baseCurrency,
+  label: '', amount: '', frequency: 'MONTHLY', dueDay: '', paymentMethod: 'AUTOMATIC', notes: '', currencyCode: baseCurrency,
   ownership: 'SHARED', ownedByUserId: null, categoryId: '', customSplits: [], accountId: null,
 })

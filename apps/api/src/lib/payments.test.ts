@@ -8,12 +8,12 @@ type ExpenseRow = Parameters<typeof buildMonthPayments>[0]['expenses'][number]
 type SavingsRow = Parameters<typeof buildMonthPayments>[0]['savings'][number]
 
 const expense = (over: Partial<ExpenseRow> & { id: string }): ExpenseRow => ({
-  label: over.id, category: { name: 'Housing' }, dueDay: null, frequency: 'MONTHLY',
+  label: over.id, category: { name: 'Housing' }, dueDay: null, paymentMethod: 'AUTOMATIC', frequency: 'MONTHLY',
   startMonth: null, endMonth: null, monthlyEquivalent: d('1000'), amount: d('1000'), rateUsed: null,
   ...over,
 })
 const saving = (over: Partial<SavingsRow> & { id: string }): SavingsRow => ({
-  label: over.id, category: null, dueDay: null, frequency: 'MONTHLY', monthlyEquivalent: d('500'), ...over,
+  label: over.id, category: null, dueDay: null, paymentMethod: 'AUTOMATIC', frequency: 'MONTHLY', monthlyEquivalent: d('500'), ...over,
 })
 
 describe('daysInMonth', () => {
@@ -62,16 +62,21 @@ describe('buildMonthPayments (untracked household)', () => {
     expect(items.map((i) => i.entryId)).toEqual(['rent', 'netflix'])
   })
 
-  it('totals what is due, without paid figures', () => {
-    const { totals } = run(10, [expense({ id: 'rent', amount: d('1200'), monthlyEquivalent: d('1200') })], [saving({ id: 'buffer' })])
-    expect(totals).toEqual({ count: 2, due: '1700.00', paidCount: null, unpaid: null })
+  it('totals what is due and counts manual items, without paid figures', () => {
+    const { totals } = run(10, [expense({ id: 'rent', amount: d('1200'), monthlyEquivalent: d('1200') })], [saving({ id: 'buffer', paymentMethod: 'MANUAL' })])
+    expect(totals).toEqual({ count: 2, due: '1700.00', manualCount: 1, paidCount: null, unpaid: null })
+  })
+
+  it('passes each item’s payment method through', () => {
+    const { items } = run(10, [expense({ id: 'rent', paymentMethod: 'MANUAL' }), expense({ id: 'power' })])
+    expect(Object.fromEntries(items.map((i) => [i.entryId, i.paymentMethod]))).toEqual({ rent: 'MANUAL', power: 'AUTOMATIC' })
   })
 })
 
 describe('buildMonthPayments (Pay/No-pay household)', () => {
   const occ = (status: TrackedOccurrence['status'], due: string): TrackedOccurrence => ({ status, dueAmount: d(due) })
 
-  it('uses the occurrence amount and status, and counts paid items', () => {
+  it('uses the occurrence amount and status, and counts paid manual items', () => {
     const occurrences = new Map([
       [occurrenceKey('expense', 'rent'), occ('PAID', '1000')],
       [occurrenceKey('expense', 'power'), occ('PENDING', '450')], // includes a carried amount
@@ -79,11 +84,26 @@ describe('buildMonthPayments (Pay/No-pay household)', () => {
     ])
     const { items, totals } = buildMonthPayments({
       year: 2026, month: 10, occurrences,
-      expenses: [expense({ id: 'rent', dueDay: 1 }), expense({ id: 'power', dueDay: 20, monthlyEquivalent: d('300'), amount: d('300') })],
-      savings: [saving({ id: 'buffer', dueDay: 2 })],
+      expenses: [
+        expense({ id: 'rent', dueDay: 1, paymentMethod: 'MANUAL' }),
+        expense({ id: 'power', dueDay: 20, monthlyEquivalent: d('300'), amount: d('300'), paymentMethod: 'MANUAL' }),
+      ],
+      savings: [saving({ id: 'buffer', dueDay: 2, paymentMethod: 'MANUAL' })],
     })
     expect(items.find((i) => i.entryId === 'power')).toMatchObject({ amount: '450.00', status: 'PENDING' })
-    expect(totals).toEqual({ count: 2, due: '1450.00', paidCount: 1, unpaid: '450.00' })
+    expect(totals).toEqual({ count: 2, due: '1450.00', manualCount: 2, paidCount: 1, unpaid: '450.00' })
+  })
+
+  it('leaves automatic items out of the paid count and the amount to pay', () => {
+    const occurrences = new Map([
+      [occurrenceKey('expense', 'rent'), occ('PENDING', '1000')], // automatic: settles at month close
+      [occurrenceKey('expense', 'gym'), occ('PENDING', '300')],
+    ])
+    const { totals } = buildMonthPayments({
+      year: 2026, month: 10, occurrences, savings: [],
+      expenses: [expense({ id: 'rent' }), expense({ id: 'gym', paymentMethod: 'MANUAL', monthlyEquivalent: d('300'), amount: d('300') })],
+    })
+    expect(totals).toEqual({ count: 2, due: '1300.00', manualCount: 1, paidCount: 0, unpaid: '300.00' })
   })
 
   it('shows scheduled items without an occurrence as untracked (status null)', () => {
