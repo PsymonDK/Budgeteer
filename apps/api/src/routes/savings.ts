@@ -24,6 +24,8 @@ const SavingsBaseSchema = z.object({
   label: z.string().min(1).max(200),
   amount: z.number().positive(),
   frequency: FrequencyEnum,
+  // Day of the month it's paid, for the dashboard's payments timeline; null clears it
+  dueDay: z.number().int().min(1).max(31).nullable().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
   ownership: OwnershipEnum,
@@ -92,7 +94,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'Invalid request body', details: z.flattenError(result.error) })
     }
 
-    const { label, amount, frequency, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
+    const { label, amount, frequency, dueDay, notes, currencyCode, ownership, ownedByUserId, categoryId, customSplits, accountId } = result.data
 
     if (categoryId) {
       const category = await findUsableCategory(categoryId, budgetYear.householdId, 'SAVINGS')
@@ -122,6 +124,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           amount: new Decimal(amount),
           frequency,
           monthlyEquivalent,
+          dueDay: dueDay ?? null,
           notes,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,
           originalAmount: currency !== BASE_CURRENCY ? new Decimal(amount) : null,
@@ -217,6 +220,7 @@ export async function savingsRoutes(fastify: FastifyInstance) {
           frequency: newFrequency,
           monthlyEquivalent,
           notes: data.notes,
+          ...(data.dueDay !== undefined && { dueDay: data.dueDay }),
           currencyCode: newCurrency !== BASE_CURRENCY ? newCurrency : null,
           originalAmount: newCurrency !== BASE_CURRENCY ? newAmount : null,
           rateUsed: newCurrency !== BASE_CURRENCY ? rate : null,

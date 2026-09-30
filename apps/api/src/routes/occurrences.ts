@@ -5,6 +5,7 @@ import { authenticate } from '../plugins/authenticate'
 import { assertBudgetYearAccess } from '../lib/ownership'
 import { effectiveCurrentMonth, recalculateTransfer } from '../lib/budgetTransfer'
 import { dueAmount, occurrenceTotals, toOccurrenceItem, type OccurrenceItem, type OccurrenceKind } from '../lib/occurrences'
+import { buildMonthPayments, occurrenceKey, type TrackedOccurrence } from '../lib/payments'
 
 const MonthQuerySchema = z.object({ month: z.coerce.number().int().min(1).max(12).optional() })
 
@@ -70,6 +71,41 @@ export async function occurrenceRoutes(fastify: FastifyInstance) {
       items,
       totals: occurrenceTotals(items),
     })
+  })
+
+  // GET /budget-years/:id/payments?month=M — the month's expense and savings payments with their
+  // due day, for the dashboard's payments timeline (any budget model; paid status for Pay/No-pay)
+  fastify.get('/budget-years/:id/payments', { preHandler: authenticate }, async (request, reply) => {
+    const { id } = request.params as { id: string }
+    const query = MonthQuerySchema.safeParse(request.query)
+    if (!query.success) return reply.status(400).send({ error: 'Invalid query parameters', details: z.flattenError(query.error) })
+
+    const budgetYear = await loadBudgetYear(id, request, reply, false)
+    if (!budgetYear) return
+
+    const month = query.data.month ?? Math.min(12, effectiveCurrentMonth(budgetYear.year))
+    const tracked = budgetYear.household.budgetModel === 'PAY_NO_PAY'
+    const category = { select: { name: true } }
+    const [expenses, savings, expenseOccs, savingsOccs] = await Promise.all([
+      prisma.expense.findMany({ where: { budgetYearId: id }, include: { category } }),
+      prisma.savingsEntry.findMany({ where: { budgetYearId: id }, include: { category } }),
+      tracked
+        ? prisma.expenseOccurrence.findMany({ where: { expense: { budgetYearId: id, ...notDeleted }, year: budgetYear.year, month } })
+        : [],
+      tracked
+        ? prisma.savingsOccurrence.findMany({ where: { savingsEntry: { budgetYearId: id, ...notDeleted }, year: budgetYear.year, month } })
+        : [],
+    ])
+
+    const occurrences = tracked
+      ? new Map<string, TrackedOccurrence>([
+        ...expenseOccs.map((o) => [occurrenceKey('expense', o.expenseId), { status: o.status, dueAmount: dueAmount(o) }] as const),
+        ...savingsOccs.map((o) => [occurrenceKey('savings', o.savingsEntryId), { status: o.status, dueAmount: dueAmount(o) }] as const),
+      ])
+      : null
+
+    const { items, totals } = buildMonthPayments({ year: budgetYear.year, month, expenses, savings, occurrences })
+    return reply.send({ budgetModel: budgetYear.household.budgetModel, year: budgetYear.year, month, tracked, items, totals })
   })
 
   // PATCH /budget-years/:id/occurrences/:kind/:occurrenceId — mark one item paid or pending

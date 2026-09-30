@@ -6,6 +6,7 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { calcIncomeForYear, calcIncomeForYearDetailed, getIncomeReferenceDate } from '../lib/incomeCalc'
 import { assertHouseholdAccess, partitionByOwnership, resolveEffectiveAmount } from '../lib/ownership'
 import { toNum } from '../lib/decimal'
+import { incomeSplitPct } from '../lib/calculations'
 import { pickDefaultBudgetYear } from '../lib/budgetYearSelection'
 import { computeIncomeShares, formatSharePct, splitByShares } from '../lib/incomeShare'
 import { buildIncomeFlow } from '../lib/incomeFlow'
@@ -179,6 +180,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
         expenses: { totalMonthly: '0.00', items: [], byCategory: [] },
         savings: { totalMonthly: '0.00' },
         surplus: '0.00',
+        incomeSplit: null,
         memberSplits: [],
         warnings: {
           expensesExceedIncome: false,
@@ -356,6 +358,8 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       surplus: surplus.toFixed(2),
       // Savings as a percentage of net income (null without income)
       savingsRate: totalMonthlyIncome > 0 ? ((totalMonthlySavings / totalMonthlyIncome) * 100).toFixed(1) : null,
+      // Expenses / savings / surplus as shares of net income, for the dashboard's income split bar
+      incomeSplit: incomeSplitPct(totalMonthlyIncome, totalMonthlyExpenses, totalMonthlySavings),
       incomeFlow: buildIncomeFlow(
         incomeMembers.map((m) => ({ userId: m.userId, name: m.name, net: memberNetMap.get(m.userId) ?? new Decimal(0) })),
         byCategory.map((c) => ({ categoryId: c.categoryId, categoryName: c.categoryName, total: new Decimal(c.totalMonthly) })),

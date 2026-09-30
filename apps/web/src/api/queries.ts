@@ -7,7 +7,7 @@ import { api } from './client'
 import { qk } from './queryKeys'
 import type {
   Account, AccountGroups, AppConfig, BudgetYear, Category, CategoryType, Currency, Household,
-  ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
+  MonthPayments, ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
 } from './types'
 
 /** Per-call options a screen may set on a shared query. */
@@ -142,5 +142,15 @@ export function usePreferences(opts: QueryOpts = {}) {
     queryKey: qk.preferences(),
     queryFn: async () => (await api.get<UserMe>('/users/me')).data.preferences as UserPreferences | null,
     ...opts,
+  })
+}
+
+/** GET /budget-years/:id/payments — a month's payments with their due day (defaults to the current month). */
+export function useMonthPayments(budgetYearId: string | undefined, month?: number) {
+  return useQuery({
+    queryKey: qk.payments(budgetYearId, month ?? 'current'),
+    queryFn: async () =>
+      (await api.get<MonthPayments>(`/budget-years/${budgetYearId}/payments`, { params: month ? { month } : undefined })).data,
+    enabled: !!budgetYearId,
   })
 }

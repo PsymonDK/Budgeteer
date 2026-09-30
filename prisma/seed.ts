@@ -303,20 +303,20 @@ async function main() {
   })
   await prisma.expense.createMany({
     data: [
-      { budgetYearId: smithActive.id, label: 'Rent',              amount: 1900, frequency: 'MONTHLY',      monthlyEquivalent: 1900,                 categoryId: cat('Housing').id },
+      { budgetYearId: smithActive.id, dueDay: 1, label: 'Rent',              amount: 1900, frequency: 'MONTHLY',      monthlyEquivalent: 1900,                 categoryId: cat('Housing').id },
       { budgetYearId: smithActive.id, label: 'Groceries',         amount: 650,  frequency: 'MONTHLY',      monthlyEquivalent: 650,                  categoryId: cat('Food & Groceries').id },
-      { budgetYearId: smithActive.id, label: 'Car insurance',     amount: 1320, frequency: 'ANNUAL',       monthlyEquivalent: 110,                  categoryId: cat('Insurance').id },
-      { budgetYearId: smithActive.id, label: 'Electricity',       amount: 270,  frequency: 'MONTHLY',      monthlyEquivalent: 270,                  categoryId: cat('Utilities').id },
-      { budgetYearId: smithActive.id, label: 'Netflix',           amount: 18,   frequency: 'MONTHLY',      monthlyEquivalent: 18,                   categoryId: cat('Subscriptions').id },
-      { budgetYearId: smithActive.id, label: 'Spotify',           amount: 12,   frequency: 'MONTHLY',      monthlyEquivalent: 12,                   categoryId: cat('Subscriptions').id },
-      { budgetYearId: smithActive.id, label: 'Health check-ups',  amount: 600,  frequency: 'ANNUAL',       monthlyEquivalent: 50,                   categoryId: cat('Healthcare').id },
+      { budgetYearId: smithActive.id, dueDay: 15, label: 'Car insurance',     amount: 1320, frequency: 'ANNUAL',       monthlyEquivalent: 110,                  categoryId: cat('Insurance').id },
+      { budgetYearId: smithActive.id, dueDay: 20, label: 'Electricity',       amount: 270,  frequency: 'MONTHLY',      monthlyEquivalent: 270,                  categoryId: cat('Utilities').id },
+      { budgetYearId: smithActive.id, dueDay: 12, label: 'Netflix',           amount: 18,   frequency: 'MONTHLY',      monthlyEquivalent: 18,                   categoryId: cat('Subscriptions').id },
+      { budgetYearId: smithActive.id, dueDay: 25, label: 'Spotify',           amount: 12,   frequency: 'MONTHLY',      monthlyEquivalent: 12,                   categoryId: cat('Subscriptions').id },
+      { budgetYearId: smithActive.id, dueDay: 5, label: 'Health check-ups',  amount: 600,  frequency: 'ANNUAL',       monthlyEquivalent: 50,                   categoryId: cat('Healthcare').id },
       { budgetYearId: smithActive.id, label: 'Car fuel',          amount: 80,   frequency: 'WEEKLY',       monthlyEquivalent: parseFloat((80 * 52 / 12).toFixed(2)), categoryId: cat('Transport').id },
     ],
   })
   await prisma.savingsEntry.createMany({
     data: [
-      { budgetYearId: smithActive.id, label: 'Emergency fund', amount: 400, frequency: 'MONTHLY', monthlyEquivalent: 400 },
-      { budgetYearId: smithActive.id, label: 'Holiday fund',   amount: 150, frequency: 'MONTHLY', monthlyEquivalent: 150 },
+      { budgetYearId: smithActive.id, dueDay: 2, label: 'Emergency fund', amount: 400, frequency: 'MONTHLY', monthlyEquivalent: 400 },
+      { budgetYearId: smithActive.id, dueDay: 28, label: 'Holiday fund',   amount: 150, frequency: 'MONTHLY', monthlyEquivalent: 150 },
     ],
   })
 
@@ -423,15 +423,15 @@ async function main() {
   })
   await prisma.expense.createMany({
     data: [
-      { budgetYearId: cdActive.id, label: 'Apartment rent',  amount: 2400, frequency: 'MONTHLY', monthlyEquivalent: 2400, categoryId: cat('Housing').id },
-      { budgetYearId: cdActive.id, label: 'Internet',        amount: 60,   frequency: 'MONTHLY', monthlyEquivalent: 60,   categoryId: cat('Utilities').id },
+      { budgetYearId: cdActive.id, dueDay: 1, label: 'Apartment rent',  amount: 2400, frequency: 'MONTHLY', monthlyEquivalent: 2400, categoryId: cat('Housing').id },
+      { budgetYearId: cdActive.id, dueDay: 8, label: 'Internet',        amount: 60,   frequency: 'MONTHLY', monthlyEquivalent: 60,   categoryId: cat('Utilities').id },
       { budgetYearId: cdActive.id, label: 'Grocery run',     amount: 500,  frequency: 'MONTHLY', monthlyEquivalent: 500,  categoryId: cat('Food & Groceries').id },
-      { budgetYearId: cdActive.id, label: 'Gym memberships', amount: 100,  frequency: 'MONTHLY', monthlyEquivalent: 100,  categoryId: cat('Healthcare').id },
-      { budgetYearId: cdActive.id, label: 'Public transport',amount: 200,  frequency: 'MONTHLY', monthlyEquivalent: 200,  categoryId: cat('Transport').id },
+      { budgetYearId: cdActive.id, dueDay: 3, label: 'Gym memberships', amount: 100,  frequency: 'MONTHLY', monthlyEquivalent: 100,  categoryId: cat('Healthcare').id },
+      { budgetYearId: cdActive.id, dueDay: 26, label: 'Public transport',amount: 200,  frequency: 'MONTHLY', monthlyEquivalent: 200,  categoryId: cat('Transport').id },
     ],
   })
   await prisma.savingsEntry.create({
-    data: { budgetYearId: cdActive.id, label: 'Joint savings', amount: 500, frequency: 'MONTHLY', monthlyEquivalent: 500 },
+    data: { budgetYearId: cdActive.id, dueDay: 2, label: 'Joint savings', amount: 500, frequency: 'MONTHLY', monthlyEquivalent: 500 },
   })
 
   const carolJob = await prisma.job.create({

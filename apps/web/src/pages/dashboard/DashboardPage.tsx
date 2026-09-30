@@ -15,12 +15,12 @@ import { useTransferBreakdown } from '../../hooks/useTransferBreakdown'
 import { getApiError } from '../../lib/apiError'
 import { toLocalISODate, startOfLocalMonthISO } from '../../lib/dates'
 import { buildIncomeSankey, buildReceiptSankey } from './sankey'
-import { SummaryCards } from './SummaryCards'
+import { MonthHero } from './MonthHero'
 import { ReceiptFlowSection } from './ReceiptFlowSection'
 import { MemberObligations } from './MemberObligations'
 import { AffordabilityCalculator, SavingsRateHistory } from './SavingsSections'
 import { AccountBreakdown, CategoryBreakdown, ExpenseList } from './ExpenseBreakdown'
-import { MarkPaidDialog, TransferByAccount, TransferHistory, TransferTile } from './Transfers'
+import { MarkPaidDialog, TransferByAccount, TransferHistory } from './Transfers'
 import type { DashboardSummary, SavingsHistoryRow } from './types'
 import type { ReceiptSummaryPeriod } from '../../api/types'
 import { Page } from '../../components/Page'
@@ -130,9 +130,6 @@ export function DashboardPage() {
   const savings = parseFloat(summary?.savings.totalMonthly ?? '0')
   const surplus = parseFloat(summary?.surplus ?? '0')
 
-  // SAV-002: savings rate
-  const savingsRate = summary?.savingsRate != null ? parseFloat(summary.savingsRate) : null
-
   // SAV-003: adjusted surplus after extra savings slider
   const adjustedSurplus = useMemo(() => surplus - extraSavings, [surplus, extraSavings])
   const sliderMax = useMemo(() => Math.max(Math.ceil(surplus / 100) * 100, 500), [surplus])
@@ -204,21 +201,21 @@ export function DashboardPage() {
         <>
           {/* Spans per column count (2 / 3 / 4 / 6). Order matters: the grid fills gaps with later, smaller tiles. */}
           <WidgetGrid>
-            {/* DASH-001: Summary cards */}
-            <Widget span={{ 2: 2, 3: 2, 4: 3, 6: 4 }}>
-              <SummaryCards
+            {/* The month: surplus and income split, the transfer due, and the payments timeline */}
+            <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 4 }}>
+              <MonthHero
+                budgetYearId={summary.budgetYear.id}
                 income={income}
                 expenses={expenses}
                 savings={savings}
                 surplus={surplus}
-                savingsRate={savingsRate}
+                incomeSplit={summary.incomeSplit}
+                nextPending={nextPending}
+                myShare={me ? memberBreakdownMap.get(me.id)?.monthlyTotal ?? null : null}
+                onMarkPaid={openMarkPaid}
                 baseCurrency={baseCurrency}
+                fmt={fmt}
               />
-            </Widget>
-
-            {/* Budget transfer tile — the dashboard's main action, kept next to the summary */}
-            <Widget span={{ 2: 2, 3: 1, 4: 1, 6: 2 }}>
-              <TransferTile nextPending={nextPending} onMarkPaid={openMarkPaid} fmt={fmt} />
             </Widget>
 
             {/* HH-005: Member expense splits */}

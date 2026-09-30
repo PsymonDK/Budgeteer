@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { AccountFilterChips, accountsIn } from '../../components/entries/AccountFilterChips'
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
+import { dueDayPayload } from '../../components/entries/DueDayField'
 import { useRowSelection } from '../../hooks/useRowSelection'
 import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm } from '../../lib/styles'
@@ -124,6 +125,7 @@ export function SavingsPage() {
         label: data.label,
         amount: parseFloat(data.amount),
         frequency: data.frequency,
+        dueDay: dueDayPayload(data.dueDay, data.frequency),
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
         ownership: data.ownership,
@@ -153,6 +155,7 @@ export function SavingsPage() {
         label: data.label,
         amount: parseFloat(data.amount),
         frequency: data.frequency,
+        dueDay: dueDayPayload(data.dueDay, data.frequency),
         notes: data.notes || undefined,
         currencyCode: data.currencyCode !== baseCurrency ? data.currencyCode : undefined,
         ownership: data.ownership,
@@ -224,6 +227,7 @@ export function SavingsPage() {
       label: e.label,
       amount: e.originalAmount ?? e.amount,
       frequency: e.frequency,
+      dueDay: e.dueDay?.toString() ?? '',
       notes: e.notes ?? '',
       currencyCode: e.currencyCode ?? baseCurrency,
       ownership: e.ownership ?? 'SHARED',

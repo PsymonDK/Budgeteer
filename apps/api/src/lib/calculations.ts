@@ -144,3 +144,17 @@ export function expenseMonthSchedule(expense: {
   }
   return schedule
 }
+
+/**
+ * How net monthly income divides into expenses, savings and what's left (percent, one decimal).
+ * Null without income. Surplus can be negative when expenses and savings exceed income.
+ */
+export function incomeSplitPct(income: number, expenses: number, savings: number): {
+  expensesPct: string
+  savingsPct: string
+  surplusPct: string
+} | null {
+  if (!(income > 0)) return null
+  const pct = (v: number) => ((v / income) * 100).toFixed(1)
+  return { expensesPct: pct(expenses), savingsPct: pct(savings), surplusPct: pct(income - expenses - savings) }
+}

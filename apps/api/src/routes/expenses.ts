@@ -24,6 +24,8 @@ const ExpenseBaseSchema = z.object({
   frequencyPeriod: z.string().optional(),
   startMonth: z.number().int().min(1).max(12).nullable().optional(),
   endMonth: z.number().int().min(1).max(12).nullable().optional(),
+  // Day of the month it's paid, for the dashboard's payments timeline; null clears it
+  dueDay: z.number().int().min(1).max(31).nullable().optional(),
   notes: z.string().optional(),
   currencyCode: z.string().length(3).optional(),
   ownership: OwnershipEnum,
@@ -108,7 +110,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
     if (!budgetYear) return reply.status(403).send({ error: 'Forbidden' })
     if (budgetYear.status === 'RETIRED') return reply.status(400).send({ error: 'Retired budget years are read-only' })
 
-    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
+    const { label, amount, frequency, categoryId, frequencyPeriod, startMonth, endMonth, dueDay, notes, currencyCode, ownership, ownedByUserId, customSplits, accountId } = result.data
 
     const category = await findUsableCategory(categoryId, budgetYear.householdId, 'EXPENSE')
     if (!category) return reply.status(400).send({ error: 'Category not found' })
@@ -139,6 +141,7 @@ export async function expenseRoutes(fastify: FastifyInstance) {
           frequencyPeriod: frequencyPeriod ?? null,
           startMonth: startMonth ?? null,
           endMonth: endMonth ?? null,
+          dueDay: dueDay ?? null,
           notes: notes ?? null,
           monthlyEquivalent,
           currencyCode: currency !== BASE_CURRENCY ? currency : null,

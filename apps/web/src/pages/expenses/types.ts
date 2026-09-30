@@ -10,6 +10,8 @@ export interface Expense {
   frequencyPeriod: string | null
   startMonth: number | null
   endMonth: number | null
+  /** Day of the month it's paid (1–31); null = no set day */
+  dueDay: number | null
   monthlyEquivalent: string
   monthlyWhenActive: string
   amountInBase: string
@@ -38,6 +40,8 @@ export interface ExpenseForm {
   frequencyPeriod: string
   startMonth: string
   endMonth: string
+  /** '' = no set day */
+  dueDay: string
   notes: string
   currencyCode: string
   ownership: Ownership

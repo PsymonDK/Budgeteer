@@ -54,3 +54,31 @@ describe('create schemas keep their defaults', () => {
     expect(UpdateExpenseSchema.safeParse({ startMonth: 9, endMonth: 3 }).success).toBe(false)
   })
 })
+
+describe('dueDay', () => {
+  const expense = { label: 'Rent', amount: 100, frequency: 'MONTHLY', categoryId: 'c1' }
+  const savings = { label: 'Buffer', amount: 100, frequency: 'MONTHLY' }
+
+  it('accepts days 1–31 and null (clears it)', () => {
+    for (const dueDay of [1, 15, 31, null]) {
+      expect(CreateExpenseSchema.safeParse({ ...expense, dueDay }).success).toBe(true)
+      expect(CreateSavingsSchema.safeParse({ ...savings, dueDay }).success).toBe(true)
+      expect(UpdateExpenseSchema.safeParse({ dueDay }).success).toBe(true)
+      expect(UpdateSavingsSchema.safeParse({ dueDay }).success).toBe(true)
+    }
+  })
+
+  it('rejects days outside 1–31 and fractions', () => {
+    for (const dueDay of [0, 32, -1, 1.5]) {
+      expect(CreateExpenseSchema.safeParse({ ...expense, dueDay }).success).toBe(false)
+      expect(CreateSavingsSchema.safeParse({ ...savings, dueDay }).success).toBe(false)
+      expect(UpdateExpenseSchema.safeParse({ dueDay }).success).toBe(false)
+      expect(UpdateSavingsSchema.safeParse({ dueDay }).success).toBe(false)
+    }
+  })
+
+  it('stays out of updates that leave it out', () => {
+    expect('dueDay' in UpdateExpenseSchema.parse({ label: 'Rent' })).toBe(false)
+    expect('dueDay' in UpdateSavingsSchema.parse({ label: 'Buffer' })).toBe(false)
+  })
+})

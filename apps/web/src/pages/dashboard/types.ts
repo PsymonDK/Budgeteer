@@ -63,6 +63,8 @@ export interface DashboardSummary {
   surplus: string
   /** Savings as % of net income, one decimal; null without income */
   savingsRate: string | null
+  /** Expenses, savings and surplus as % of net income, one decimal; null without income */
+  incomeSplit: { expensesPct: string; savingsPct: string; surplusPct: string } | null
   incomeFlow: IncomeFlow | null
   memberSplits: MemberSplit[]
   warnings: Warnings

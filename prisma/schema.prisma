@@ -492,6 +492,8 @@ model Expense {
   endMonth          Int?
   monthlyEquivalent        Decimal          @db.Decimal(10, 2)
   forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
+  // Day of the month it's paid (1–31), for the dashboard's payments timeline; null = no set day
+  dueDay            Int?
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)
@@ -534,6 +536,8 @@ model SavingsEntry {
   frequencyPeriod   String?
   monthlyEquivalent        Decimal          @db.Decimal(10, 2)
   forwardMonthlyEquivalent Decimal?         @db.Decimal(10, 2)
+  // Day of the month it's paid (1–31), for the dashboard's payments timeline; null = no set day
+  dueDay            Int?
   notes             String?
   currencyCode      String?
   originalAmount    Decimal?         @db.Decimal(10, 2)

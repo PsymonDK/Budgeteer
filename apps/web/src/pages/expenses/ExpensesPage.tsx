@@ -18,6 +18,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { AccountFilterChips, accountsIn } from '../../components/entries/AccountFilterChips'
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
+import { dueDayPayload } from '../../components/entries/DueDayField'
 import { useRowSelection } from '../../hooks/useRowSelection'
 import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm, secondaryBtn, segmentGroup, segmentBtn } from '../../lib/styles'
@@ -295,8 +296,9 @@ export function ExpensesPage() {
       frequencyPeriod: form.frequencyPeriod || undefined,
       startMonth: form.startMonth ? parseInt(form.startMonth, 10) : null,
       endMonth: form.endMonth ? parseInt(form.endMonth, 10) : null,
+      dueDay: dueDayPayload(form.dueDay, form.frequency),
       notes: form.notes || undefined,
-    } as ExpenseForm & { startMonth: number | null; endMonth: number | null }
+    } as ExpenseForm & { startMonth: number | null; endMonth: number | null; dueDay: number | null }
     if (editingExpense) updateMutation.mutate(payload)
     else createMutation.mutate(payload)
   }

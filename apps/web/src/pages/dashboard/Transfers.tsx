@@ -1,41 +1,9 @@
-import { ArrowRightLeft } from 'lucide-react'
 import type { BudgetTransfer } from '../../hooks/useTransfers'
 import type { TransferBreakdown } from '../../hooks/useTransferBreakdown'
 
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 type Fmt = (v: number | string) => string
-
-/** Next pending budget transfer with a "Mark as Paid" action. */
-export function TransferTile({ nextPending, onMarkPaid, fmt }: { nextPending: BudgetTransfer | null; onMarkPaid: (t: BudgetTransfer) => void; fmt: Fmt }) {
-  return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <ArrowRightLeft size={16} className="text-amber-400" />
-          <h2 className="font-mono text-xs font-medium text-gray-400 uppercase tracking-widest">
-            {nextPending
-              ? `Transfer due — ${MONTH_NAMES[nextPending.month - 1]} ${nextPending.year}`
-              : 'Transfer'}
-          </h2>
-        </div>
-      </div>
-      {nextPending ? (
-        <div className="flex items-center justify-between">
-          <span className="font-display text-3xl text-amber-400 tabular-nums">{fmt(nextPending.calculatedAmount)}</span>
-          <button
-            onClick={() => onMarkPaid(nextPending)}
-            className="bg-amber-500 hover:bg-amber-400 text-gray-950 font-medium text-sm px-4 py-2 rounded-lg transition-colors"
-          >
-            Mark as Paid
-          </button>
-        </div>
-      ) : (
-        <p className="text-gray-500 text-sm">All transfers paid</p>
-      )}
-    </div>
-  )
-}
 
 interface TransferHistoryProps {
   transfers: BudgetTransfer[]

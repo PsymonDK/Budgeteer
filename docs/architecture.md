@@ -42,6 +42,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
   - `form`: profile, household settings, change password, new receipt — 56rem, centred
 - **Container queries** (`@tailwindcss/container-queries`): components that sit in variable-width cells style themselves by their own width (`@container` + `@xl:…`), not the viewport.
 - **Dashboard widget grid** (`components/WidgetGrid.tsx`): the household and personal dashboards are a `<WidgetGrid>` of `<Widget span={{ 2, 3, 4, 6 }}>` tiles. The grid has 1 column, then 2 from 600px, 3 from 960px, 4 from 1400px and 6 from 2200px of its own width, and packs rows densely; each widget sets how many columns it spans at each count. A widget whose content renders nothing takes no cell. Widget content fills the cell height, so tiles in a row line up; long lists (the dashboard expense list) scroll inside their tile instead of stretching the row.
+- **Dashboard month hero** (`pages/dashboard/MonthHero.tsx`): the household dashboard's first widget, spanning the grid, in a graduated chart-frame border (`.chart-frame` in `index.css`). It shows the surplus and the income split bar (`incomeSplit` from the summary), the next pending transfer with Mark as paid, and `PaymentsTimeline` — the month's payments from `/budget-years/:id/payments` as dots on a 1–N day line (filled once paid, or once the day has passed for untracked households), a today marker in the current month, a "No set day" list, and a List view as the text alternative. The SVG is drawn at its measured pixel width so labels stay 10px at every size.
 - **List tables** (`components/DataTable.tsx`): Expenses, Savings, Trash and the admin pages (users, households, currencies, categories) render a `DataTable` from column definitions. Each column has a priority and appears by the table's own width (1 always, 2 from 520px, 3 from 780px, 4 from 1150px, 5 from 1500px); a hidden column's `summary` shows under the row label instead, so tables have no minimum width and phones never scroll sideways. It also handles sorting, row selection for bulk edit, per-column footers and hover-revealed row actions (always visible on touch screens).
 - **Detail pane** (`components/DetailPane.tsx`): from 1440px, clicking an expense or savings row opens it in a side pane beside the list (`ListWithDetail` + `DetailPane`); below that, a click opens the edit form. The selection is kept in `?selected=` (`useDetailSelection`). Pane content only displays API values — no calculations.
 - **Dialogs** (`components/Modal.tsx`): below 640px every `Modal` (and `ConfirmDialog`, which builds on it) is a bottom sheet — full width, anchored to the bottom edge with the safe-area inset, title bar pinned while the content scrolls; from 640px it is a centred dialog. The dialog is a container, so form grids inside add columns with `@sm:`/`@xl:` only when the dialog is wide enough. It has `role="dialog"`, moves focus inside on open and returns it on close. The two hand-built overlays (Mark as Paid, automation run history) follow the same sheet layout.
@@ -159,6 +160,7 @@ budgeteer/
 
 **expenses** — recurring expenses on a budget year
 - budgetYearId, categoryId, label, amount, frequency, frequencyPeriod, startMonth, endMonth, monthlyEquivalent, forwardMonthlyEquivalent, notes
+- dueDay (nullable, 1–31) — day of the month it's paid, for the dashboard's payments timeline; days past a month's end fall on its last day; ignored for WEEKLY/FORTNIGHTLY
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -202,6 +204,7 @@ budgeteer/
 
 **savings_entries** — planned savings on a budget year
 - budgetYearId, label, amount, frequency, frequencyPeriod, monthlyEquivalent, forwardMonthlyEquivalent, notes
+- dueDay (nullable, 1–31) — as on expenses
 - ownership (`SHARED` | `INDIVIDUAL` | `CUSTOM`), ownedByUserId (nullable), accountId (nullable), categoryId (nullable)
 - currencyCode (nullable), originalAmount (nullable), rateUsed (nullable), rateDate (nullable)
 
@@ -445,7 +448,7 @@ PUT    /households/:id/members/:memberId
 DELETE /households/:id/members/:memberId
 GET    /households/:id/budget-years
 POST   /households/:id/budget-years
-GET    /households/:id/summary
+GET    /households/:id/summary                          # totals, surplus, savingsRate, incomeSplit (% of income), flows, member splits
 GET    /households/:id/trash                            # trashed expenses and savings entries
 POST   /households/:id/trash/:kind/:itemId/restore      # kind = expense | savings (not in RETIRED years)
 GET    /households/:id/income-summary
@@ -498,6 +501,7 @@ PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
 GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY items for a month (default: current)
+GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day, sorted by day; paid status + paid/unpaid totals for PAY_NO_PAY
 PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
 POST   /budget-years/:id/occurrences/mark-all-paid       # { month }
 
