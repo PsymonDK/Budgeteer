@@ -59,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Image publishing** is gated on the CI workflow passing.
 
 ### Fixed
+- **Category icons with digits showed the Tag icon** — names like `Trash2`, `BarChart2` or `ArrowDown01` were turned back into lucide keys by splitting on capitals (`trash2`), which matched no icon, so 157 of the picker's icons fell back to Tag once saved. Stored names are now resolved through a lookup built from lucide's own keys; the picker and `CategoryIcon` share the helpers in `apps/web/src/lib/lucideIcons.ts`. Existing rows keep working. Icons removed from lucide 1.x (brand icons, `MousePointerSquare`, `RailSymbol`) still show Tag.
 - **The seed printed the admin password to the logs** on first boot; it ran the receipt training import twice when demo data was enabled.
 - **Currency rates were stored again on every restart** — the daily sync now keeps one row per currency per day.
 - **Saving one receipt line discarded unsaved edits on the others** — edited drafts are now kept when the receipt refreshes.

@@ -1,55 +1,6 @@
-import { useState, useEffect, type ComponentType } from 'react'
-import { Tag } from 'lucide-react'
-
-interface IconProps {
-  size?: number
-  className?: string
-}
-
-// Convert PascalCase to kebab-case for dynamicIconImports lookup
-function toKebabCase(name: string): string {
-  return name
-    .replace(/([A-Z])/g, (match, _, offset) => (offset > 0 ? '-' : '') + match.toLowerCase())
-}
-
-// Convert kebab-case to PascalCase for display/storage
-function toPascalCase(name: string): string {
-  return name
-    .split('-')
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('')
-}
-
-interface PreviewIconProps {
-  kebabName: string
-  size?: number
-  className?: string
-}
-
-function PreviewIcon({ kebabName, size = 16, className }: PreviewIconProps) {
-  const [Icon, setIcon] = useState<ComponentType<IconProps> | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    import('lucide-react/dynamicIconImports')
-      .then((mod) => {
-        const map = mod.default as Record<string, () => Promise<{ default: ComponentType<IconProps> }>>
-        const loader = map[kebabName]
-        if (!loader) return undefined
-        return loader()
-      })
-      .then((result) => {
-        if (!cancelled && result) setIcon(() => result.default)
-      })
-      .catch(() => {
-        if (!cancelled) setIcon(null)
-      })
-    return () => { cancelled = true }
-  }, [kebabName])
-
-  if (!Icon) return <Tag size={size} className={className} />
-  return <Icon size={size} className={className} />
-}
+import { useState, useEffect } from 'react'
+import { CategoryIcon } from './CategoryIcon'
+import { loadIconKeys, toPascalCase } from '../lib/lucideIcons'
 
 interface IconPickerProps {
   value: string | null
@@ -62,16 +13,12 @@ export function IconPicker({ value, onChange, onClose }: IconPickerProps) {
   const [allNames, setAllNames] = useState<string[]>([])
 
   useEffect(() => {
-    import('lucide-react/dynamicIconImports').then((mod) => {
-      setAllNames(Object.keys(mod.default as Record<string, unknown>))
-    })
+    loadIconKeys().then(setAllNames).catch(() => setAllNames([]))
   }, [])
 
   const filtered = search.trim()
     ? allNames.filter((n) => n.includes(search.toLowerCase().trim()))
     : allNames
-
-  const currentKebab = value ? toKebabCase(value) : null
 
   return (
     <div className="border border-gray-700 rounded-lg bg-gray-900 p-3 mt-2">
@@ -105,7 +52,8 @@ export function IconPicker({ value, onChange, onClose }: IconPickerProps) {
       <div className="grid grid-cols-6 gap-1 max-h-48 overflow-y-auto">
         {filtered.slice(0, 120).map((kebab) => {
           const pascal = toPascalCase(kebab)
-          const isSelected = currentKebab === kebab
+          // Compare stored names: aliases (arrow-down-0-1 / arrow-down-01) save the same one
+          const isSelected = value === pascal
           return (
             <button
               key={kebab}
@@ -118,7 +66,7 @@ export function IconPicker({ value, onChange, onClose }: IconPickerProps) {
                   : 'text-gray-400 hover:bg-gray-800 hover:text-white'
               }`}
             >
-              <PreviewIcon kebabName={kebab} size={16} />
+              <CategoryIcon name={pascal} size={16} />
               <span className="text-[9px] leading-tight truncate w-full text-center">{kebab}</span>
             </button>
           )
