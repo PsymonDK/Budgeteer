@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+// Listens for the browser's install offer before the app renders (see lib/install.ts)
+import './lib/install'
 // Self-hosted fonts (no third-party requests from a self-hosted app); Latin subset covers æøå
 import '@fontsource/schibsted-grotesk/latin-400.css'
 import '@fontsource/schibsted-grotesk/latin-500.css'

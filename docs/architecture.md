@@ -51,7 +51,8 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Hidden table headers** (e.g. the Actions column) put the `sr-only` text in a span inside a `relative` `<th>`; an `sr-only` class on the `<th>` itself escapes the table's scroll wrapper and makes phones scroll sideways.
 
 ### Installable app (PWA)
-- **Manifest** (`public/manifest.webmanifest`, linked from `index.html`): standalone display, night-sea theme and background colours, icons in `public/icons/` (192 and 512 px, a maskable 512 px with the mark inside the 80% safe zone, and a 180 px `apple-touch-icon`). The PNGs are drawn from the `favicon.svg` mark.
+- **Manifest** (`public/manifest.webmanifest`, linked from `index.html`): standalone display, night-sea theme and background colours, icons in `public/icons/` (192 and 512 px, a maskable 512 px with the mark inside the 80% safe zone, and a 180 px `apple-touch-icon`). The PNGs are drawn from the `favicon.svg` mark. `screenshots` (phone `narrow` and desktop `wide`, demo data, in `public/screenshots/`) give Chrome its richer install dialog; their `sizes` must match the files.
+- **Offering the install** (`lib/install.ts`, imported first in `main.tsx`): keeps Chrome/Edge's `beforeinstallprompt` event (and prevents the mini-infobar) so the app's own button can open the install dialog; `appinstalled` and `display-mode: standalone` tell it the app is installed. `useInstallState()` gives `installed`, `canPrompt`, `showIosSteps` (iPhone/iPad in the browser, where there is no install event, so the Share → Add to Home Screen steps are shown) and `hintDismissed`. UI in `components/InstallApp.tsx`: "Install app" at the bottom of the sidebar and the phone menu (only while `canPrompt`), a one-time dismissible hint above the page on phones (dismissal stored per browser in `localStorage`, `budgeteer.installHintDismissed`), and an "App" row in Profile → Preferences.
 - **Service worker** (`public/sw.js`, registered in `main.tsx` in production builds only): precaches the self-contained `offline.html` and serves it when a page navigation can't reach the server. Navigations are always network-first, so a deploy shows up at once. It handles no other requests: `/api/` and `/uploads/` are never cached (no budget data or auth responses on the device), and hashed `/assets/` rely on the browser's HTTP cache. Bump `CACHE` in `sw.js` when the precached page changes. A later Web Push channel adds its `push` / `notificationclick` handlers here.
 - **Same origin**: the installed app talks to `/api` through the same nginx as the browser, so the `SameSite=Strict` refresh cookie and the auth flow are unchanged.
 - **Requires HTTPS** (or `localhost`): browsers only install and run service workers in a secure context; on plain HTTP the app still works in a tab.
@@ -90,7 +91,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 budgeteer/
 ├── apps/
 │   ├── web/                 # React frontend (Vite)
-│   │   ├── public/          # favicon, PWA manifest, icons/, service worker, offline page
+│   │   ├── public/          # favicon, PWA manifest, icons/, screenshots/, service worker, offline page
 │   │   └── src/
 │   │       ├── api/         # Axios client, shared API types, query keys and query hooks
 │   │       ├── pages/       # route screens, larger ones as folders (income/, expenses/, receipts/, …)

@@ -12,6 +12,7 @@ import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass, segmentGroup, segmentBtn } from '../../lib/styles'
 import { cardClass } from './cardClass'
 import { StickyActions } from '../../components/StickyActions'
+import { InstallAppSetting } from '../../components/InstallApp'
 import { useThemePreference, type ThemePreference } from '../../lib/theme'
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
@@ -254,6 +255,7 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
             </div>
             <p className="text-xs text-gray-500 mt-1.5">Saved on this device. System follows your device's light or dark setting.</p>
           </div>
+          <InstallAppSetting />
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Preferred currency</label>
             <select
