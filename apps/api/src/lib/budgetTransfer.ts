@@ -1,6 +1,7 @@
 import { Decimal } from '@prisma/client/runtime/client'
 import { prisma, notDeleted } from './prisma'
-import { calcForwardMonthlyNeed, calcOccurrenceScheduledAmount, activeMonthCount } from './calculations'
+import { Frequency } from '@prisma/client'
+import { calcForwardMonthlyNeed, calcOccurrenceScheduledAmount, activeMonthCount, expenseMonthSchedule } from './calculations'
 import { dueAmount } from './occurrences'
 
 type ScheduleSource = { id: string; monthlyEquivalent: Decimal; startMonth: number | null; endMonth: number | null }
@@ -37,7 +38,7 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
   const byMonth = new Map(existingTransfers.map((t) => [t.month, t]))
 
   if (budgetModel === 'PAY_NO_PAY') {
-    await recalculatePayNoPay(budgetYearId, year, currentMonth, expenses, byMonth)
+    await recalculatePayNoPay(budgetYearId, year, currentMonth, byMonth)
     return
   }
 
@@ -48,6 +49,7 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
 
   if (budgetModel === 'FORWARD_LOOKING') {
     await recalculateForwardLooking(budgetYearId, year, currentMonth, expenses, byMonth, perMonth)
+    await syncOccurrences(budgetYearId, year, currentMonth, 'MANUAL_ONLY')
     return
   }
 
@@ -67,6 +69,8 @@ export async function recalculateTransfer(budgetYearId: string): Promise<void> {
       update: { calculatedAmount: perMonth, calculatedAt: new Date() },
     })
   }
+
+  await syncOccurrences(budgetYearId, year, currentMonth, 'MANUAL_ONLY')
 }
 
 async function recalculateForwardLooking(
@@ -117,7 +121,10 @@ async function recalculateForwardLooking(
   }
 }
 
-// ── PAY_NO_PAY occurrences ───────────────────────────────────────────────────
+// ── Occurrences ──────────────────────────────────────────────────────────────
+// PAY_NO_PAY households have a row per entry per month; it drives the transfer and
+// carries unpaid balances. AVERAGE and FORWARD_LOOKING households have rows only for
+// manually paid entries: tracking for the to-pay list, never read by their transfer.
 
 type ExistingOccurrence = { id: string; entryId: string; month: number; status: string; scheduledAmount: Decimal }
 
@@ -128,7 +135,7 @@ export type OccurrenceSyncPlan = {
 
 /**
  * Plans how occurrence rows for the given months must change so PENDING rows match
- * each entry's current schedule. PAID and SKIPPED rows are history and never touched.
+ * each entry's current schedule. PAID, SKIPPED and DISMISSED rows are history and never touched.
  * `scheduleFor` returns the amount due for an entry in a month, or null when inactive.
  */
 export function planOccurrenceSync(
@@ -183,10 +190,9 @@ async function recalculatePayNoPay(
   budgetYearId: string,
   year: number,
   currentMonth: number,
-  expenses: ScheduleSource[],
   byMonth: Map<number, { status: string }>,
 ): Promise<void> {
-  await syncPayNoPayOccurrences(budgetYearId, year, currentMonth, expenses)
+  await syncOccurrences(budgetYearId, year, currentMonth, 'ALL')
 
   const [expOccs, savOccs] = await Promise.all([
     prisma.expenseOccurrence.findMany({
@@ -217,25 +223,45 @@ async function recalculatePayNoPay(
 }
 
 /**
+ * Amount a tracked (Average / Forward-looking) manual expense is due in a month: the bill
+ * as charged that month, so a quarterly bill is due in full in its months and not at all
+ * in between. Null when nothing is due.
+ */
+export function trackingScheduledAmount(
+  expense: { frequency: Frequency; startMonth: number | null; endMonth: number | null; monthlyEquivalent: Decimal; amount: Decimal; rateUsed: Decimal | null },
+  month: number,
+): Decimal | null {
+  const due = expenseMonthSchedule(expense)[month - 1]
+  return due == null ? null : new Decimal(due)
+}
+
+/**
  * Creates missing occurrence rows from the current month through December and
  * updates PENDING rows whose schedule changed (e.g. after an expense edit), so
  * every remaining month reflects the current expenses and savings.
+ * - `ALL` (Pay/No-pay): every entry, each month's share of it.
+ * - `MANUAL_ONLY` (Average / Forward-looking): manually paid entries only, the bill as charged.
  */
-async function syncPayNoPayOccurrences(
+async function syncOccurrences(
   budgetYearId: string,
   year: number,
   currentMonth: number,
-  expenses: ScheduleSource[],
+  mode: 'ALL' | 'MANUAL_ONLY',
 ): Promise<void> {
   const months = Array.from({ length: Math.max(0, 13 - currentMonth) }, (_, i) => currentMonth + i)
   if (months.length === 0) return
 
-  const [existingExpOccs, savingsEntries, existingSavOccs] = await Promise.all([
+  const entryFilter = mode === 'MANUAL_ONLY' ? { paymentMethod: 'MANUAL' as const } : {}
+  const [expenses, existingExpOccs, savingsEntries, existingSavOccs] = await Promise.all([
+    prisma.expense.findMany({
+      where: { budgetYearId, ...entryFilter },
+      select: { id: true, frequency: true, amount: true, rateUsed: true, monthlyEquivalent: true, startMonth: true, endMonth: true },
+    }),
     prisma.expenseOccurrence.findMany({
       where: { expense: { budgetYearId, ...notDeleted }, year, month: { in: months } },
       select: { id: true, expenseId: true, month: true, status: true, scheduledAmount: true },
     }),
-    prisma.savingsEntry.findMany({ where: { budgetYearId }, select: { id: true, monthlyEquivalent: true } }),
+    prisma.savingsEntry.findMany({ where: { budgetYearId, ...entryFilter }, select: { id: true, monthlyEquivalent: true } }),
     prisma.savingsOccurrence.findMany({
       where: { savingsEntry: { budgetYearId, ...notDeleted }, year, month: { in: months } },
       select: { id: true, savingsEntryId: true, month: true, status: true, scheduledAmount: true },
@@ -243,11 +269,12 @@ async function syncPayNoPayOccurrences(
   ])
 
   const expenseById = new Map(expenses.map((e) => [e.id, e]))
+  const expenseSchedule = mode === 'ALL' ? calcOccurrenceScheduledAmount : trackingScheduledAmount
   const expPlan = planOccurrenceSync(
     expenses.map((e) => e.id),
     months,
     existingExpOccs.map((o) => ({ ...o, entryId: o.expenseId })),
-    (id, month) => calcOccurrenceScheduledAmount(expenseById.get(id)!, month),
+    (id, month) => expenseSchedule(expenseById.get(id)!, month),
   )
   const savingsById = new Map(savingsEntries.map((s) => [s.id, s]))
   const savPlan = planOccurrenceSync(

@@ -87,6 +87,7 @@ All configuration is via environment variables in `.env`. Required variables wil
 | `ADMIN_NAME` | No | `Admin` | Display name for the initial admin account |
 | `APP_PORT` | No | `7272` | Host port the web UI is served on |
 | `PUBLIC_URL` | No | `http://localhost:7272` | The URL your browser uses to reach the app. Change this when accessing via a hostname, IP, or reverse proxy (e.g. `https://budget.yourdomain.com`). Used as the allowed CORS origin (`CORS_ORIGIN` is a fallback when it is unset) |
+| `SETTINGS_ENCRYPTION_KEY` | No | derived from `JWT_SECRET` | Encrypts secrets stored in the database, such as the SMTP password for email reminders (Admin → Notifications). Generate with `openssl rand -hex 32`. Without it, changing `JWT_SECRET` means entering the SMTP password again |
 | `BASE_CURRENCY` | No | `DKK` | Base currency for all calculations and display. Must be a currency Danmarks Nationalbank publishes rates for |
 | `SEED_DEMO_DATA` | No | `false` | Set to `true` to populate demo households on first boot |
 | `API_RATE_LIMIT_ENABLED` | No | `true` | Enables global API rate limiting. Local dev compose defaults this to `false` to avoid locking out the web UI during testing |

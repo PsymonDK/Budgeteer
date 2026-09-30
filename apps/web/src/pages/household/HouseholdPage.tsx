@@ -10,6 +10,7 @@ import { HouseholdNameHeader } from './HouseholdNameHeader'
 import { MembersSection } from './MembersSection'
 import { HouseholdAccountsSection } from './HouseholdAccountsSection'
 import { DangerZone, TransferSettings } from './HouseholdAdminSettings'
+import { ReminderSettings } from './ReminderSettings'
 import { Page } from '../../components/Page'
 
 /** Household settings: name, members, accounts, transfer settings and deactivation. */
@@ -58,6 +59,7 @@ export function HouseholdPage() {
 
         {/* Budget transfer settings */}
         {isAdmin && <TransferSettings householdId={householdId} household={household} />}
+        {isAdmin && <ReminderSettings householdId={householdId} />}
 
         {/* Danger zone */}
         {isAdmin && <DangerZone householdId={householdId} household={household} />}

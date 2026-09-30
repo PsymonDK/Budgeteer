@@ -5,6 +5,7 @@ import {
   Calendar, Clock, ChartNoAxesColumn, Settings, Trash,
 } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
+import { useReminders } from '../api/queries'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
 import HouseholdSwitcher from '../components/HouseholdSwitcher'
 import { AddReceiptButton } from '../components/AddReceiptButton'
@@ -14,6 +15,7 @@ export function HouseholdLayout() {
   const { id: householdId } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { setActiveHousehold } = useHousehold()
+  const { data: reminders } = useReminders()
 
   // Keep localStorage in sync when navigating directly to a household URL
   useEffect(() => {
@@ -28,7 +30,17 @@ export function HouseholdLayout() {
     const item = (label: string, path: string, icon: ShellNavItem['icon']): ShellNavItem =>
       ({ label, to: path ? `${base}/${path}` : base, icon, end: path === '' })
 
-    const dashboard = item('Dashboard', '', LayoutDashboard)
+    // Manual payments due soon, due today or overdue in this household
+    const due = reminders?.reminders.filter((r) => r.householdId === householdId) ?? []
+    const overdue = due.filter((r) => r.stage === 'OVERDUE').length
+    const dashboard: ShellNavItem = {
+      ...item('Dashboard', '', LayoutDashboard),
+      badge: {
+        count: due.length,
+        alert: overdue > 0,
+        label: `${due.length} ${due.length === 1 ? 'payment needs' : 'payments need'} attention${overdue > 0 ? `, ${overdue} overdue` : ''}`,
+      },
+    }
     const expenses = item('Expenses', 'expenses', Receipt)
     const receipts = item('Receipts', 'receipts', ScanLine)
 
@@ -50,7 +62,7 @@ export function HouseholdLayout() {
       { label: 'Scan receipt', icon: ScanLine, onSelect: () => navigate(`${base}/receipts/new`) },
     ]
     return { sections, footerItems, tabs: [dashboard, expenses, receipts], quickActions }
-  }, [householdId, navigate])
+  }, [householdId, navigate, reminders])
 
   return (
     <AppShell

@@ -41,7 +41,10 @@ export interface Household {
   id: string
   name: string
   isActive: boolean
-  autoMarkTransferPaid: boolean
+  /** How the monthly transfer into the budget account is made; AUTOMATIC is marked paid on its due day */
+  transferPaymentMethod: PaymentMethod
+  /** Day of the month the transfer is due (1–31) */
+  transferDueDay: number
   budgetModel: BudgetModel
   createdAt: string
   updatedAt: string
@@ -206,6 +209,13 @@ export interface ReceiptConsumptionSummary {
   byMonth: Array<{ month: string; total: string }>
 }
 
+/**
+ * A month's paid state for an expense or savings item. SKIPPED: closed at a Pay/No-pay month
+ * end with the balance carried over. DISMISSED: taken off the to-pay list by a member.
+ */
+export type OccurrenceStatus = 'PENDING' | 'PAID' | 'SKIPPED' | 'DISMISSED'
+export type DismissReason = 'PAID_ELSEWHERE' | 'SKIPPED'
+
 /** One expense or savings payment in a month (GET /budget-years/:id/payments). */
 export interface MonthPayment {
   kind: 'expense' | 'savings'
@@ -219,8 +229,13 @@ export interface MonthPayment {
   paymentMethod: PaymentMethod
   /** Amount due this month, base currency */
   amount: string
-  /** Paid status for Pay/No-pay households; null otherwise */
-  status: 'PENDING' | 'PAID' | 'SKIPPED' | null
+  /**
+   * Paid status from the month's occurrence: manual items in every budget model, automatic
+   * ones too in Pay/No-pay. Null when the item has no occurrence.
+   */
+  status: OccurrenceStatus | null
+  /** Why it was taken off the to-pay list, when DISMISSED */
+  dismissReason: DismissReason | null
 }
 
 /** GET /budget-years/:id/payments */
@@ -228,10 +243,121 @@ export interface MonthPayments {
   budgetModel: 'AVERAGE' | 'FORWARD_LOOKING' | 'PAY_NO_PAY'
   year: number
   month: number
-  /** Whether items carry a paid status (Pay/No-pay) */
-  tracked: boolean
   /** Sorted by day, items without a day last */
   items: MonthPayment[]
-  /** Skipped (closed) items are left out; paidCount/unpaid count manual items, only when tracked */
-  totals: { count: number; due: string; manualCount: number; paidCount: number | null; unpaid: string | null }
+  /** Closed (SKIPPED) items are left out; doneCount (paid or dismissed) and unpaid count manual items */
+  totals: { count: number; due: string; manualCount: number; doneCount: number; unpaid: string }
+}
+
+export type ReminderStage = 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE'
+
+/** A manual payment that needs attention now (GET /me/reminders). */
+export interface PaymentReminder {
+  /** "expense:<occurrence id>", "savings:<occurrence id>" or "transfer:<transfer id>" */
+  key: string
+  kind: 'expense' | 'savings' | 'transfer'
+  label: string
+  amount: string
+  /** YYYY-MM-DD */
+  dueDate: string
+  stage: ReminderStage
+  /** Negative when overdue */
+  daysUntilDue: number
+  /** Days before the due date "due soon" starts, for this member in this household */
+  leadDays: number
+  householdId: string
+  householdName: string
+  budgetYearId: string
+}
+
+/** GET /me/reminders — due soon (within each reminder's leadDays), due today and overdue, overdue first */
+export interface PaymentReminders {
+  date: string
+  reminders: PaymentReminder[]
+  counts: { overdue: number; dueToday: number; dueSoon: number; total: number }
+}
+
+// ── Notification settings (admin → household → member; each narrows the one above) ──
+
+/** What a webhook URL expects: an ntfy topic, or a generic (signed) JSON webhook */
+export type WebhookFormat = 'NTFY' | 'JSON'
+
+/** Which channels the level above allows */
+export interface AllowedChannels { inApp: boolean; email: boolean; webhook: boolean }
+
+export type SmtpSecurity = 'NONE' | 'STARTTLS' | 'TLS'
+
+/** GET/PUT /admin/notification-settings */
+export interface SystemNotificationSettings {
+  inAppEnabled: boolean
+  emailEnabled: boolean
+  webhookEnabled: boolean
+  /** Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN) */
+  webhookAllowPrivateNetwork: boolean
+  /** The email server; the password itself is never returned */
+  smtp: {
+    host: string | null
+    port: number | null
+    security: SmtpSecurity
+    username: string | null
+    passwordSet: boolean
+    fromAddress: string | null
+    fromName: string | null
+  }
+}
+
+/** GET /admin/notification-deliveries */
+export interface NotificationDeliveryRow {
+  id: string
+  channel: 'EMAIL' | 'WEBHOOK'
+  date: string
+  status: 'SENT' | 'FAILED'
+  attempts: number
+  error: string | null
+  updatedAt: string
+  reminderCount: number
+  user: { name: string; email: string } | null
+  household: { name: string } | null
+}
+
+export interface HouseholdNotificationSettings {
+  inAppEnabled: boolean
+  emailEnabled: boolean
+  webhookEnabled: boolean
+  /** Shared ntfy topic or webhook URL */
+  webhookUrl: string | null
+  webhookFormat: WebhookFormat
+  /** A secret (ntfy token / signing secret) is saved; it's never returned */
+  webhookSecretSet: boolean
+  leadDays: number
+}
+
+/** GET/PUT /households/:id/notification-settings */
+export interface HouseholdNotificationResponse {
+  settings: HouseholdNotificationSettings
+  allowed: AllowedChannels
+  /** Whether webhooks may reach private-network addresses */
+  allowPrivateNetwork: boolean
+}
+
+export interface UserReminderSettings {
+  reminderInApp: boolean
+  reminderEmail: boolean
+  reminderEmailAddress: string | null
+  reminderWebhook: boolean
+  reminderWebhookUrl: string | null
+  reminderWebhookFormat: WebhookFormat
+  /** A secret (ntfy token / signing secret) is saved; it's never returned */
+  reminderWebhookSecretSet: boolean
+  /** null = each household's default */
+  reminderLeadDays: number | null
+  /** HH:MM */
+  reminderDigestTime: string
+}
+
+/** GET /me/notification-settings (saved through PUT /users/me/preferences) */
+export interface MyNotificationSettings {
+  settings: UserReminderSettings
+  loginEmail: string
+  allowed: AllowedChannels
 }

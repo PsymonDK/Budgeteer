@@ -70,7 +70,7 @@ The local development API runs on `http://localhost:3001`; the Vite web app runs
 
 - API style is REST over JSON.
 - Validate request bodies with Zod.
-- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config` and avatar images (`/uploads/avatars/`).
+- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config`, avatar images (`/uploads/avatars/`) and reminder Mark-as-paid links (`/reminder-actions/:token`, where the token is the permission).
 - Auth uses short-lived JWT access tokens plus rotated refresh tokens. The refresh token travels only in the httpOnly `budgeteer_refresh` cookie (`REFRESH_COOKIE`/`refreshCookieOptions` in `apps/api/src/lib/sessions.ts`); never return it in a response body. The web client keeps the access token in memory; don't store tokens in `localStorage`.
 - System admin routes are prefixed with `/admin/` or protected with equivalent admin checks in existing route modules.
 - Errors should follow the project shape: `{ error: string, code?: string }`. Existing routes sometimes include `details` for validation errors; keep that pattern when extending nearby code.

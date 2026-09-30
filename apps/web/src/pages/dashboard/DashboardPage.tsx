@@ -84,6 +84,10 @@ export function DashboardPage() {
     .filter((t) => t.status === 'PENDING')
     .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)[0] ?? null
 
+  // This calendar month's transfer, shown when the transfer is automatic (a standing order)
+  const today = new Date()
+  const currentTransfer = transfers.find((t) => t.year === today.getFullYear() && t.month === today.getMonth() + 1) ?? nextPending
+
   function openMarkPaid(transfer: BudgetTransfer) {
     setMarkPaidTransfer(transfer)
     setMarkPaidAmount(transfer.calculatedAmount)
@@ -98,6 +102,7 @@ export function DashboardPage() {
         { actualAmount: parseFloat(markPaidAmount) },
       )
       queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
+      queryClient.invalidateQueries({ queryKey: qk.reminders() })
       setMarkPaidTransfer(null)
     } catch (err) {
       toast.error(getApiError(err, 'Failed to mark transfer as paid'))
@@ -113,6 +118,7 @@ export function DashboardPage() {
         `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
       )
       queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
+      queryClient.invalidateQueries({ queryKey: qk.reminders() })
     } catch (err) {
       toast.error(getApiError(err, 'Failed to revert transfer'))
     }
@@ -211,6 +217,9 @@ export function DashboardPage() {
                 incomeSplit={summary.incomeSplit}
                 incomeFlow={sankeyData}
                 nextPending={nextPending}
+                transferPaymentMethod={household?.transferPaymentMethod ?? 'MANUAL'}
+                transferDueDay={household?.transferDueDay ?? 1}
+                currentTransfer={currentTransfer}
                 myShare={me ? memberBreakdownMap.get(me.id)?.monthlyTotal ?? null : null}
                 onMarkPaid={openMarkPaid}
                 baseCurrency={baseCurrency}

@@ -87,7 +87,25 @@ enum BudgetModelType {
 enum OccurrenceStatus {
   PENDING
   PAID
-  SKIPPED
+  SKIPPED   // Pay/No-pay: closed at month end, unpaid balance carried to the next month
+  DISMISSED // taken off the to-pay list by a member without marking it paid (see dismissReason)
+}
+
+// Channels that deliver reminder digests. In-app reminders are a live view, not a delivery.
+enum NotificationChannel {
+  EMAIL
+  WEBHOOK
+}
+
+enum NotificationDeliveryStatus {
+  SENT
+  FAILED
+}
+
+// Why a member took an occurrence off the to-pay list
+enum DismissReason {
+  PAID_ELSEWHERE // paid, but not in a way the app tracks (e.g. from another account)
+  SKIPPED        // not paying it this month
 }
 
 // How an expense or savings entry is paid. AUTOMATIC (direct debit, standing order, card)
@@ -135,6 +153,8 @@ model User {
   households                HouseholdMember[]
   jobs                      Job[]
   refreshTokens             RefreshToken[]
+  notificationDeliveries    NotificationDelivery[]
+  reminderActionTokens      ReminderActionToken[]
   createdCategories         Category[]
   preferences               UserPreferences?
   ownedExpenses             Expense[]              @relation("OwnedExpenses")
@@ -156,6 +176,21 @@ model UserPreferences {
   notifyNoSavings            Boolean   @default(true)
   notifyUncategorised        Boolean   @default(true)
   showDashboardSparklines    Boolean   @default(true)
+  // Payment reminders (each channel also needs the admin and the household to allow it)
+  reminderInApp             Boolean  @default(true)
+  reminderEmail             Boolean  @default(true)
+  // Where reminder emails go; null = the login email
+  reminderEmailAddress      String?
+  reminderWebhook           Boolean  @default(true)
+  // Personal ntfy topic or webhook URL; the webhook channel needs one
+  reminderWebhookUrl        String?
+  reminderWebhookFormat     WebhookFormat @default(NTFY)
+  // ntfy access token or webhook signing secret, encrypted (lib/secretBox.ts); never returned
+  reminderWebhookSecretEncrypted String?
+  // Days before the due date a "due soon" reminder starts; null = the household's default
+  reminderLeadDays          Int?
+  // Local time the daily digest goes out, HH:MM
+  reminderDigestTime        String   @default("08:00")
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 }
@@ -164,7 +199,11 @@ model Household {
   id                    String            @id @default(cuid())
   name                  String
   isActive              Boolean           @default(true)
-  autoMarkTransferPaid  Boolean           @default(false)
+  // How the monthly transfer into the budget account is made. AUTOMATIC (standing order) is
+  // marked paid on its due day by the daily job; MANUAL is listed on the to-pay list.
+  transferPaymentMethod PaymentMethod     @default(MANUAL)
+  // Day of the month the transfer is due (1–31; later days fall on the month's last day)
+  transferDueDay        Int               @default(1)
   budgetModel           BudgetModelType   @default(AVERAGE)
   createdAt             DateTime          @default(now())
   updatedAt             DateTime          @updatedAt
@@ -177,6 +216,8 @@ model Household {
   receiptSubcategories ReceiptSubcategory[]
   receiptCategoryMappings ReceiptCategoryMapping[]
   receiptClassifierTerms ReceiptClassifierTerm[]
+  notificationDeliveries NotificationDelivery[]
+  notificationSettings   HouseholdNotificationSettings?
 }
 
 model HouseholdMember {
@@ -672,6 +713,7 @@ model ExpenseOccurrence {
   scheduledAmount Decimal          @db.Decimal(10, 2)
   carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
   status          OccurrenceStatus @default(PENDING)
+  dismissReason   DismissReason?
   paidAt          DateTime?
   actualAmount    Decimal?         @db.Decimal(10, 2)
   note            String?
@@ -690,6 +732,7 @@ model SavingsOccurrence {
   scheduledAmount Decimal          @db.Decimal(10, 2)
   carriedAmount   Decimal          @db.Decimal(10, 2) @default(0)
   status          OccurrenceStatus @default(PENDING)
+  dismissReason   DismissReason?
   paidAt          DateTime?
   actualAmount    Decimal?         @db.Decimal(10, 2)
   note            String?
@@ -697,4 +740,101 @@ model SavingsOccurrence {
   updatedAt       DateTime         @updatedAt
 
   @@unique([savingsEntryId, year, month])
+}
+
+// One reminder digest sent (or attempted) to a recipient on one channel on one day. The
+// item keys record which reminder stages it carried, so each stage is sent once.
+model NotificationDelivery {
+  id           String                     @id @default(cuid())
+  // "user:<id>" or "household:<id>" (the household channel); unique per channel per day
+  recipientKey String
+  userId       String?
+  user         User?                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  householdId  String?
+  household    Household?                 @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  channel      NotificationChannel
+  // The digest's local date, YYYY-MM-DD
+  date         String
+  // "<stage>:<item key>", e.g. "DUE_SOON:expense:ckx…"
+  itemKeys     String[]
+  status       NotificationDeliveryStatus
+  attempts     Int                        @default(1)
+  error        String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  @@unique([recipientKey, channel, date])
+  @@index([createdAt])
+}
+
+// Install-wide notification settings, set by system admins: which reminder channels exist.
+// A single row (id "default"); a missing row means the defaults below.
+model NotificationSettings {
+  id                         String   @id @default("default")
+  inAppEnabled               Boolean  @default(true)
+  // Off until an admin sets up email
+  emailEnabled               Boolean  @default(false)
+  webhookEnabled             Boolean  @default(false)
+  // Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN)
+  webhookAllowPrivateNetwork Boolean  @default(false)
+  // Email server for reminder digests
+  smtpHost                   String?
+  smtpPort                   Int?
+  smtpSecurity               SmtpSecurity @default(STARTTLS)
+  smtpUsername               String?
+  // Encrypted at rest (lib/secretBox.ts); never returned by the API
+  smtpPasswordEncrypted      String?
+  smtpFromAddress            String?
+  smtpFromName               String?
+  updatedAt                  DateTime @updatedAt
+}
+
+// What a webhook URL expects: an ntfy topic, or a generic JSON webhook (signed with the secret)
+enum WebhookFormat {
+  NTFY
+  JSON
+}
+
+// How the connection to the SMTP server is secured
+enum SmtpSecurity {
+  NONE     // plain (only for a trusted local relay)
+  STARTTLS // upgrade to TLS after connecting, usually port 587
+  TLS      // TLS from the start, usually port 465
+}
+
+// A household's reminder settings, set by its admins; they can only narrow the install's.
+// A missing row means the defaults below.
+model HouseholdNotificationSettings {
+  householdId    String    @id
+  household      Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  inAppEnabled   Boolean   @default(true)
+  emailEnabled   Boolean   @default(true)
+  webhookEnabled Boolean   @default(true)
+  // Shared ntfy topic or webhook URL: the household channel, reminded about every item
+  webhookUrl     String?
+  webhookFormat  WebhookFormat @default(NTFY)
+  // ntfy access token or webhook signing secret, encrypted; never returned
+  webhookSecretEncrypted String?
+  // Default days before the due date a "due soon" reminder starts
+  leadDays       Int       @default(2)
+  updatedAt      DateTime  @updatedAt
+}
+
+// A "Mark as paid" link from a reminder (email, ntfy, webhook): works without logging in,
+// once, until it expires, and only for its one item. Only the token's SHA-256 is stored.
+model ReminderActionToken {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  // The member the reminder went to; null for a household's shared channel
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "expense:<occurrence id>", "savings:<occurrence id>" or "transfer:<transfer id>"
+  itemKey     String
+  householdId String
+  expiresAt   DateTime
+  // When it was used (and so by whom it was marked paid)
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([expiresAt])
 }

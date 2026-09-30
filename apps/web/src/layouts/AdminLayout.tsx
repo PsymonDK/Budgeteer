@@ -1,4 +1,4 @@
-import { Bot, Coins, House, Tag, Users, Zap } from 'lucide-react'
+import { Bell, Bot, Coins, House, Tag, Users, Zap } from 'lucide-react'
 import { AppShell, type ShellNavItem } from './AppShell'
 
 const ADMIN_NAV: ShellNavItem[] = [
@@ -8,6 +8,7 @@ const ADMIN_NAV: ShellNavItem[] = [
   { label: 'Categories',       to: '/admin/categories',       icon: Tag },
   { label: 'Receipt training', to: '/admin/receipt-training', icon: Bot },
   { label: 'Automations',      to: '/admin/automations',      icon: Zap },
+  { label: 'Notifications',    to: '/admin/notifications',    icon: Bell },
 ]
 
 export function AdminLayout() {

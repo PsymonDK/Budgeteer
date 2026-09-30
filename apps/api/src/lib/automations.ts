@@ -40,7 +40,7 @@ export async function runAutomation(
 
     const household = await prisma.household.findUnique({
       where: { id: automation.householdId },
-      select: { autoMarkTransferPaid: true, budgetModel: true },
+      select: { budgetModel: true },
     })
 
     // Finalize last month in the budget year that owns it. On January 1st that is
@@ -48,17 +48,7 @@ export async function runAutomation(
     const prevBudgetYear = await prisma.budgetYear.findFirst({
       where: { householdId: automation.householdId, year: prev.year, status: { not: 'SIMULATION' } },
     })
-    if (prevBudgetYear && household?.autoMarkTransferPaid) {
-      const prevTransfer = await prisma.budgetTransfer.findUnique({
-        where: { budgetYearId_month_year: { budgetYearId: prevBudgetYear.id, month: prev.month, year: prev.year } },
-      })
-      if (prevTransfer && prevTransfer.status === 'PENDING') {
-        await prisma.budgetTransfer.update({
-          where: { id: prevTransfer.id },
-          data: { status: 'PAID', actualAmount: prevTransfer.calculatedAmount, paidAt: now },
-        })
-      }
-    }
+    // Automatic transfers are marked paid on their due day by the daily job (lib/transferAutoPay)
     if (prevBudgetYear && household?.budgetModel === 'PAY_NO_PAY' && prev.year !== currentYear) {
       // Year boundary: close December. Unpaid items can't carry into the new year
       // because its expenses are separate rows (copies), so they end here.

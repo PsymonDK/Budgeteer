@@ -65,7 +65,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
-- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
+- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), automatic transfer marking (daily 00:15, and at startup), reminder digests (every 15 minutes), notification delivery purge (daily 00:20), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
@@ -120,9 +120,11 @@ budgeteer/
 
 **user_preferences** — per-user settings (1:1 with user)
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
+- Payment reminders: reminderInApp, reminderEmail, reminderEmailAddress (nullable; null = login email), reminderWebhook, reminderWebhookUrl (nullable), reminderWebhookFormat (`NTFY` | `JSON`), reminderWebhookSecretEncrypted (nullable), reminderLeadDays (nullable; null = household default), reminderDigestTime (HH:MM, default 08:00)
 
 **households** — shared budget spaces
-- id, name, isActive, autoMarkTransferPaid, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
+- id, name, isActive, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
+- transferPaymentMethod (`AUTOMATIC` | `MANUAL`, default MANUAL), transferDueDay (1–31, default 1) — how and when the monthly transfer into the budget account is made
 
 **household_members** — many-to-many users ↔ households
 - householdId, userId, role (`ADMIN` | `MEMBER`)
@@ -178,7 +180,7 @@ budgeteer/
 - expenseId, userId, pct (must sum to 100%)
 
 **expense_occurrences** — individual occurrence tracking for a recurring expense
-- expenseId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED`)
+- expenseId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED` | `DISMISSED`), dismissReason (`PAID_ELSEWHERE` | `SKIPPED`, nullable)
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **receipts** — actual consumption imports from scanned receipts/photos
@@ -222,7 +224,7 @@ budgeteer/
 - savingsEntryId, userId, pct (must sum to 100%)
 
 **savings_occurrences** — individual occurrence tracking for a recurring savings entry
-- savingsEntryId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED`)
+- savingsEntryId, year, month, scheduledAmount, carriedAmount, status (`PENDING` | `PAID` | `SKIPPED` | `DISMISSED`), dismissReason (`PAID_ELSEWHERE` | `SKIPPED`, nullable)
 - paidAt (nullable), actualAmount (nullable), note (nullable)
 
 **budget_transfers** — monthly inter-member transfer snapshots
@@ -230,10 +232,15 @@ budgeteer/
 - calculatedAt, paidAt (nullable), automationRunId (nullable)
 - One record per budget year per month; recalculated (awaited) when income, expenses, savings or FX rates change
 - PAY_NO_PAY: a month's amount is everything due that month (scheduled + carried) across PENDING and PAID occurrences, so paying items doesn't shrink it; closed months keep their recorded amount
+- AUTOMATIC transfers (a standing order) are marked PAID at `calculatedAmount` once their due day comes (`runTransferAutoPay`, planned by `planTransferAutoPay`): daily, at startup, and when a household switches to automatic or changes the due day, catching up on earlier PENDING months. MANUAL transfers are listed on the to-pay list (this month's, plus unpaid earlier months) and ticked off with mark-paid / mark-pending
 
-**Pay/No-pay occurrences** (`expense_occurrences`, `savings_occurrences`)
-- Seeded from the current month through December on every recalculation; PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED rows are history
-- Members mark MANUAL items PAID one by one or all at once for a month (`actualAmount` = amount due); AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+**Occurrences and the to-pay list** (`expense_occurrences`, `savings_occurrences`)
+- Seeded from the current month through December on every recalculation (`syncOccurrences`); PENDING rows follow schedule changes (an edited expense updates its remaining months), PAID/SKIPPED/DISMISSED rows are history
+- PAY_NO_PAY: a row for every entry, each month's share of it (`calcOccurrenceScheduledAmount`); the rows drive the transfer and carry unpaid balances
+- AVERAGE / FORWARD_LOOKING: rows only for MANUAL entries, the bill as charged that month (`trackingScheduledAmount`: a quarterly bill in full in its months). Tracking only — their transfer calculation never reads occurrences. Unpaid rows are never closed; they stay on the list as overdue until ticked off or dismissed
+- The to-pay list (`GET /budget-years/:id/occurrences`) shows MANUAL items in every model; for the current month it also lists overdue PENDING items from earlier months of the budget year. PENDING rows with nothing due are placeholders and aren't listed (`isListable`)
+- Members mark MANUAL items PAID one by one or all at once (`actualAmount` = amount due; "mark all" for the current month includes overdue items), or DISMISS them as paid elsewhere or skipped; dismissed items count as done, are never carried over, and still count in a PAY_NO_PAY month's transfer. AUTOMATIC items aren't listed and can't be toggled (409 `OCCURRENCE_AUTOMATIC`)
+- Switching budget model rewrites no history: PAY_NO_PAY adopts existing rows (re-syncing PENDING amounts), and the other models keep their manual rows
 - Month rollover (1st of the month automation) closes the previous month (`closePayNoPayMonth`, planned by `planMonthClose`): PENDING AUTOMATIC → PAID with the full amount due, PENDING MANUAL → SKIPPED, and each closed item's unpaid balance becomes `carriedAmount` on next month's row. Carry is derived from the closed rows, so re-running is idempotent. Switching an entry's payment method rewrites no rows; the next close applies it
 - At the year boundary December is closed without carry — the new year's expenses are separate rows
 
@@ -246,6 +253,55 @@ budgeteer/
 - New rows appended daily; queries use `DISTINCT ON` to get the latest rate per currency
 - Past expense/savings rates are locked at `rateDate` using the stored rate on or before the payment period (`frequencyPeriod`); unlocked ones are re-priced at the latest rate on each daily sync, using the same `calcMonthlyInBase` as save-time (partial-year average included). RETIRED years are never rewritten
 - A locked rate is kept on edit only while the currency is unchanged; switching currency unlocks and uses the latest rate
+
+**Reminders for manual payments** (`lib/reminders.ts` rules, `lib/reminderItems.ts` loader, `lib/reminderDigests.ts` sending)
+- Items: PENDING manual expense/savings occurrences and PENDING manual household transfers of each ACTIVE budget year, up to next month. Due date = the entry's due day in that month, clamped (weekly/fortnightly and no due day → the 1st); a transfer uses the household's transfer due day
+- Stages: DUE_SOON within the lead time (the member's reminderLeadDays, else the household's leadDays), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
+- Recipients: INDIVIDUAL → its owner; CUSTOM → members with a share above 0; SHARED (or an owner no longer a member) → every member; transfers → every member
+- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (`lib/channels/email.ts`, nodemailer, whenever an SMTP server is configured; the digest from `lib/digestEmail.ts` as plain text + HTML with links to the to-pay list and Profile) and ntfy/webhook (`lib/channels/webhook.ts`, whenever the install allows webhooks). Besides members, each household with a shared URL gets a digest of all its items (`remindersForHousehold`, recipient `household:<id>`, 08:00)
+- In-app: the navigation badge (red when something is overdue) and the to-pay list's summary line come from `GET /me/reminders`
+
+**Notification settings** (`lib/notificationSettings.ts`) — three levels, each narrowing the one above (`resolveChannels`): a channel reaches a member for a household's items only when the install, the household and the member all allow it and there's a destination (email: reminderEmailAddress or the login email; webhook: the member's URL). The household channel (`resolveHouseholdChannel`) is the household's shared webhook URL. Missing rows mean the defaults
+
+**notification_settings** — install-wide, one row (`id` = "default"), system admins
+- inAppEnabled (default true), emailEnabled (default false), webhookEnabled (default false), webhookAllowPrivateNetwork (default false)
+- SMTP: smtpHost, smtpPort (default by security: 25 / 587 / 465), smtpSecurity (`NONE` | `STARTTLS` | `TLS`), smtpUsername, smtpPasswordEncrypted, smtpFromAddress, smtpFromName. Email can only be switched on once a host and sender are set (400 `SMTP_NOT_CONFIGURED`)
+- The SMTP password is encrypted with AES-256-GCM (`lib/secretBox.ts`) under `SETTINGS_ENCRYPTION_KEY`, or a key derived from `JWT_SECRET` when that's unset; the API never returns it (`passwordSet` only)
+
+**household_notification_settings** — per household (PK householdId), household admins
+- inAppEnabled, emailEnabled, webhookEnabled (default true), webhookUrl (nullable; the household channel), webhookFormat (`NTFY` | `JSON`), webhookSecretEncrypted (nullable), leadDays (0–14, default 2)
+
+**ntfy and webhooks** (`lib/channels/webhook.ts`, `lib/safeHttp.ts`)
+- Guard: http(s) only, no credentials in the URL. Private, loopback, link-local and other special addresses are refused unless `webhookAllowPrivateNetwork`: checked when a URL is saved (IP literals, localhost; 400 `WEBHOOK_URL_NOT_ALLOWED`) and on every send against each address DNS returns, inside the connection's lookup (no rebinding). Redirects aren't followed; 10 s timeout; non-2xx is a failure
+- Secrets (ntfy access token / signing secret) are encrypted like the SMTP password and never returned (`…SecretSet` only)
+- ntfy: the topic URL `https://server/[path/]topic` is published as JSON to `https://server/[path]`: `{ topic, title, message, priority (4 when something is overdue, else 3), tags, click }`; a token goes in `Authorization: Bearer …`
+- JSON webhook: `POST` with `Content-Type: application/json`, `X-Budgeteer-Timestamp: <unix seconds>` and, with a secret, `X-Budgeteer-Signature: sha256=<hex HMAC-SHA256 of "<timestamp>.<raw body>">`. Receivers should recompute the HMAC over the raw body and reject old timestamps. Body:
+  ```json
+  {
+    "type": "budgeteer.reminder_digest",
+    "version": 1,
+    "date": "2026-09-30",
+    "recipient": { "kind": "member", "id": "…", "name": "Alice" },
+    "summary": "2 payments to make by hand: 1 due today",
+    "reminders": [
+      {
+        "key": "expense:…", "kind": "expense", "label": "Electricity", "amount": "270.00", "currency": "DKK",
+        "dueDate": "2026-10-01", "stage": "DUE_SOON", "daysUntilDue": 1,
+        "household": { "id": "…", "name": "The Smith Family" }, "url": "https://budget.example.com/households/…"
+      }
+    ]
+  }
+  ```
+  Each reminder also has `markPaidUrl` (POST with no body marks it paid, once, within 14 days) and `markPaidPage` (the confirm page); null in test messages. `recipient.kind` is `household` for a household's shared URL; `stage` is `DUE_SOON` | `DUE_TODAY` | `OVERDUE`; `kind` is `expense` | `savings` | `transfer`. Test messages are `{ "type": "budgeteer.test", "version": 1, "message": "…" }`
+
+**reminder_action_tokens** — Mark-as-paid links in reminders (`lib/reminderActions.ts`)
+- tokenHash (SHA-256 of a 256-bit random token; the token itself is never stored), userId (nullable; null for a household's shared channel), itemKey (`expense:<occurrence id>` | `savings:<occurrence id>` | `transfer:<transfer id>`), householdId, expiresAt (14 days), usedAt
+- One per reminder per digest. Emails link to the web page `/r/<token>`, which shows the item (`GET`, changes nothing, so link scanners are harmless) and marks it on confirm (`POST`); ntfy action buttons (up to 3) and the JSON webhook's `markPaidUrl` `POST` directly to `/api/reminder-actions/<token>`
+- Redeeming claims the token first (`usedAt`, conditional update) so it works once, then applies the app's rules (`markItemPaid`): RETIRED years are read-only, automatic items are refused, closed (SKIPPED) months can't be marked, already paid or dismissed succeeds without change. A refused action releases the token. Rate-limited (GET 30, POST 20 per 15 minutes); expired tokens are purged a week after expiry
+
+**notification_deliveries** — log of reminder digests sent or attempted
+- recipientKey (`user:<id>` or `household:<id>`), userId / householdId (nullable), channel (`EMAIL` | `WEBHOOK`), date (YYYY-MM-DD), itemKeys (`<stage>:<item key>`), status (`SENT` | `FAILED`), attempts, error
+- Unique per recipient, channel and date; rows older than 90 days are purged daily
 
 **automations** — scheduled or manually-triggered household jobs
 - householdId, key (unique per household), label, description, schedule (cron), isEnabled
@@ -408,7 +464,9 @@ DELETE /users/:id/jobs/:jobId
 GET    /users/:id/income/history
 GET    /users/me
 PUT    /users/me
-PUT    /users/me/preferences
+PUT    /users/me/preferences                          # includes the reminder* settings
+GET    /me/notification-settings                      # the member's reminder settings, login email, and channels the install allows
+POST   /me/notification-settings/test-webhook         # sends a test to the member's saved ntfy topic / webhook (400 WEBHOOK_ERROR with the reason)
 POST   /users/me/change-password
 POST   /users/me/avatar
 DELETE /users/me/avatar
@@ -445,11 +503,17 @@ PUT    /income/:id/allocations/:householdId
 DELETE /income/:id/allocations/:householdId
 
 GET    /me/summary                                     # cross-household dashboard summary
+GET    /me/reminders                                   # manual payments due soon / today / overdue across the member's households, with counts
+GET    /reminder-actions/:token                        # no auth; { state: VALID | DONE | USED | EXPIRED | INVALID, item }
+POST   /reminder-actions/:token                        # no auth; marks the item paid once (410 LINK_USED / LINK_EXPIRED, 404 LINK_INVALID)
 
 GET    /households
 POST   /households
 GET    /households/:id
-PUT    /households/:id
+PUT    /households/:id                                  # { name, budgetModel?, transferPaymentMethod?, transferDueDay? } — household admin
+GET    /households/:id/notification-settings          # members; { settings, allowed }
+PUT    /households/:id/notification-settings          # household admin; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookUrl?, webhookFormat?, webhookSecret?, leadDays? }
+POST   /households/:id/notification-settings/test-webhook # household admin; tests the shared ntfy topic / webhook
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)
@@ -510,10 +574,10 @@ GET    /budget-years/:id/transfers
 PATCH  /budget-years/:id/transfers/:transferId/mark-paid
 PATCH  /budget-years/:id/transfers/:transferId/mark-pending
 GET    /budget-years/:id/transfers/breakdown
-GET    /budget-years/:id/occurrences?month=M             # PAY_NO_PAY manual items for a month (default: current), plus automaticCount
-GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day and payment method, sorted by day; manualCount, plus paid status and manual paid/unpaid totals for PAY_NO_PAY
-PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING }
-POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only
+GET    /budget-years/:id/occurrences?month=M             # any model: the month's manual items (default: current), overdue items from earlier months, totals, carriesOver, automaticCount (PAY_NO_PAY), manualEntryCount
+GET    /budget-years/:id/payments?month=M                # any model: the month's expense/savings payments with due day, payment method and occurrence status, sorted by day; manualCount, doneCount (paid or dismissed) and unpaid for manual items
+PATCH  /budget-years/:id/occurrences/:kind/:occurrenceId # kind = expense | savings; { status: PAID | PENDING } or { status: DISMISSED, reason: PAID_ELSEWHERE | SKIPPED }
+POST   /budget-years/:id/occurrences/mark-all-paid       # { month } — pending manual items only; for the current month, overdue ones too
 
 GET    /categories
 POST   /categories
@@ -540,6 +604,10 @@ PATCH  /admin/receipt-training/mappings/:id            # admin only
 DELETE /admin/receipt-training/mappings/:id            # admin only
 
 GET    /admin/automations                              # admin only
+GET    /admin/notification-settings                    # admin only
+PUT    /admin/notification-settings                    # admin only; channel switches and smtp* (smtpPassword: string to set, null to clear, omit to keep)
+POST   /admin/notification-settings/test-email         # admin only; { to } — sends a test with the saved SMTP settings (400 SMTP_ERROR with the reason)
+GET    /admin/notification-deliveries?limit=N          # admin only; latest reminder digests with status and error
 PATCH  /admin/automations/:id/toggle                   # admin only
 GET    /admin/automations/:id/runs                     # admin only
 POST   /admin/automations/:id/trigger                  # admin only

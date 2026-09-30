@@ -7,6 +7,8 @@ vi.mock('../lib/budgetTransfer', () => ({ recalculateTransfer: vi.fn() }))
 import { BulkUpdateExpenseSchema, CreateExpenseSchema, UpdateExpenseSchema } from './expenses'
 import { BulkUpdateSavingsSchema, CreateSavingsSchema, UpdateSavingsSchema } from './savings'
 import { CreateJobSchema, UpdateJobSchema } from './jobs'
+import { UpdateOccurrenceSchema } from './occurrences'
+import { UpdateHouseholdSchema } from './households'
 
 // Zod 4 applies .default() values inside .partial() schemas too. Update schemas
 // must not carry defaults, or a PATCH that leaves a field out would reset it.
@@ -108,5 +110,42 @@ describe('paymentMethod', () => {
     expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'], paymentMethod: 'MANUAL' }).success).toBe(true)
     expect(BulkUpdateSavingsSchema.safeParse({ ids: ['s1'], paymentMethod: 'AUTOMATIC' }).success).toBe(true)
     expect(BulkUpdateExpenseSchema.safeParse({ ids: ['e1'] }).success).toBe(false)
+  })
+})
+
+describe('UpdateOccurrenceSchema', () => {
+  it('marks paid or pending without a reason', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'PAID' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'PENDING' }).success).toBe(true)
+  })
+
+  it('needs a reason to dismiss, and only the known ones', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'PAID_ELSEWHERE' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'SKIPPED' }).success).toBe(true)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED' }).success).toBe(false)
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'DISMISSED', reason: 'FORGOT' }).success).toBe(false)
+  })
+
+  it('cannot close a month by hand', () => {
+    expect(UpdateOccurrenceSchema.safeParse({ status: 'SKIPPED' }).success).toBe(false)
+  })
+})
+
+describe('UpdateHouseholdSchema (transfer settings)', () => {
+  it('accepts how the transfer is paid and its due day', () => {
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'AUTOMATIC', transferDueDay: 25 }).success).toBe(true)
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'MANUAL' }).success).toBe(true)
+  })
+
+  it('rejects due days outside 1–31 and unknown methods', () => {
+    for (const transferDueDay of [0, 32, 1.5]) {
+      expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferDueDay }).success).toBe(false)
+    }
+    expect(UpdateHouseholdSchema.safeParse({ name: 'Home', transferPaymentMethod: 'CARD' }).success).toBe(false)
+  })
+
+  it('no longer takes the old auto-mark switch into the update', () => {
+    const parsed = UpdateHouseholdSchema.parse({ name: 'Home', autoMarkTransferPaid: true })
+    expect('autoMarkTransferPaid' in parsed).toBe(false)
   })
 })

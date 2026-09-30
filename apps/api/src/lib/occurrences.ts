@@ -2,9 +2,14 @@ import { Decimal } from '@prisma/client/runtime/client'
 
 export type OccurrenceKind = 'expense' | 'savings'
 
+export type OccurrenceStatus = 'PENDING' | 'PAID' | 'SKIPPED' | 'DISMISSED'
+export type DismissReason = 'PAID_ELSEWHERE' | 'SKIPPED'
+
 export interface OccurrenceRow {
   id: string
-  status: 'PENDING' | 'PAID' | 'SKIPPED'
+  month: number
+  status: OccurrenceStatus
+  dismissReason: DismissReason | null
   scheduledAmount: Decimal
   carriedAmount: Decimal
   actualAmount: Decimal | null
@@ -17,7 +22,11 @@ export interface OccurrenceItem {
   entryId: string
   label: string
   categoryName: string | null
-  status: 'PENDING' | 'PAID' | 'SKIPPED'
+  /** The month it's due in; earlier than the listed month for overdue items */
+  month: number
+  status: OccurrenceStatus
+  /** Why it was taken off the list, when DISMISSED */
+  dismissReason: DismissReason | null
   scheduledAmount: string
   carriedAmount: string
   dueAmount: string
@@ -41,7 +50,9 @@ export function toOccurrenceItem(
     entryId: entry.id,
     label: entry.label,
     categoryName: entry.categoryName,
+    month: occ.month,
     status: occ.status,
+    dismissReason: occ.dismissReason,
     scheduledAmount: new Decimal(occ.scheduledAmount.toString()).toFixed(2),
     carriedAmount: new Decimal(occ.carriedAmount.toString()).toFixed(2),
     dueAmount: dueAmount(occ).toFixed(2),
@@ -51,15 +62,24 @@ export function toOccurrenceItem(
 }
 
 /**
- * Month totals for display. `unpaid` is what would carry to next month if the month
- * closed now: each PENDING item's due amount less anything already paid on it.
+ * Whether an occurrence belongs on the to-pay list. PENDING rows with nothing due are
+ * placeholders (an entry inactive that month, or a Pay/No-pay row zeroed after an edit).
+ */
+export function isListable(occ: Pick<OccurrenceRow, 'status' | 'scheduledAmount' | 'carriedAmount'>): boolean {
+  return occ.status !== 'PENDING' || dueAmount(occ).gt(0)
+}
+
+/**
+ * Month totals for display. `unpaid` is what's still to pay: each PENDING item's due
+ * amount less anything already paid on it (in Pay/No-pay, what would carry over if the
+ * month closed now). Closed (SKIPPED) and DISMISSED items are left out.
  */
 export function occurrenceTotals(items: OccurrenceItem[]): { due: string; paid: string; unpaid: string } {
   let due = new Decimal(0)
   let paid = new Decimal(0)
   let unpaid = new Decimal(0)
   for (const item of items) {
-    if (item.status === 'SKIPPED') continue
+    if (item.status === 'SKIPPED' || item.status === 'DISMISSED') continue
     const itemDue = new Decimal(item.dueAmount)
     const itemPaid = item.actualAmount ? new Decimal(item.actualAmount) : new Decimal(0)
     due = due.add(itemDue)
@@ -70,4 +90,32 @@ export function occurrenceTotals(items: OccurrenceItem[]): { due: string; paid: 
     }
   }
   return { due: due.toFixed(2), paid: paid.toFixed(2), unpaid: unpaid.toFixed(2) }
+}
+
+/** A manual household transfer on the to-pay list: the month's transfer into the budget account. */
+export interface TransferItem {
+  id: string
+  month: number
+  /** The planned (calculated) amount */
+  amount: string
+  status: 'PENDING' | 'PAID' | 'ADJUSTED'
+  /** What was actually transferred, once marked paid */
+  actualAmount: string | null
+  /** The household's transfer due day, clamped to the month's length */
+  dueDay: number
+}
+
+export function toTransferItem(
+  t: { id: string; year: number; month: number; calculatedAmount: Decimal; status: TransferItem['status']; actualAmount: Decimal | null },
+  dueDay: number,
+): TransferItem {
+  const lastDay = new Date(Date.UTC(t.year, t.month, 0)).getUTCDate()
+  return {
+    id: t.id,
+    month: t.month,
+    amount: new Decimal(t.calculatedAmount.toString()).toFixed(2),
+    status: t.status,
+    actualAmount: t.actualAmount ? new Decimal(t.actualAmount.toString()).toFixed(2) : null,
+    dueDay: Math.min(dueDay, lastDay),
+  }
 }

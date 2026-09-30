@@ -3,7 +3,8 @@ import { Decimal } from '@prisma/client/runtime/client'
 import { expenseMonthSchedule } from './calculations'
 
 export type PaymentKind = 'expense' | 'savings'
-export type PaymentStatus = 'PENDING' | 'PAID' | 'SKIPPED'
+export type PaymentStatus = 'PENDING' | 'PAID' | 'SKIPPED' | 'DISMISSED'
+export type DismissReason = 'PAID_ELSEWHERE' | 'SKIPPED'
 
 /** One expense or savings payment in a month, for the dashboard's payments timeline. */
 export interface MonthPayment {
@@ -19,8 +20,14 @@ export interface MonthPayment {
   paymentMethod: PaymentMethod
   /** Amount due this month in base currency */
   amount: string
-  /** Paid status where the household tracks it (Pay/No-pay); null otherwise */
+  /**
+   * Paid status from the month's occurrence: manual items in every budget model, automatic
+   * ones too in Pay/No-pay. Null when the item has no occurrence (automatic items in the
+   * other models, or a month before tracking started).
+   */
   status: PaymentStatus | null
+  /** Why it was taken off the to-pay list, when DISMISSED */
+  dismissReason: DismissReason | null
 }
 
 export interface MonthPaymentsTotals {
@@ -29,10 +36,10 @@ export interface MonthPaymentsTotals {
   due: string
   /** Items paid by hand */
   manualCount: number
-  /** Manual items marked paid, only when tracked (automatic ones settle at month close) */
-  paidCount: number | null
-  /** Amount still to pay on manual items, only when tracked */
-  unpaid: string | null
+  /** Manual items that are done: marked paid, or dismissed */
+  doneCount: number
+  /** Amount still to pay on manual items that aren't done */
+  unpaid: string
 }
 
 interface ExpenseInput {
@@ -59,9 +66,10 @@ interface SavingsInput {
   monthlyEquivalent: Decimal
 }
 
-/** A tracked occurrence (Pay/No-pay), keyed by `${kind}:${entryId}`. */
+/** The month's occurrence for an entry, keyed by `${kind}:${entryId}`. */
 export interface TrackedOccurrence {
   status: PaymentStatus
+  dismissReason: DismissReason | null
   dueAmount: Decimal
 }
 
@@ -76,7 +84,7 @@ const SEVERAL_A_MONTH = new Set<Frequency>(['WEEKLY', 'FORTNIGHTLY'])
 /**
  * The month's payments: expenses due in `month` (from their month schedule, so quarterly and
  * annual items only appear in the months they fall in) and savings contributions, each with
- * its due day. For tracked households the occurrence's due amount and status are used.
+ * its due day. Where an entry has an occurrence, its due amount and status are used.
  * Sorted by day (no set day last), then kind and label.
  */
 export function buildMonthPayments(input: {
@@ -84,8 +92,8 @@ export function buildMonthPayments(input: {
   month: number
   expenses: ExpenseInput[]
   savings: SavingsInput[]
-  /** null when the household doesn't track payments */
-  occurrences: Map<string, TrackedOccurrence> | null
+  /** The month's occurrences; entries without one have no status */
+  occurrences: Map<string, TrackedOccurrence>
 }): { items: MonthPayment[]; totals: MonthPaymentsTotals } {
   const { year, month, occurrences } = input
   const lastDay = daysInMonth(year, month)
@@ -96,7 +104,7 @@ export function buildMonthPayments(input: {
   const items: (MonthPayment & { amountDec: Decimal })[] = []
 
   for (const e of input.expenses) {
-    const tracked = occurrences?.get(occurrenceKey('expense', e.id))
+    const tracked = occurrences.get(occurrenceKey('expense', e.id))
     const scheduled = expenseMonthSchedule(e)[month - 1]
     const amount = tracked ? tracked.dueAmount : scheduled != null ? new Decimal(scheduled) : null
     if (amount == null) continue // not due this month
@@ -104,18 +112,18 @@ export function buildMonthPayments(input: {
       kind: 'expense', entryId: e.id, label: e.label, categoryName: e.category?.name ?? null,
       day: dayOf(e.dueDay, e.frequency), recurrence: recurrenceOf(e.frequency), paymentMethod: e.paymentMethod,
       amount: amount.toFixed(2), amountDec: amount,
-      status: occurrences ? (tracked?.status ?? null) : null,
+      status: tracked?.status ?? null, dismissReason: tracked?.dismissReason ?? null,
     })
   }
 
   for (const s of input.savings) {
-    const tracked = occurrences?.get(occurrenceKey('savings', s.id))
+    const tracked = occurrences.get(occurrenceKey('savings', s.id))
     const amount = tracked ? tracked.dueAmount : new Decimal(s.monthlyEquivalent.toString())
     items.push({
       kind: 'savings', entryId: s.id, label: s.label, categoryName: s.category?.name ?? null,
       day: dayOf(s.dueDay, s.frequency), recurrence: recurrenceOf(s.frequency), paymentMethod: s.paymentMethod,
       amount: amount.toFixed(2), amountDec: amount,
-      status: occurrences ? (tracked?.status ?? null) : null,
+      status: tracked?.status ?? null, dismissReason: tracked?.dismissReason ?? null,
     })
   }
 
@@ -124,15 +132,14 @@ export function buildMonthPayments(input: {
 
   const counted = items.filter((i) => i.status !== 'SKIPPED')
   const manual = counted.filter((i) => i.paymentMethod === 'MANUAL')
+  const isDone = (i: MonthPayment) => i.status === 'PAID' || i.status === 'DISMISSED'
   const due = counted.reduce((sum, i) => sum.add(i.amountDec), new Decimal(0))
   const totals: MonthPaymentsTotals = {
     count: counted.length,
     due: due.toFixed(2),
     manualCount: manual.length,
-    paidCount: occurrences ? manual.filter((i) => i.status === 'PAID').length : null,
-    unpaid: occurrences
-      ? manual.filter((i) => i.status !== 'PAID').reduce((sum, i) => sum.add(i.amountDec), new Decimal(0)).toFixed(2)
-      : null,
+    doneCount: manual.filter(isDone).length,
+    unpaid: manual.filter((i) => !isDone(i)).reduce((sum, i) => sum.add(i.amountDec), new Decimal(0)).toFixed(2),
   }
 
   return { items: items.map(({ amountDec: _amountDec, ...item }) => item), totals }

@@ -39,6 +39,8 @@ services:
       # Base currency for all calculations — must be a currency Danmarks Nationalbank publishes rates for
       BASE_CURRENCY: ${BASE_CURRENCY:-DKK}
       # ── Optional features (leave unset for defaults; see README) ─────────
+      # Key that encrypts stored secrets such as the SMTP password (default: derived from JWT_SECRET)
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:-}
       # AI-assisted payslip import (Anthropic)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # Startup schema sync: push (default), migrate, skip, force-push

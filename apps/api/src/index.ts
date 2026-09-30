@@ -29,11 +29,17 @@ import { payslipRoutes } from './routes/payslips'
 import { receiptRoutes } from './routes/receipts'
 import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { occurrenceRoutes } from './routes/occurrences'
+import { reminderRoutes } from './routes/reminders'
+import { notificationSettingsRoutes } from './routes/notificationSettings'
+import { reminderActionRoutes } from './routes/reminderActions'
+import { purgeActionTokens } from './lib/reminderActions'
+import { purgeNotificationDeliveries, runReminderDigests } from './lib/reminderDigests'
 import { trashRoutes } from './routes/trash'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
 import { runAllEnabledAutomations } from './lib/automations'
 import { runBudgetYearLifecycle } from './lib/budgetYearLifecycle'
 import { purgeRefreshTokens } from './lib/sessions'
+import { runTransferAutoPay } from './lib/transferAutoPay'
 import { prisma } from './lib/prisma'
 import { toErrorResponse } from './lib/errors'
 
@@ -118,6 +124,9 @@ app.register(currencyRoutes)
 app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(occurrenceRoutes)
+app.register(reminderRoutes)
+app.register(notificationSettingsRoutes)
+app.register(reminderActionRoutes)
 app.register(trashRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
@@ -168,6 +177,31 @@ const start = async () => {
         .catch((err) => app.log.error({ err }, 'Refresh token purge failed'))
     await purgeTokens()
     cron.schedule('10 0 * * *', purgeTokens)
+
+    // Automatic (standing-order) transfers are marked paid on their due day. Run now to
+    // catch up after downtime, and daily after midnight.
+    const autoPayTransfers = () =>
+      runTransferAutoPay()
+        .then((n) => { if (n > 0) app.log.info(`Marked ${n} automatic transfer(s) paid`) })
+        .catch((err) => app.log.error({ err }, 'Automatic transfer marking failed'))
+    await autoPayTransfers()
+    cron.schedule('15 0 * * *', autoPayTransfers)
+
+    // Reminder digests for manual payments: each member's goes out once their digest time has
+    // come, at most once per channel per day. Checked every 15 minutes; old log rows go daily.
+    cron.schedule('*/15 * * * *', () => {
+      runReminderDigests()
+        .then((n) => { if (n > 0) app.log.info(`Sent ${n} reminder digest(s)`) })
+        .catch((err) => app.log.error({ err }, 'Reminder digests failed'))
+    })
+    cron.schedule('20 0 * * *', () => {
+      purgeNotificationDeliveries()
+        .then((n) => { if (n > 0) app.log.info(`Purged ${n} old notification deliveries`) })
+        .catch((err) => app.log.error({ err }, 'Notification delivery purge failed'))
+      purgeActionTokens()
+        .then((n) => { if (n > 0) app.log.info(`Purged ${n} expired Mark-as-paid links`) })
+        .catch((err) => app.log.error({ err }, 'Mark-as-paid link purge failed'))
+    })
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00
     cron.schedule('0 0 1 * *', () => {

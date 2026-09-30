@@ -11,6 +11,7 @@ import Avatar from '../../components/Avatar'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass, segmentGroup, segmentBtn } from '../../lib/styles'
 import { cardClass } from './cardClass'
+import { ReminderPreferencesCard } from './ReminderPreferencesCard'
 import { StickyActions } from '../../components/StickyActions'
 import { InstallAppSetting } from '../../components/InstallApp'
 import { useThemePreference, type ThemePreference } from '../../lib/theme'
@@ -291,7 +292,7 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
           </div>
 
           <div className="space-y-3 pt-2">
-            <p className="text-xs font-medium text-gray-400">Notifications</p>
+            <p className="text-xs font-medium text-gray-400">Budget warnings</p>
             {[
               { field: 'notifyOverAllocation', label: 'Over-allocation warning' },
               { field: 'notifyExpensesExceedIncome', label: 'Expenses exceed income' },
@@ -330,6 +331,8 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
           {prefError && <p className="text-red-400 text-xs">{prefError}</p>}
         </div>
       </div>
+
+      <ReminderPreferencesCard />
     </div>
   )
 }

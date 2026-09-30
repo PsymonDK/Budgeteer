@@ -3,15 +3,18 @@ import { z } from 'zod'
 import { prisma } from '../lib/prisma'
 import { authenticate, requireAdmin } from '../plugins/authenticate'
 import { recalculateTransfer } from '../lib/budgetTransfer'
+import { runTransferAutoPay } from '../lib/transferAutoPay'
 import { deleteHouseholdWithDependencies } from '../lib/householdDeletion'
 
 const CreateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
 })
 
-const UpdateHouseholdSchema = z.object({
+export const UpdateHouseholdSchema = z.object({
   name: z.string().min(1).max(100),
-  autoMarkTransferPaid: z.boolean().optional(),
+  transferPaymentMethod: z.enum(['AUTOMATIC', 'MANUAL']).optional(),
+  // Day of the month the transfer is due; later days fall on the month's last day
+  transferDueDay: z.number().int().min(1).max(31).optional(),
   budgetModel: z.enum(['AVERAGE', 'FORWARD_LOOKING', 'PAY_NO_PAY']).optional(),
 })
 
@@ -140,15 +143,22 @@ export async function householdRoutes(fastify: FastifyInstance) {
       return reply.status(403).send({ error: 'Forbidden' })
     }
 
-    const { name, autoMarkTransferPaid, budgetModel } = result.data
+    const { name, transferPaymentMethod, transferDueDay, budgetModel } = result.data
     const household = await prisma.household.update({
       where: { id },
       data: {
         name,
-        ...(autoMarkTransferPaid !== undefined && { autoMarkTransferPaid }),
+        ...(transferPaymentMethod !== undefined && { transferPaymentMethod }),
+        ...(transferDueDay !== undefined && { transferDueDay }),
         ...(budgetModel !== undefined && { budgetModel }),
       },
     })
+
+    // An automatic transfer has covered every month whose due day has passed; catch up now
+    // rather than at the next daily run
+    if (household.transferPaymentMethod === 'AUTOMATIC' && (transferPaymentMethod !== undefined || transferDueDay !== undefined)) {
+      await runTransferAutoPay(new Date(), id).catch((err) => fastify.log.error({ err }, 'runTransferAutoPay failed'))
+    }
 
     // Recalculate transfers whenever budget model changes so the history reflects
     // the new model immediately rather than on the next expense/savings mutation.

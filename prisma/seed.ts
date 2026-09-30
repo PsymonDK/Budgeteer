@@ -269,6 +269,9 @@ async function main() {
   const smithHousehold = await prisma.household.create({
     data: {
       name: 'The Smith Family',
+      // Standing order on payday; Carol & Dave make theirs by hand (the default)
+      transferPaymentMethod: 'AUTOMATIC',
+      transferDueDay: 25,
       members: {
         create: [
           { userId: alice.id, role: 'ADMIN' },
