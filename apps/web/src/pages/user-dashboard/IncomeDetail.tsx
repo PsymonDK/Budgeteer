@@ -23,7 +23,10 @@ export function IncomeFlowCard({ sankeyData, baseCurrency }: { sankeyData: Incom
         <>
           {(() => {
             const has3Col = sankeyData.nodes.some((n) => n.id === 'net_pay' || n.id === 'am_bidrag')
-            return <SankeyChart data={sankeyData} currency={baseCurrency} height={has3Col ? 480 : 400} />
+            // Jobs take the theme's people colours (the API still sends fixed dark-theme hex colours)
+            let job = 0
+            const nodes = sankeyData.nodes.map((n) => (n.id.startsWith('job_') ? { ...n, color: personColor(job++) } : n))
+            return <SankeyChart data={{ ...sankeyData, nodes }} currency={baseCurrency} height={has3Col ? 480 : 400} />
           })()}
           {sankeyData.employerPensionMonthly && parseFloat(sankeyData.employerPensionMonthly) > 0 && (
             <p className="text-xs text-gray-500 mt-3">

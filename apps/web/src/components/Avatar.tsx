@@ -56,7 +56,7 @@ export default function Avatar({ user, size = 32, className = '' }: AvatarProps)
   return (
     <div
       style={{ ...style, background: bg, fontSize }}
-      className={`flex items-center justify-center text-white font-semibold select-none ${ringClass} ${className}`}
+      className={`flex items-center justify-center text-[#fff] font-semibold select-none ${ringClass} ${className}`}
     >
       {initials}
     </div>

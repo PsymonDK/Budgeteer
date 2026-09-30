@@ -12,17 +12,19 @@ export function legendInOrder(dataKeys: string[]) {
   }
 }
 
-// ── Chart & Ledger chart colours (dark theme) ─────────────────────────────────
+// ── Chart & Ledger chart colours ──────────────────────────────────────────────
+// CSS-variable colours (defined per theme in index.css), so charts follow the light / dark theme.
+// They work as SVG fill/stroke and inline styles; don't append hex alpha to them.
 
 /**
  * Categorical palette: brass, slate, coral, teal, plum, sage. Checked for lightness, chroma,
  * contrast against the card surface and colour-vision-deficiency separation in this order
  * (neighbours stay apart in deuteranopia simulation), so assign it in order and never cycle.
  */
-export const SERIES = ['#BD871C', '#547ECD', '#C8664E', '#00A596', '#A5538C', '#7BA143'] as const
+export const SERIES = [1, 2, 3, 4, 5, 6].map((i) => `rgb(var(--series-${i}))`) as [string, string, string, string, string, string]
 
 /** Colour for everything past the sixth series ("the rest"); pair it with a label. */
-export const SERIES_REST = '#4F6575'
+export const SERIES_REST = 'rgb(var(--series-rest))'
 
 /** The series colour for position `i`: the palette in order, then the neutral. */
 export const seriesColor = (i: number) => SERIES[i] ?? SERIES_REST
@@ -42,12 +44,12 @@ export const personColor = (i: number) => PEOPLE[i] ?? SERIES_REST
 
 /** Chart chrome, from the sea neutrals: recessive grid and axes, readable text. */
 export const CHART = {
-  grid: '#1F3140',        // sea-800
-  axis: '#97AAB7',        // sea-400
-  text: '#D6E0E6',        // sea-200
-  muted: '#97AAB7',       // sea-400
-  tooltipBg: '#131F28',   // sea-900
-  tooltipBorder: '#34495A', // sea-700
+  grid: 'rgb(var(--sea-800))',
+  axis: 'rgb(var(--sea-400))',
+  text: 'rgb(var(--sea-200))',
+  muted: 'rgb(var(--sea-400))',
+  tooltipBg: 'rgb(var(--sea-900))',
+  tooltipBorder: 'rgb(var(--sea-700))',
 } as const
 
 /** Shared Recharts props so every chart has the same chrome. */

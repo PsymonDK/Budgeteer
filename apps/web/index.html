@@ -8,6 +8,16 @@
     <meta name="description" content="Budgeteer — track your household budget, income, and savings." />
     <meta property="og:title" content="Budgeteer" />
     <meta property="og:description" content="Track your household budget, income, and savings." />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#0A1319" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#E8EDEF" media="(prefers-color-scheme: light)" />
+    <!-- Apply the stored Appearance choice before the first paint (see src/lib/theme.ts) -->
+    <script>
+      try {
+        var t = localStorage.getItem('budgeteer.theme')
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+      } catch (e) { /* no storage: follow the system */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -29,6 +29,7 @@ export default {
     extend: {
       colors: {
         gray: sea,               // neutrals, slightly sea-blue
+        white: 'rgb(var(--white) / <alpha-value>)', // primary text: white in dark, ink in light
         amber: brass,            // primary actions, your money
         red: ramp('port'),       // deficit, destructive
         green: ramp('starboard'), // surplus, success
