@@ -4,6 +4,7 @@ import { BASE_CURRENCY } from './currency'
 import { appUrl, createEmailChannel, loadSmtpConfig } from './channels/email'
 import { createWebhookChannel, type WebhookTarget } from './channels/webhook'
 import { loadReminderItems } from './reminderItems'
+import { issueActionLinks } from './reminderActions'
 import {
   deliveryKey, digestTimeReached, planDigest, remindersFor, remindersForHousehold, toISODate, type Reminder, type ReminderItem,
 } from './reminders'
@@ -29,6 +30,8 @@ export interface Digest {
   /** YYYY-MM-DD */
   date: string
   reminders: Reminder[]
+  /** Mark-as-paid links by delivery key: `page` confirms in a browser, `post` acts directly */
+  actionLinks?: Map<string, { page: string; post: string }>
 }
 
 /** A way of delivering digests (email, ntfy/webhook). Throwing marks the delivery failed. */
@@ -95,7 +98,8 @@ async function deliver(
   const owner = { userId: recipient.userId, householdId: recipient.userId ? null : recipient.householdId ?? null }
   const where = { recipientKey_channel_date: { recipientKey, channel: channel.channel, date: today } }
   try {
-    await channel.send(recipient, { date: today, reminders: digestReminders })
+    const actionLinks = await issueActionLinks({ userId: recipient.userId }, digestReminders, appUrl())
+    await channel.send(recipient, { date: today, reminders: digestReminders, actionLinks })
     await prisma.notificationDelivery.upsert({
       where,
       create: { recipientKey, ...owner, channel: channel.channel, date: today, itemKeys, status: 'SENT' },

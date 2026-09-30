@@ -154,6 +154,7 @@ model User {
   jobs                      Job[]
   refreshTokens             RefreshToken[]
   notificationDeliveries    NotificationDelivery[]
+  reminderActionTokens      ReminderActionToken[]
   createdCategories         Category[]
   preferences               UserPreferences?
   ownedExpenses             Expense[]              @relation("OwnedExpenses")
@@ -817,4 +818,23 @@ model HouseholdNotificationSettings {
   // Default days before the due date a "due soon" reminder starts
   leadDays       Int       @default(2)
   updatedAt      DateTime  @updatedAt
+}
+
+// A "Mark as paid" link from a reminder (email, ntfy, webhook): works without logging in,
+// once, until it expires, and only for its one item. Only the token's SHA-256 is stored.
+model ReminderActionToken {
+  id          String    @id @default(cuid())
+  tokenHash   String    @unique
+  // The member the reminder went to; null for a household's shared channel
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "expense:<occurrence id>", "savings:<occurrence id>" or "transfer:<transfer id>"
+  itemKey     String
+  householdId String
+  expiresAt   DateTime
+  // When it was used (and so by whom it was marked paid)
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([expiresAt])
 }

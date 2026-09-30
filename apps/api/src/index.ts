@@ -31,6 +31,8 @@ import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { occurrenceRoutes } from './routes/occurrences'
 import { reminderRoutes } from './routes/reminders'
 import { notificationSettingsRoutes } from './routes/notificationSettings'
+import { reminderActionRoutes } from './routes/reminderActions'
+import { purgeActionTokens } from './lib/reminderActions'
 import { purgeNotificationDeliveries, runReminderDigests } from './lib/reminderDigests'
 import { trashRoutes } from './routes/trash'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
@@ -124,6 +126,7 @@ app.register(budgetTransferRoutes)
 app.register(occurrenceRoutes)
 app.register(reminderRoutes)
 app.register(notificationSettingsRoutes)
+app.register(reminderActionRoutes)
 app.register(trashRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)
@@ -195,6 +198,9 @@ const start = async () => {
       purgeNotificationDeliveries()
         .then((n) => { if (n > 0) app.log.info(`Purged ${n} old notification deliveries`) })
         .catch((err) => app.log.error({ err }, 'Notification delivery purge failed'))
+      purgeActionTokens()
+        .then((n) => { if (n > 0) app.log.info(`Purged ${n} expired Mark-as-paid links`) })
+        .catch((err) => app.log.error({ err }, 'Mark-as-paid link purge failed'))
     })
 
     // Monthly budget transfer snapshot on the 1st of each month at 00:00

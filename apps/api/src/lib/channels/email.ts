@@ -75,7 +75,8 @@ export function createEmailChannel(
   return {
     channel: 'EMAIL',
     async send(recipient, digest) {
-      const { subject, text, html } = renderDigestEmail({ recipientName: recipient.name, digest, appUrl: opts.appUrl, currency: opts.currency })
+      const actionUrls = new Map([...(digest.actionLinks ?? new Map())].map(([key, links]) => [key, links.page]))
+      const { subject, text, html } = renderDigestEmail({ recipientName: recipient.name, digest, appUrl: opts.appUrl, currency: opts.currency, actionUrls })
       await transport.sendMail({ from: fromHeader(config), to: recipient.destination, subject, text, html })
     },
   }

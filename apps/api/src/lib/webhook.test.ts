@@ -98,6 +98,7 @@ describe('JSON webhook', () => {
     expect(p.reminders[0]).toEqual({
       key: 'expense:power', kind: 'expense', label: 'Elværk', amount: '270', currency: 'DKK', dueDate: '2026-08-20', stage: 'OVERDUE',
       daysUntilDue: 0, household: { id: 'h1', name: 'Hjem' }, url: 'https://budget.example.com/households/h1',
+      markPaidUrl: null, markPaidPage: null,
     })
     expect(renderJsonPayload({ userId: null, householdId: 'h1', name: 'Hjem' }, digest, opts).recipient).toEqual({ kind: 'household', id: 'h1', name: 'Hjem' })
   })
@@ -117,5 +118,27 @@ describe('JSON webhook', () => {
     await postToWebhook({ url: 'https://hooks.example/x', format: 'JSON', secret: null }, { ntfy: () => ({}), json: () => ({ a: 1 }) },
       { allowPrivate: false }, async (_u, _b, headers) => { calls.push(headers); return { status: 200, body: '' } })
     expect(calls[0]['X-Budgeteer-Signature']).toBeUndefined()
+  })
+})
+
+describe('Mark-as-paid links in webhooks', () => {
+  const links = new Map([
+    ['OVERDUE:expense:power', { page: 'https://b.example/r/tok1', post: 'https://b.example/api/reminder-actions/tok1' }],
+    ['DUE_SOON:expense:tv', { page: 'https://b.example/r/tok2', post: 'https://b.example/api/reminder-actions/tok2' }],
+  ])
+  const withLinks = { ...digest, actionLinks: links }
+
+  it('adds ntfy action buttons that POST to mark each one paid', () => {
+    const m = renderNtfyMessage(withLinks, opts, 't')
+    expect(m.actions).toEqual([
+      { action: 'http', label: 'Paid: Elværk', url: 'https://b.example/api/reminder-actions/tok1', method: 'POST', clear: false },
+      { action: 'http', label: 'Paid: expense:tv', url: 'https://b.example/api/reminder-actions/tok2', method: 'POST', clear: false },
+    ])
+    expect(renderNtfyMessage(digest, opts, 't').actions).toBeUndefined()
+  })
+
+  it('includes the links in the JSON payload', () => {
+    const p = renderJsonPayload({ userId: 'a', name: 'A' }, withLinks, opts)
+    expect(p.reminders[0]).toMatchObject({ markPaidUrl: 'https://b.example/api/reminder-actions/tok1', markPaidPage: 'https://b.example/r/tok1' })
   })
 })

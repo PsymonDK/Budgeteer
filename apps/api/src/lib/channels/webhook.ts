@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import type { WebhookFormat } from '@prisma/client'
 import { digestSubject, dueText, formatAmount } from '../digestEmail'
+import { deliveryKey } from '../reminders'
 import { safePost, type PostResult } from '../safeHttp'
 import type { Digest, DigestRecipient, ReminderChannel } from '../reminderDigests'
 
@@ -32,6 +33,12 @@ export function renderNtfyMessage(digest: Digest, { appUrl, currency }: RenderOp
     `• ${households.size > 1 ? `${r.item.householdName}: ` : ''}${r.item.label} — ${formatAmount(r.item.amount, currency)} — ${dueText(r)}`)
   const overdue = digest.reminders.some((r) => r.stage === 'OVERDUE')
   const base = appUrl.replace(/\/+$/, '')
+  // ntfy shows up to 3 action buttons; each marks one payment paid straight from the notification
+  const actions = digest.reminders
+    .map((r) => ({ r, link: digest.actionLinks?.get(deliveryKey(r)) }))
+    .filter((a) => a.link)
+    .slice(0, 3)
+    .map(({ r, link }) => ({ action: 'http', label: `Paid: ${r.item.label}`.slice(0, 40), url: link!.post, method: 'POST', clear: false }))
   return {
     topic,
     title: digestSubject(digest.reminders),
@@ -40,6 +47,7 @@ export function renderNtfyMessage(digest: Digest, { appUrl, currency }: RenderOp
     priority: overdue ? 4 : 3,
     tags: [overdue ? 'warning' : 'calendar'],
     click: households.size === 1 ? `${base}/households/${[...households][0]}` : `${base}/`,
+    ...(actions.length > 0 && { actions }),
   }
 }
 
@@ -65,6 +73,9 @@ export function renderJsonPayload(recipient: Pick<DigestRecipient, 'userId' | 'h
       daysUntilDue: r.daysUntilDue,
       household: { id: r.item.householdId, name: r.item.householdName },
       url: `${base}/households/${r.item.householdId}`,
+      // POST (no body) marks it paid, once; the page URL asks first
+      markPaidUrl: digest.actionLinks?.get(deliveryKey(r))?.post ?? null,
+      markPaidPage: digest.actionLinks?.get(deliveryKey(r))?.page ?? null,
     })),
   }
 }

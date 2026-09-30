@@ -283,7 +283,12 @@ budgeteer/
     ]
   }
   ```
-  `recipient.kind` is `household` for a household's shared URL; `stage` is `DUE_SOON` | `DUE_TODAY` | `OVERDUE`; `kind` is `expense` | `savings` | `transfer`. Test messages are `{ "type": "budgeteer.test", "version": 1, "message": "…" }`
+  Each reminder also has `markPaidUrl` (POST with no body marks it paid, once, within 14 days) and `markPaidPage` (the confirm page); null in test messages. `recipient.kind` is `household` for a household's shared URL; `stage` is `DUE_SOON` | `DUE_TODAY` | `OVERDUE`; `kind` is `expense` | `savings` | `transfer`. Test messages are `{ "type": "budgeteer.test", "version": 1, "message": "…" }`
+
+**reminder_action_tokens** — Mark-as-paid links in reminders (`lib/reminderActions.ts`)
+- tokenHash (SHA-256 of a 256-bit random token; the token itself is never stored), userId (nullable; null for a household's shared channel), itemKey (`expense:<occurrence id>` | `savings:<occurrence id>` | `transfer:<transfer id>`), householdId, expiresAt (14 days), usedAt
+- One per reminder per digest. Emails link to the web page `/r/<token>`, which shows the item (`GET`, changes nothing, so link scanners are harmless) and marks it on confirm (`POST`); ntfy action buttons (up to 3) and the JSON webhook's `markPaidUrl` `POST` directly to `/api/reminder-actions/<token>`
+- Redeeming claims the token first (`usedAt`, conditional update) so it works once, then applies the app's rules (`markItemPaid`): RETIRED years are read-only, automatic items are refused, closed (SKIPPED) months can't be marked, already paid or dismissed succeeds without change. A refused action releases the token. Rate-limited (GET 30, POST 20 per 15 minutes); expired tokens are purged a week after expiry
 
 **notification_deliveries** — log of reminder digests sent or attempted
 - recipientKey (`user:<id>` or `household:<id>`), userId / householdId (nullable), channel (`EMAIL` | `WEBHOOK`), date (YYYY-MM-DD), itemKeys (`<stage>:<item key>`), status (`SENT` | `FAILED`), attempts, error
@@ -490,6 +495,8 @@ DELETE /income/:id/allocations/:householdId
 
 GET    /me/summary                                     # cross-household dashboard summary
 GET    /me/reminders                                   # manual payments due soon / today / overdue across the member's households, with counts
+GET    /reminder-actions/:token                        # no auth; { state: VALID | DONE | USED | EXPIRED | INVALID, item }
+POST   /reminder-actions/:token                        # no auth; marks the item paid once (410 LINK_USED / LINK_EXPIRED, 404 LINK_INVALID)
 
 GET    /households
 POST   /households

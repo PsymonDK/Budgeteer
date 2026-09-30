@@ -49,7 +49,7 @@ npm run test             # API unit tests
 ## API conventions
 - REST, JSON
 - Auth: JWT access token (15 min, kept in memory by the web client) + refresh token (7 days, httpOnly `budgeteer_refresh` cookie only, never in a body or `localStorage`), rotated on use
-- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config` and avatar images (`/uploads/avatars/`)
+- All routes require authentication except `/auth/login`, `/auth/refresh`, `/auth/logout`, `/health`, `/config`, avatar images (`/uploads/avatars/`) and reminder Mark-as-paid links (`/reminder-actions/:token`, where the token is the permission)
 - System admin routes are prefixed `/admin/`; user management (`/users`) and `DELETE /households/:id` are also admin-only via `requireAdmin`
 - Errors return `{ error: string, code?: string }` — add a machine-readable `code` when the client needs to react to the error (e.g. `BUDGET_YEAR_READ_ONLY`); unexpected errors are mapped by the global error handler
 - Successful creates return the created object with 201

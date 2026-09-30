@@ -106,8 +106,12 @@ api.interceptors.response.use(
   }
 )
 
+// Pages that work signed out: an ended session mustn't send them to /login
+// (/r/:token is a Mark-as-paid link from a reminder email)
+const PUBLIC_PATHS = [/^\/login$/, /^\/r\//]
+
 function redirectToLogin() {
-  if (window.location.pathname !== '/login') {
+  if (!PUBLIC_PATHS.some((p) => p.test(window.location.pathname))) {
     window.location.href = '/login'
   }
 }

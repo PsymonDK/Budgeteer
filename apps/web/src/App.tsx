@@ -31,6 +31,7 @@ const CategoriesAdminPage = lazyNamed(() => import('./pages/admin/CategoriesAdmi
 const CurrenciesAdminPage = lazyNamed(() => import('./pages/admin/CurrenciesAdminPage'), 'CurrenciesAdminPage')
 const AutomationsAdminPage = lazyNamed(() => import('./pages/admin/AutomationsAdminPage'), 'AutomationsAdminPage')
 const NotificationsAdminPage = lazyNamed(() => import('./pages/admin/NotificationsAdminPage'), 'NotificationsAdminPage')
+const ReminderActionPage = lazyNamed(() => import('./pages/ReminderActionPage'), 'ReminderActionPage')
 const ReceiptTrainingAdminPage = lazyNamed(() => import('./pages/admin/ReceiptTrainingAdminPage'), 'ReceiptTrainingAdminPage')
 const ExpensesPage = lazyNamed(() => import('./pages/expenses/ExpensesPage'), 'ExpensesPage')
 const IncomePage = lazyNamed(() => import('./pages/income/IncomePage'), 'IncomePage')
@@ -66,6 +67,8 @@ function App() {
           <ThemedToaster />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            {/* Mark-as-paid links from reminder emails: no login, the token is the permission */}
+            <Route path="/r/:token" element={<Suspense fallback={null}><ReminderActionPage /></Suspense>} />
             <Route
               path="/households/:id"
               element={
