@@ -19,15 +19,22 @@ import { AccountFilterChips, accountsIn } from '../../components/entries/Account
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
 import { useRowSelection } from '../../hooks/useRowSelection'
+import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm, segmentGroup, segmentBtn } from '../../lib/styles'
 import { useFmt, useBaseCurrency } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { emptyForm, filterAndSortExpenses, formFromExpense } from './helpers'
 import { ExpensesTable } from './ExpensesTable'
+import { ExpenseDetail } from './ExpenseDetail'
+import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
+import { FilteredList, type FilterFacet } from '../../components/FilterColumn'
+import { CategoryIcon } from '../../components/CategoryIcon'
+import { ACCOUNT_TYPE_LABELS } from '../../lib/constants'
 import { ExpenseCalendar } from './ExpenseCalendar'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
+import { Page } from '../../components/Page'
 
 export function ExpensesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -92,6 +99,31 @@ export function ExpensesPage() {
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const accountsInExpenses = useMemo(() => accountsIn(expenses), [expenses])
+
+  // Filter column (4K): the same filters as the chips, with how many expenses have each value
+  const facets = useMemo<FilterFacet[]>(() => {
+    const byCategory = new Map<string, number>()
+    const byAccount = new Map<string, number>()
+    for (const e of expenses) {
+      byCategory.set(e.category.id, (byCategory.get(e.category.id) ?? 0) + 1)
+      if (e.account) byAccount.set(e.account.id, (byAccount.get(e.account.id) ?? 0) + 1)
+    }
+    return [
+      {
+        key: 'category', title: 'Category', total: expenses.length, selected: filterCategories, onChange: setFilterCategories,
+        options: categories
+          .filter((c) => byCategory.has(c.id) || filterCategories.has(c.id))
+          .map((c) => ({
+            id: c.id, label: c.name, count: byCategory.get(c.id) ?? 0,
+            icon: c.icon ? <CategoryIcon name={c.icon} size={14} className="text-gray-500 shrink-0" /> : undefined,
+          })),
+      },
+      {
+        key: 'account', title: 'Account', total: expenses.length, selected: filterAccounts, onChange: setFilterAccounts,
+        options: accountsInExpenses.map((a) => ({ id: a.id, label: a.name, hint: ACCOUNT_TYPE_LABELS[a.type], count: byAccount.get(a.id) ?? 0 })),
+      },
+    ]
+  }, [expenses, categories, accountsInExpenses, filterCategories, filterAccounts])
 
   const filtered = useMemo(
     () => filterAndSortExpenses(expenses, filterCategories, filterAccounts, sortKey, sortAsc),
@@ -206,6 +238,16 @@ export function ExpensesPage() {
     setShowAdd(true)
   }
 
+  useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
+
+  // Wide screens show the clicked row in a side pane; elsewhere a click opens the edit form
+  const detail = useDetailSelection()
+  const activeExpense = view === 'list' && detail.selectedId ? filtered.find((e) => e.id === detail.selectedId) ?? null : null
+  function openRow(expense: Expense) {
+    if (detail.showsPane) detail.select(expense.id === detail.selectedId ? null : expense.id)
+    else openEdit(expense)
+  }
+
   function openEdit(expense: Expense) {
     if (isReadOnly) return
     setForm(formFromExpense(expense, baseCurrency))
@@ -264,7 +306,7 @@ export function ExpensesPage() {
 
   return (
     <>
-      <main className={view === 'calendar' ? 'w-full px-6 py-8' : 'max-w-6xl mx-auto px-6 py-8'}>
+      <Page template="list">
         <PageHeader title="Expenses" />
         {/* Budget year selector */}
         <BudgetYearSelector
@@ -293,14 +335,17 @@ export function ExpensesPage() {
           <>
             {/* Controls */}
             <div className="flex flex-col gap-3 mb-4">
-              <AccountFilterChips accounts={accountsInExpenses} selected={filterAccounts} setSelected={setFilterAccounts} />
-              <div className="flex items-center justify-between gap-4">
-                <CategoryFilter
-                  categories={categories}
-                  selected={filterCategories}
-                  onChange={setFilterCategories}
-                />
-                <div className="flex items-center gap-2 flex-shrink-0">
+              <AccountFilterChips accounts={accountsInExpenses} selected={filterAccounts} setSelected={setFilterAccounts} className="ultra:hidden" />
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                {/* From 2200px the filter column replaces the chips */}
+                <div className="ultra:hidden">
+                  <CategoryFilter
+                    categories={categories}
+                    selected={filterCategories}
+                    onChange={setFilterCategories}
+                  />
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                   <div className={segmentGroup}>
                     <button
                       onClick={() => setView('list')}
@@ -327,6 +372,7 @@ export function ExpensesPage() {
               </div>
             </div>
 
+            <FilteredList facets={facets}>
             {/* Bulk action bar */}
             {!isReadOnly && selectedIds.size > 0 && (
               <BulkSelectionBar
@@ -346,6 +392,19 @@ export function ExpensesPage() {
             ) : view === 'calendar' ? (
               <ExpenseCalendar expenses={filtered} fmt={fmt} />
             ) : (
+              <ListWithDetail
+                detail={activeExpense && (
+                  <ExpenseDetail
+                    expense={activeExpense}
+                    isReadOnly={isReadOnly}
+                    baseCurrency={baseCurrency}
+                    onClose={() => detail.select(null)}
+                    onEdit={openEdit}
+                    onDelete={setDeleteTarget}
+                    fmt={fmt}
+                  />
+                )}
+              >
               <ExpensesTable
                 expenses={filtered}
                 isReadOnly={isReadOnly}
@@ -356,16 +415,20 @@ export function ExpensesPage() {
                 selectedIds={selectedIds}
                 onToggleSelect={toggleSelect}
                 onToggleSelectAll={() => toggleSelectAll(filtered)}
+                onOpen={openRow}
+                activeId={activeExpense?.id ?? null}
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
                 isFiltered={filterCategories.size > 0 || filterAccounts.size > 0}
                 totalMonthly={totalMonthly}
                 fmt={fmt}
               />
+              </ListWithDetail>
             )}
+            </FilteredList>
           </>
         )}
-      </main>
+      </Page>
 
       {/* Add / Edit modal */}
       {!isReadOnly && (showAdd || editingExpense) && (
@@ -410,16 +473,16 @@ export function ExpensesPage() {
       {/* Delete confirmation */}
       {!isReadOnly && deleteTarget && (
         <ConfirmDialog
-          title="Delete expense"
+          title="Move to trash"
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
           pending={deleteMutation.isPending}
-          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+          confirmLabel={deleteMutation.isPending ? 'Moving…' : 'Move to trash'}
         >
           <p className="text-gray-300 text-sm mb-1">
-            Are you sure you want to delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
+            Move <span className="text-white font-medium">"{deleteTarget.label}"</span> to the trash?
           </p>
-          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <p className="text-gray-500 text-xs mb-6">It stops counting toward totals and transfers. You can restore it from Trash.</p>
         </ConfirmDialog>
       )}
     </>

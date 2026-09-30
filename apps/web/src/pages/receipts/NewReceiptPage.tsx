@@ -11,6 +11,8 @@ import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import { readError } from './helpers'
 import type { Receipt } from './types'
+import { Page } from '../../components/Page'
+import { StickyActions } from '../../components/StickyActions'
 
 const ACCEPTED_TYPES = ['application/pdf', 'image/png', 'image/jpeg']
 
@@ -85,7 +87,7 @@ export function NewReceiptPage() {
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-8">
+    <Page template="form">
       <PageHeader
         title="Add receipt"
         action={(
@@ -138,12 +140,14 @@ export function NewReceiptPage() {
           )}
 
           <FormError message={parseError} />
-          <button type="submit" disabled={parseMutation.isPending} className={`${primaryBtn} w-full flex items-center justify-center gap-2`}>
-            <ScanLine size={16} />
-            {parseMutation.isPending ? (receiptFile ? 'Uploading...' : 'Parsing...') : (receiptFile ? 'Upload and parse receipt' : 'Parse receipt')}
-          </button>
+          <StickyActions variant="page">
+            <button type="submit" disabled={parseMutation.isPending} className={`${primaryBtn} w-full flex items-center justify-center gap-2`}>
+              <ScanLine size={16} />
+              {parseMutation.isPending ? (receiptFile ? 'Uploading...' : 'Parsing...') : (receiptFile ? 'Upload and parse receipt' : 'Parse receipt')}
+            </button>
+          </StickyActions>
         </form>
       </section>
-    </main>
+    </Page>
   )
 }

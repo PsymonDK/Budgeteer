@@ -9,6 +9,7 @@ import { Modal } from '../../components/Modal'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { getApiError } from '../../lib/apiError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
+import { Page } from '../../components/Page'
 
 type Tab = 'terms' | 'mappings' | 'subcategories'
 type Scope = 'system' | 'household'
@@ -153,7 +154,7 @@ export function ReceiptTrainingAdminPage() {
   })
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-8 w-full">
+    <Page template="list">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold">Receipt training</h1>
@@ -230,7 +231,7 @@ export function ReceiptTrainingAdminPage() {
           isPending={updateMappingMutation.isPending}
         />
       )}
-    </main>
+    </Page>
   )
 }
 

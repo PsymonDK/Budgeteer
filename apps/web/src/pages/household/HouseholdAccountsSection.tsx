@@ -127,7 +127,7 @@ export function HouseholdAccountsSection({ householdId: id, accounts: householdA
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                {isAdmin && <th className="px-4 py-3 font-medium sr-only">Actions</th>}
+                {isAdmin && <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>}
               </tr>
             </thead>
             <tbody>

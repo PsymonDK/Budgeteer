@@ -2,6 +2,7 @@ import { Modal } from '../../components/Modal'
 import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { JobEditor } from './useIncomeEditors'
+import { StickyActions } from '../../components/StickyActions'
 
 /** Add / edit job dialog. */
 export function JobModal({ editor }: { editor: JobEditor }) {
@@ -39,14 +40,14 @@ export function JobModal({ editor }: { editor: JobEditor }) {
           </div>
         </div>
         <FormError message={jobFormError} />
-        <div className="flex gap-3 pt-2">
+        <StickyActions>
           <button type="submit" disabled={createJobMutation.isPending || updateJobMutation.isPending}
             className={`flex-1 ${primaryBtn}`}>
             {createJobMutation.isPending || updateJobMutation.isPending ? 'Saving…' : editingJob ? 'Save changes' : 'Add job'}
           </button>
           <button type="button" onClick={closeJobModal}
             className={`flex-1 ${secondaryBtn}`}>Cancel</button>
-        </div>
+        </StickyActions>
       </form>
     </Modal>
   )

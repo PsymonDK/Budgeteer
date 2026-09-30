@@ -11,9 +11,9 @@ interface MemberObligationsProps {
 /** HH-005: what each member transfers per month, split by account. */
 export function MemberObligations({ memberSplits, meId, memberBreakdownMap, fmt }: MemberObligationsProps) {
   return (
-    <div className="mb-8">
+    <div className="flex flex-col">
       <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Monthly obligations</h2>
-      <div className={`grid gap-4 mb-4 ${memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'}`}>
+      <div className={`grid gap-4 ${memberSplits.length === 1 ? 'grid-cols-1' : 'grid-cols-1 @xl:grid-cols-2'}`}>
         {memberSplits.map((m) => {
           const isMe = m.userId === meId
           const memberBd = memberBreakdownMap.get(m.userId)

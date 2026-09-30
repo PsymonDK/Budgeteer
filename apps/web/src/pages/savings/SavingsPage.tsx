@@ -17,13 +17,19 @@ import { AccountFilterChips, accountsIn } from '../../components/entries/Account
 import { BulkSelectionBar } from '../../components/entries/RowSelection'
 import { BulkEditModal, emptyBulkForm, type BulkEditForm } from '../../components/entries/BulkEditModal'
 import { useRowSelection } from '../../hooks/useRowSelection'
+import { useAddFromQuery } from '../../hooks/useAddFromQuery'
 import { primaryBtnSm } from '../../lib/styles'
 import { useFmt } from '../../hooks/useFmt'
 import { getApiError } from '../../lib/apiError'
 import { SavingsTable } from './SavingsTable'
+import { SavingsDetail } from './SavingsDetail'
+import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
+import { FilteredList, type FilterFacet } from '../../components/FilterColumn'
+import { ACCOUNT_TYPE_LABELS } from '../../lib/constants'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
+import { Page } from '../../components/Page'
 
 export function SavingsPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -84,6 +90,16 @@ export function SavingsPage() {
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const accountsInEntries = useMemo(() => accountsIn(entries), [entries])
+
+  // Filter column (4K): the account chips as a list, with how many entries use each account
+  const facets = useMemo<FilterFacet[]>(() => {
+    const byAccount = new Map<string, number>()
+    for (const e of entries) if (e.account) byAccount.set(e.account.id, (byAccount.get(e.account.id) ?? 0) + 1)
+    return [{
+      key: 'account', title: 'Account', total: entries.length, selected: filterAccounts, onChange: setFilterAccounts,
+      options: accountsInEntries.map((a) => ({ id: a.id, label: a.name, hint: ACCOUNT_TYPE_LABELS[a.type], count: byAccount.get(a.id) ?? 0 })),
+    }]
+  }, [entries, accountsInEntries, filterAccounts])
 
   const filteredEntries = useMemo(() => {
     if (filterAccounts.size === 0) return entries
@@ -193,6 +209,16 @@ export function SavingsPage() {
 
   function openAdd() { setForm(emptyForm(baseCurrency)); setFormError(''); setShowAdd(true) }
 
+  useAddFromQuery(yearsLoading ? null : !!activeBudgetYear && !isReadOnly, openAdd)
+
+  // Wide screens show the clicked row in a side pane; elsewhere a click opens the edit form
+  const detail = useDetailSelection()
+  const activeEntry = detail.selectedId ? filteredEntries.find((e) => e.id === detail.selectedId) ?? null : null
+  function openRow(entry: SavingsEntry) {
+    if (detail.showsPane) detail.select(entry.id === detail.selectedId ? null : entry.id)
+    else if (!isReadOnly) openEdit(entry)
+  }
+
   function openEdit(e: SavingsEntry) {
     setForm({
       label: e.label,
@@ -245,7 +271,7 @@ export function SavingsPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <Page template="list">
         {/* Budget year selector */}
         <BudgetYearSelector
           budgetYears={budgetYears}
@@ -269,9 +295,9 @@ export function SavingsPage() {
 
         <AccountFilterChips
           accounts={accountsInEntries}
+          className="mb-4 ultra:hidden"
           selected={filterAccounts}
           setSelected={setFilterAccounts}
-          className="mb-4"
         />
 
         {yearsLoading ? (
@@ -295,7 +321,7 @@ export function SavingsPage() {
             )}
           </div>
         ) : (
-          <>
+          <FilteredList facets={facets}>
           {selectedIds.size > 0 && !isReadOnly && (
             <BulkSelectionBar
               count={selectedIds.size}
@@ -303,12 +329,27 @@ export function SavingsPage() {
               onClear={() => setSelectedIds(new Set())}
             />
           )}
+          <ListWithDetail
+            detail={activeEntry && (
+              <SavingsDetail
+                entry={activeEntry}
+                isReadOnly={isReadOnly}
+                baseCurrency={baseCurrency}
+                onClose={() => detail.select(null)}
+                onEdit={openEdit}
+                onDelete={setDeleteTarget}
+                fmt={fmt}
+              />
+            )}
+          >
           <SavingsTable
             entries={filteredEntries}
             isReadOnly={isReadOnly}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleSelectAll={() => toggleSelectAll(filteredEntries)}
+            onOpen={openRow}
+            activeId={activeEntry?.id ?? null}
             onEdit={openEdit}
             onDelete={setDeleteTarget}
             isFiltered={filterAccounts.size > 0}
@@ -316,9 +357,10 @@ export function SavingsPage() {
             baseCurrency={baseCurrency}
             fmt={fmt}
           />
-          </>
+          </ListWithDetail>
+          </FilteredList>
         )}
-      </main>
+      </Page>
 
       {/* Add / Edit modal */}
       {(showAdd || editingEntry) && (
@@ -363,16 +405,16 @@ export function SavingsPage() {
       {/* Delete confirm */}
       {deleteTarget && (
         <ConfirmDialog
-          title="Delete savings entry"
+          title="Move to trash"
           onClose={() => setDeleteTarget(null)}
           onConfirm={() => deleteMutation.mutate(deleteTarget.id)}
           pending={deleteMutation.isPending}
-          confirmLabel={deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+          confirmLabel={deleteMutation.isPending ? 'Moving…' : 'Move to trash'}
         >
           <p className="text-gray-300 text-sm mb-1">
-            Delete <span className="text-white font-medium">"{deleteTarget.label}"</span>?
+            Move <span className="text-white font-medium">"{deleteTarget.label}"</span> to the trash?
           </p>
-          <p className="text-gray-500 text-xs mb-6">This cannot be undone.</p>
+          <p className="text-gray-500 text-xs mb-6">It stops counting toward totals and transfers. You can restore it from Trash.</p>
         </ConfirmDialog>
       )}
     </>

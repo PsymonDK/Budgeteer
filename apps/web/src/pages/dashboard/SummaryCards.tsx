@@ -12,7 +12,7 @@ const amount = (v: number) => v.toLocaleString('en', { minimumFractionDigits: 2,
 /** DASH-001: income / expenses / savings / surplus per month. */
 export function SummaryCards({ income, expenses, savings, surplus, savingsRate, baseCurrency }: SummaryCardsProps) {
   return (
-    <div className="grid grid-cols-2 gap-4 mb-8 sm:grid-cols-4">
+    <div className="grid grid-cols-2 gap-4 @xl:grid-cols-4">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
         <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Income / mo</p>
         <p className="text-2xl font-bold text-amber-400 tabular-nums">

@@ -14,7 +14,7 @@ export const MONTH_OPTIONS = [
   { value: '11', label: 'November' }, { value: '12', label: 'December' },
 ]
 
-const MONTH_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+export const MONTH_SHORT = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 export function monthRangeLabel(startMonth: number | null, endMonth: number | null): string | null {
   if (startMonth == null && endMonth == null) return null

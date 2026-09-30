@@ -13,6 +13,7 @@ import { PageHeader } from '../components/PageHeader'
 import { StatusBadge } from '../components/StatusBadge'
 import { RETIRED_STATUS_CLASS_MUTED, statusLabel } from '../lib/budgetYear'
 import { useFmt } from '../hooks/useFmt'
+import { Page } from '../components/Page'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ export function HistoryPage() {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-6xl mx-auto px-6 py-8">
+    <Page template="analysis">
       <PageHeader title="Budget History" subtitle="Year-over-year view of all budget periods." />
 
       {isLoading ? (
@@ -145,7 +146,7 @@ export function HistoryPage() {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               {chartData.length === 1 ? (
                 // Single-year: show a simple stat row instead of a chart
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {(['income', 'expenses', 'savings', 'surplus'] as const).map((key) => (
                     <div key={key}>
                       <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">{key}</p>
@@ -277,6 +278,6 @@ export function HistoryPage() {
           </section>
         </>
       )}
-    </main>
+    </Page>
   )
 }

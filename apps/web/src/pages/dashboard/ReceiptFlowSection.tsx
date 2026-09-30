@@ -23,8 +23,8 @@ export function ReceiptFlowSection({
   receiptEndDate, setReceiptEndDate, receiptCustomRangeValid, baseCurrency, fmt,
 }: ReceiptFlowSectionProps) {
   return (
-    <div className="mb-8">
-      <div className="flex flex-col gap-3 mb-3 lg:flex-row lg:items-end lg:justify-between">
+    <div className="flex flex-col">
+      <div className="flex flex-col gap-3 mb-3 @xl:flex-row @xl:items-end @xl:justify-between">
         <div>
           <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide">Receipt consumption flow</h2>
           <p className="text-xs text-gray-500 mt-1">
@@ -55,7 +55,7 @@ export function ReceiptFlowSection({
           )}
         </div>
       </div>
-      <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+      <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5">
         {receiptSankeyData ? (
           <SankeyChart data={receiptSankeyData} currency={receiptSummary?.baseCurrency ?? baseCurrency} height={360} />
         ) : receiptPeriod === 'custom' && !receiptCustomRangeValid ? (

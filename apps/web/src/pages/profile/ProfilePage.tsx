@@ -5,6 +5,7 @@ import { PageHeader } from '../../components/PageHeader'
 import { ProfileTab } from './ProfileTab'
 import { HouseholdsTab } from './HouseholdsTab'
 import { AccountsTab } from './AccountsTab'
+import { Page } from '../../components/Page'
 
 type TabKey = 'profile' | 'households' | 'accounts'
 
@@ -19,9 +20,9 @@ export function ProfilePage() {
   const [tab, setTab] = useState<TabKey>('profile')
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
+    <>
       {/* Page content */}
-      <main className="flex-1 px-6 py-8 max-w-4xl w-full mx-auto">
+      <Page template="form">
         <PageHeader title="Your profile" />
 
         {/* Tab bar */}
@@ -48,7 +49,7 @@ export function ProfilePage() {
         {tab === 'profile' && <ProfileTab user={user} />}
         {tab === 'households' && <HouseholdsTab />}
         {tab === 'accounts' && <AccountsTab />}
-      </main>
-    </div>
+      </Page>
+    </>
   )
 }

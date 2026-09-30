@@ -19,6 +19,26 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Recharts** — budget visualisations
 - **D3 / Sankey** — income and receipt consumption flow diagrams
 
+### App shell and breakpoints
+- **`layouts/AppShell.tsx`** is the frame for all signed-in areas. `HouseholdLayout`, `GlobalLayout` (personal pages) and `AdminLayout` only pass it their navigation, header content and phone tab-bar setup.
+- **Size classes**: below 640px a bottom tab bar (optional centre quick action, "More" opens the full menu as a drawer); 640–1023px a 64px icon rail; from 1024px a 224px sidebar (248px from 2200px), which users can collapse to the rail (stored per browser in `localStorage`, `budgeteer.sidebarCollapsed`).
+- **Tailwind screens**: the defaults plus `wide` (1440px) and `ultra` (2200px), for detail panes and 4K layouts.
+- **Page scrolling** happens in the shell's content area, not the window; it resets to the top on every route change. The content area is `relative`, so absolutely positioned page content can't widen the document.
+- **Quick add from the tab bar**: Expenses and Savings open their add form for `?add=1` (`hooks/useAddFromQuery.ts`).
+- **Page templates**: every page inside the shell renders `<Page template=…>` (`components/Page.tsx`) instead of its own `max-w-* mx-auto px-6 py-8` wrapper. The template sets width and gutters (16 → 24 → 28 → 36px across the size classes):
+  - `dashboard`: household and personal dashboards — full width
+  - `list`: expenses, savings, receipts, trash, categories, budget years, personal income, admin tables — full width
+  - `analysis`: history, compare, household income — full width
+  - `form`: profile, household settings, change password, new receipt — 56rem, centred
+- **Container queries** (`@tailwindcss/container-queries`): components that sit in variable-width cells style themselves by their own width (`@container` + `@xl:…`), not the viewport.
+- **Dashboard widget grid** (`components/WidgetGrid.tsx`): the household and personal dashboards are a `<WidgetGrid>` of `<Widget span={{ 2, 3, 4, 6 }}>` tiles. The grid has 1 column, then 2 from 600px, 3 from 960px, 4 from 1400px and 6 from 2200px of its own width, and packs rows densely; each widget sets how many columns it spans at each count. A widget whose content renders nothing takes no cell. Widget content fills the cell height, so tiles in a row line up; long lists (the dashboard expense list) scroll inside their tile instead of stretching the row.
+- **List tables** (`components/DataTable.tsx`): Expenses, Savings, Trash and the admin pages (users, households, currencies, categories) render a `DataTable` from column definitions. Each column has a priority and appears by the table's own width (1 always, 2 from 520px, 3 from 780px, 4 from 1150px, 5 from 1500px); a hidden column's `summary` shows under the row label instead, so tables have no minimum width and phones never scroll sideways. It also handles sorting, row selection for bulk edit, per-column footers and hover-revealed row actions (always visible on touch screens).
+- **Detail pane** (`components/DetailPane.tsx`): from 1440px, clicking an expense or savings row opens it in a side pane beside the list (`ListWithDetail` + `DetailPane`); below that, a click opens the edit form. The selection is kept in `?selected=` (`useDetailSelection`). Pane content only displays API values — no calculations.
+- **Dialogs** (`components/Modal.tsx`): below 640px every `Modal` (and `ConfirmDialog`, which builds on it) is a bottom sheet — full width, anchored to the bottom edge with the safe-area inset, title bar pinned while the content scrolls; from 640px it is a centred dialog. The dialog is a container, so form grids inside add columns with `@sm:`/`@xl:` only when the dialog is wide enough. It has `role="dialog"`, moves focus inside on open and returns it on close. The two hand-built overlays (Mark as Paid, automation run history) follow the same sheet layout.
+- **Save bar** (`components/StickyActions.tsx`): a form's Save / Cancel row stays in view while a long form scrolls. `variant="dialog"` pins it to the bottom edge of a `Modal` at every size (forms inside a Modal must not add their own scroll box); `variant="page"` pins it above the phone tab bar and is a normal row from 640px. The shell's phone scroll padding equals the tab bar's height, so page bars sit directly on top of it.
+- **Filter column** (`components/FilterColumn.tsx`): from 2200px, Expenses and Savings show their filters as a column left of the list (`FilteredList` with category/account facets and row counts); below that the filter chips above the list are used instead (`ultra:hidden`).
+- **Hidden table headers** (e.g. the Actions column) put the `sr-only` text in a span inside a `relative` `<th>`; an `sr-only` class on the `<th>` itself escapes the table's scroll wrapper and makes phones scroll sideways.
+
 ### Backend
 - **Node.js + TypeScript** — runtime
 - **Fastify** — API framework

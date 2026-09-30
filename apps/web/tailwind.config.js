@@ -1,9 +1,22 @@
+import containerQueries from '@tailwindcss/container-queries'
+
 export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}"
   ],
   theme: {
+    // Tailwind's defaults plus `wide` (large size class, detail panes) and `ultra` (4K / extra large),
+    // listed in ascending order so later breakpoints win
+    screens: {
+      sm: '640px',
+      md: '768px',
+      lg: '1024px',
+      xl: '1280px',
+      wide: '1440px',
+      '2xl': '1536px',
+      ultra: '2200px',
+    },
     extend: {
       colors: {
         // Brand palette — primary accent colour throughout the app
@@ -18,7 +31,18 @@ export default {
           overlay: '#1f2937', // gray-800 — inputs, modals, elevated surfaces
         },
       },
+      // Bottom sheets (phone dialogs) slide up from the screen edge
+      keyframes: {
+        'sheet-up': {
+          from: { transform: 'translateY(100%)' },
+          to: { transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        'sheet-up': 'sheet-up 200ms ease-out',
+      },
     },
   },
-  plugins: []
+  // `@container` + `@[600px]:…` variants: widgets and tables respond to their own width, not the viewport
+  plugins: [containerQueries],
 }

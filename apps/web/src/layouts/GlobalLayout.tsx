@@ -1,47 +1,55 @@
-import { Link, Outlet, useLocation } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { ChevronLeft, House, LayoutDashboard, ScanLine, TrendingUp } from 'lucide-react'
 import { useHousehold } from '../contexts/HouseholdContext'
-import { AppFooter } from '../components/AppFooter'
-import HeaderUserMenu from '../components/HeaderUserMenu'
+import { useHouseholds } from '../api/queries'
 import HeaderSettingsMenu from '../components/HeaderSettingsMenu'
-import { ChevronLeft } from 'lucide-react'
-import { AddReceiptButton } from '../components/AddReceiptButton'
+import { AddReceiptButton, useReceiptTargetHousehold } from '../components/AddReceiptButton'
+import { AppShell, type ShellNavItem, type ShellNavSection } from './AppShell'
 
 export function GlobalLayout() {
   const { activeHouseholdId } = useHousehold()
   const location = useLocation()
+  const navigate = useNavigate()
   const isDashboard = location.pathname === '/'
+  const { data: households = [] } = useHouseholds()
+  const receiptHouseholdId = useReceiptTargetHousehold()
+
+  const nav = useMemo(() => {
+    const overview: ShellNavItem = { label: 'Overview', to: '/', icon: LayoutDashboard, end: true }
+    const income: ShellNavItem = { label: 'Personal income', to: '/income', icon: TrendingUp }
+    const sections: ShellNavSection[] = [{ items: [overview, income] }]
+    if (households.length > 0) {
+      sections.push({
+        title: 'Households',
+        items: households.map((h) => ({ label: h.name, to: `/households/${h.id}`, icon: House })),
+      })
+    }
+    return { sections, tabs: [overview, { ...income, label: 'Income' }] }
+  }, [households])
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
-      <header className="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <Link to="/" className="text-amber-400 font-bold text-lg hover:text-amber-300 transition-colors">
-            ☠️ Budgeteer
-          </Link>
-          {!isDashboard && activeHouseholdId && (
-            <>
-              <span className="text-gray-600">/</span>
-              <Link
-                to={`/households/${activeHouseholdId}`}
-                className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors"
-              >
-                <ChevronLeft size={14} />
-                Back to household
-              </Link>
-            </>
-          )}
-        </div>
-        <div className="flex items-center gap-4">
-          {isDashboard && <AddReceiptButton />}
+    <AppShell
+      context={!isDashboard && activeHouseholdId ? (
+        <Link
+          to={`/households/${activeHouseholdId}`}
+          className="flex items-center gap-1 text-sm text-gray-400 hover:text-white transition-colors whitespace-nowrap"
+        >
+          <ChevronLeft size={14} />
+          Back to household
+        </Link>
+      ) : undefined}
+      actions={
+        <>
+          {isDashboard && <div className="hidden sm:block"><AddReceiptButton /></div>}
           <HeaderSettingsMenu />
-          <HeaderUserMenu />
-        </div>
-      </header>
-
-      <div className="flex-1 flex flex-col">
-        <Outlet />
-      </div>
-      <AppFooter />
-    </div>
+        </>
+      }
+      sections={nav.sections}
+      tabs={nav.tabs}
+      quickActions={receiptHouseholdId
+        ? [{ label: 'Add receipt', icon: ScanLine, onSelect: () => navigate(`/households/${receiptHouseholdId}/receipts/new`) }]
+        : []}
+    />
   )
 }

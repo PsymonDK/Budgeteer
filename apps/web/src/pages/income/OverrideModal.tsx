@@ -5,6 +5,7 @@ import { DeductionPanel } from './DeductionPanel'
 import { MONTHS } from './helpers'
 import type { Job } from './types'
 import type { OverrideEditor } from './useIncomeEditors'
+import { StickyActions } from '../../components/StickyActions'
 
 /** Add a monthly salary override for one job (with the DK deduction preview). */
 export function OverrideModal({ editor, jobs, baseCurrency }: { editor: OverrideEditor; jobs: Job[]; baseCurrency: string }) {
@@ -76,14 +77,14 @@ export function OverrideModal({ editor, jobs, baseCurrency }: { editor: Override
         )}
 
         <FormError message={overrideError} />
-        <div className="flex gap-3 pt-2">
+        <StickyActions>
           <button type="submit" disabled={upsertOverrideMutation.isPending}
             className={`flex-1 ${primaryBtn}`}>
             {upsertOverrideMutation.isPending ? 'Saving…' : 'Save override'}
           </button>
           <button type="button" onClick={closeOverride}
             className={`flex-1 ${secondaryBtn}`}>Cancel</button>
-        </div>
+        </StickyActions>
       </form>
     </Modal>
   )

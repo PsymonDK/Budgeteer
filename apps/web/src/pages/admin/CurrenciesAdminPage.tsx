@@ -6,6 +6,9 @@ import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import { Modal } from '../../components/Modal'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
+import { Page } from '../../components/Page'
+import { PageHeader } from '../../components/PageHeader'
+import { DataTable, type DataColumn } from '../../components/DataTable'
 
 interface AdminCurrency {
   code: string
@@ -110,102 +113,77 @@ export function CurrenciesAdminPage() {
     updateMutation.mutate({ code: c.code, body: { isEnabled: !c.isEnabled } })
   }
 
+  const rateLabel = (c: AdminCurrency) => (c.isBase ? '1.000000' : c.rate != null ? c.rate.toFixed(6) : '—')
+  const columns: DataColumn<AdminCurrency & { id: string }>[] = [
+    {
+      key: 'code', header: 'Code',
+      cell: (c) => (
+        <span className="font-mono font-semibold text-white">
+          {c.code}
+          {c.isBase && <span className="ml-2 text-xs bg-amber-900/50 text-amber-300 px-1.5 py-0.5 rounded-full font-sans">base</span>}
+        </span>
+      ),
+    },
+    { key: 'name', header: 'Name', priority: 2, cell: (c) => <span className="text-gray-200">{c.name}</span>, summary: (c) => c.name },
+    { key: 'rate', header: 'Rate', priority: 2, cell: (c) => <span className="text-gray-300 font-mono">{rateLabel(c)}</span>, summary: (c) => `rate ${rateLabel(c)}` },
+    { key: 'updated', header: 'Last updated', priority: 3, cell: (c) => <span className="text-gray-400">{formatDate(c.lastUpdated)}</span>, summary: (c) => formatDate(c.lastUpdated) },
+    {
+      key: 'status', header: 'Status', priority: 2,
+      cell: (c) => c.isEnabled
+        ? <span className="text-xs bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded-full">Enabled</span>
+        : <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">Disabled</span>,
+      summary: (c) => (c.isEnabled ? null : 'Disabled'),
+    },
+    {
+      key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+      cell: (c) => (
+        <span className="inline-flex items-center justify-end gap-3" onClick={(e) => e.stopPropagation()}>
+          <button onClick={() => openEdit(c)} className="p-1 text-gray-400 hover:text-white transition-colors" aria-label={`Edit ${c.code}`}>
+            <Pencil size={14} />
+          </button>
+          {!c.isBase && (
+            <button
+              onClick={() => toggleEnabled(c)}
+              disabled={updateMutation.isPending}
+              className="text-xs text-gray-500 hover:text-amber-400 transition-colors disabled:opacity-40"
+            >
+              {c.isEnabled ? 'Disable' : 'Enable'}
+            </button>
+          )}
+        </span>
+      ),
+    },
+  ]
+
   return (
-    <div className="max-w-6xl mx-auto px-6 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Currencies</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Manage available currencies and their conversion rates relative to the base currency.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
-            className={`${secondaryBtn} flex items-center gap-2`}
-          >
-            <RefreshCw size={14} className={refreshMutation.isPending ? 'animate-spin' : ''} />
-            Sync rates
-          </button>
-          <button onClick={() => setAddOpen(true)} className={`${primaryBtn} flex items-center gap-2`}>
-            <Plus size={14} />
-            Add currency
-          </button>
-        </div>
-      </div>
+    <Page template="list">
+      <PageHeader
+        title="Currencies"
+        subtitle="Manage available currencies and their conversion rates relative to the base currency."
+        action={(
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => refreshMutation.mutate()}
+              disabled={refreshMutation.isPending}
+              className={`${secondaryBtn} flex items-center gap-2`}
+            >
+              <RefreshCw size={14} className={refreshMutation.isPending ? 'animate-spin' : ''} />
+              Sync rates
+            </button>
+            <button onClick={() => setAddOpen(true)} className={`${primaryBtn} flex items-center gap-2`}>
+              <Plus size={14} />
+              Add currency
+            </button>
+          </div>
+        )}
+      />
 
       {isLoading ? (
         <div className="text-gray-500 text-sm">Loading…</div>
       ) : currencies.length === 0 ? (
         <div className="text-center py-20 text-gray-500">No currencies yet — add one to get started.</div>
       ) : (
-        <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-          <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[640px]">
-            <thead>
-              <tr className="border-b border-gray-800 text-gray-400 text-left">
-                <th className="px-4 py-3 font-medium">Code</th>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Rate</th>
-                <th className="px-4 py-3 font-medium">Last updated</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium sr-only">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currencies.map((c) => (
-                <tr key={c.code} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
-                  <td className="px-4 py-3 font-mono font-semibold text-white">
-                    {c.code}
-                    {c.isBase && (
-                      <span className="ml-2 text-xs bg-amber-900/50 text-amber-300 px-1.5 py-0.5 rounded-full font-sans">
-                        base
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-gray-200">{c.name}</td>
-                  <td className="px-4 py-3 text-gray-300 font-mono">
-                    {c.isBase ? '1.000000' : c.rate != null ? c.rate.toFixed(6) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{formatDate(c.lastUpdated)}</td>
-                  <td className="px-4 py-3">
-                    {c.isEnabled ? (
-                      <span className="text-xs bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded-full">
-                        Enabled
-                      </span>
-                    ) : (
-                      <span className="text-xs bg-gray-800 text-gray-500 px-2 py-0.5 rounded-full">
-                        Disabled
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        onClick={() => openEdit(c)}
-                        className="text-gray-400 hover:text-white transition-colors"
-                        aria-label={`Edit ${c.code}`}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                      {!c.isBase && (
-                        <button
-                          onClick={() => toggleEnabled(c)}
-                          disabled={updateMutation.isPending}
-                          className="text-xs text-gray-500 hover:text-amber-400 transition-colors disabled:opacity-40"
-                        >
-                          {c.isEnabled ? 'Disable' : 'Enable'}
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        </div>
+        <DataTable rows={currencies.map((c) => ({ ...c, id: c.code }))} columns={columns} onRowClick={openEdit} />
       )}
 
       {/* Add modal */}
@@ -299,6 +277,6 @@ export function CurrenciesAdminPage() {
           </form>
         </Modal>
       )}
-    </div>
+    </Page>
   )
 }

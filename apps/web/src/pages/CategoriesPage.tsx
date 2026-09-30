@@ -16,6 +16,7 @@ import type { Category } from '../api/types'
 import { qk } from '../api/queryKeys'
 import { useCategories, useHouseholdDetail } from '../api/queries'
 import { FormError } from '../components/FormError'
+import { Page } from '../components/Page'
 
 export function CategoriesPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -125,7 +126,7 @@ export function CategoriesPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <Page template="list">
         <PageHeader title="Categories" />
         {createWarning && (
           <div className="mb-6 bg-amber-950 border border-amber-700 text-amber-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
@@ -161,7 +162,7 @@ export function CategoriesPage() {
                     <th className="px-4 py-3 font-medium">Name</th>
                     <th className="px-4 py-3 font-medium">Created by</th>
                     <th className="px-4 py-3 font-medium">In use</th>
-                    <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                    <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -232,7 +233,7 @@ export function CategoriesPage() {
                     <th className="px-4 py-3 font-medium">Name</th>
                     <th className="px-4 py-3 font-medium">Created by</th>
                     <th className="px-4 py-3 font-medium">In use</th>
-                    <th className="px-4 py-3 font-medium sr-only">Actions</th>
+                    <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -287,7 +288,7 @@ export function CategoriesPage() {
                   <th className="px-4 py-3 font-medium">Name</th>
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">In use</th>
-                  {isSystemAdmin && <th className="px-4 py-3 font-medium sr-only">Actions</th>}
+                  {isSystemAdmin && <th className="relative px-4 py-3 font-medium"><span className="sr-only">Actions</span></th>}
                 </tr>
               </thead>
               <tbody>
@@ -328,7 +329,7 @@ export function CategoriesPage() {
             </div>
           </div>
         </div>
-      </main>
+      </Page>
 
       {/* Create category modal */}
       {showCreate && (

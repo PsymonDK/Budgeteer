@@ -11,6 +11,7 @@ import Avatar from '../../components/Avatar'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { inputClass } from '../../lib/styles'
 import { cardClass } from './cardClass'
+import { StickyActions } from '../../components/StickyActions'
 
 // ── Tab 1: Profile ───────────────────────────────────────────────────────────
 
@@ -204,7 +205,7 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
           {profileError && (
             <p className="text-red-400 text-xs">{profileError}</p>
           )}
-          <div className="flex gap-3">
+          <StickyActions variant="page">
             <button
               type="submit"
               disabled={updateMeMutation.isPending}
@@ -219,7 +220,7 @@ export function ProfileTab(_props: { user: ReturnType<typeof useAuth>['user'] })
             >
               Change password
             </button>
-          </div>
+          </StickyActions>
         </form>
       </div>
 

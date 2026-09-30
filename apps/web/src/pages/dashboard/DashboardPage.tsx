@@ -19,10 +19,12 @@ import { SummaryCards } from './SummaryCards'
 import { ReceiptFlowSection } from './ReceiptFlowSection'
 import { MemberObligations } from './MemberObligations'
 import { AffordabilityCalculator, SavingsRateHistory } from './SavingsSections'
-import { ExpenseBreakdown } from './ExpenseBreakdown'
+import { AccountBreakdown, CategoryBreakdown, ExpenseList } from './ExpenseBreakdown'
 import { MarkPaidDialog, TransferByAccount, TransferHistory, TransferTile } from './Transfers'
 import type { DashboardSummary, SavingsHistoryRow } from './types'
 import type { ReceiptSummaryPeriod } from '../../api/types'
+import { Page } from '../../components/Page'
+import { Widget, WidgetGrid } from '../../components/WidgetGrid'
 
 export function DashboardPage() {
   const { id: householdId } = useParams<{ id: string }>()
@@ -151,7 +153,7 @@ export function DashboardPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <main className="max-w-7xl mx-auto px-6 py-8">
+    <Page template="dashboard">
 
       {/* Budget year badge */}
       {summary?.budgetYear && (
@@ -198,93 +200,126 @@ export function DashboardPage() {
         </div>
       ) : (
         <>
-          {/* DASH-001: Summary cards */}
-          <SummaryCards
-            income={income}
-            expenses={expenses}
-            savings={savings}
-            surplus={surplus}
-            savingsRate={savingsRate}
-            baseCurrency={baseCurrency}
-          />
+          {/* Spans per column count (2 / 3 / 4 / 6). Order matters: the grid fills gaps with later, smaller tiles. */}
+          <WidgetGrid>
+            {/* DASH-001: Summary cards */}
+            <Widget span={{ 2: 2, 3: 2, 4: 3, 6: 4 }}>
+              <SummaryCards
+                income={income}
+                expenses={expenses}
+                savings={savings}
+                surplus={surplus}
+                savingsRate={savingsRate}
+                baseCurrency={baseCurrency}
+              />
+            </Widget>
 
-          {/* VIZ-001: Income flow diagram */}
-          {sankeyData && sankeyData.links.length > 0 && (
-            <div className="mb-8">
-              <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                <SankeyChart data={sankeyData} currency={baseCurrency} />
-              </div>
-            </div>
-          )}
+            {/* Budget transfer tile — the dashboard's main action, kept next to the summary */}
+            <Widget span={{ 2: 2, 3: 1, 4: 1, 6: 2 }}>
+              <TransferTile nextPending={nextPending} onMarkPaid={openMarkPaid} fmt={fmt} />
+            </Widget>
 
-          <ReceiptFlowSection
-            receiptSummary={receiptSummary}
-            receiptSankeyData={receiptSankeyData}
-            receiptPeriod={receiptPeriod}
-            setReceiptPeriod={setReceiptPeriod}
-            receiptStartDate={receiptStartDate}
-            setReceiptStartDate={setReceiptStartDate}
-            receiptEndDate={receiptEndDate}
-            setReceiptEndDate={setReceiptEndDate}
-            receiptCustomRangeValid={receiptCustomRangeValid}
-            baseCurrency={baseCurrency}
-            fmt={fmt}
-          />
+            {/* HH-005: Member expense splits */}
+            {summary.memberSplits.length > 0 && (
+              <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 3 }}>
+                <MemberObligations
+                  memberSplits={summary.memberSplits}
+                  meId={me?.id}
+                  memberBreakdownMap={memberBreakdownMap}
+                  fmt={fmt}
+                />
+              </Widget>
+            )}
 
-          {/* HH-005: Member expense splits */}
-          {summary.memberSplits.length > 0 && (
-            <MemberObligations
-              memberSplits={summary.memberSplits}
-              meId={me?.id}
-              memberBreakdownMap={memberBreakdownMap}
-              fmt={fmt}
-            />
-          )}
+            {/* Pay/No-pay: per-item paid checklist for the month */}
+            {summary?.budgetYear?.id && (
+              <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 3 }}>
+                <MonthItemsPanel budgetYearId={summary.budgetYear.id} fmt={fmt} />
+              </Widget>
+            )}
 
-          {/* SAV-003: Affordability calculator */}
-          {surplus > 0 && (
-            <AffordabilityCalculator
-              extraSavings={extraSavings}
-              setExtraSavings={setExtraSavings}
-              sliderMax={sliderMax}
-              adjustedSurplus={adjustedSurplus}
-              savings={savings}
-              income={income}
-              fmt={fmt}
-            />
-          )}
+            {/* VIZ-001: Income flow diagram */}
+            {sankeyData && sankeyData.links.length > 0 && (
+              <Widget span={{ 2: 2, 3: 3, 4: 4, 6: 4 }}>
+                <div className="flex flex-col">
+                  <h2 className="text-sm font-medium text-gray-400 uppercase tracking-wide mb-3">Income flow</h2>
+                  <div className="flex-1 bg-gray-900 border border-gray-800 rounded-xl p-5">
+                    <SankeyChart data={sankeyData} currency={baseCurrency} />
+                  </div>
+                </div>
+              </Widget>
+            )}
 
-          {/* SAV-002: Savings rate history */}
-          <SavingsRateHistory savingsHistory={savingsHistory} />
+            <Widget span={{ 2: 2, 3: 2, 4: 2, 6: 3 }}>
+              <ExpenseList
+                summary={summary}
+                expenses={expenses}
+                expenseView={expenseView}
+                setExpenseView={setExpenseView}
+                householdId={householdId}
+                fmt={fmt}
+              />
+            </Widget>
+            <Widget span={{ 2: 1, 3: 1, 4: 1, 6: 2 }}>
+              <CategoryBreakdown summary={summary} expenses={expenses} fmt={fmt} />
+            </Widget>
+            <Widget span={{ 2: 1, 3: 1, 4: 1, 6: 1 }}>
+              <AccountBreakdown summary={summary} expenses={expenses} fmt={fmt} />
+            </Widget>
 
-          <ExpenseBreakdown
-            summary={summary}
-            expenses={expenses}
-            expenseView={expenseView}
-            setExpenseView={setExpenseView}
-            householdId={householdId}
-            fmt={fmt}
-          />
+            {/* SAV-002: Savings rate history */}
+            <Widget span={{ 2: 1, 3: 1, 4: 2, 6: 2 }}>
+              <SavingsRateHistory savingsHistory={savingsHistory} />
+            </Widget>
 
-          {/* Budget transfer tile */}
-          <TransferTile nextPending={nextPending} onMarkPaid={openMarkPaid} fmt={fmt} />
+            {/* SAV-003: Affordability calculator */}
+            {surplus > 0 && (
+              <Widget span={{ 2: 1, 3: 1, 4: 2, 6: 2 }}>
+                <AffordabilityCalculator
+                  extraSavings={extraSavings}
+                  setExtraSavings={setExtraSavings}
+                  sliderMax={sliderMax}
+                  adjustedSurplus={adjustedSurplus}
+                  savings={savings}
+                  income={income}
+                  fmt={fmt}
+                />
+              </Widget>
+            )}
 
-          {/* Pay/No-pay: per-item paid checklist for the month */}
-          {summary?.budgetYear?.id && <MonthItemsPanel budgetYearId={summary.budgetYear.id} fmt={fmt} />}
+            <Widget span={{ 2: 2, 3: 3, 4: 2, 6: 3 }}>
+              <ReceiptFlowSection
+                receiptSummary={receiptSummary}
+                receiptSankeyData={receiptSankeyData}
+                receiptPeriod={receiptPeriod}
+                setReceiptPeriod={setReceiptPeriod}
+                receiptStartDate={receiptStartDate}
+                setReceiptStartDate={setReceiptStartDate}
+                receiptEndDate={receiptEndDate}
+                setReceiptEndDate={setReceiptEndDate}
+                receiptCustomRangeValid={receiptCustomRangeValid}
+                baseCurrency={baseCurrency}
+                fmt={fmt}
+              />
+            </Widget>
 
-          {/* Transfer history */}
-          <TransferHistory
-            transfers={transfers}
-            collapsed={historyCollapsed}
-            onToggleCollapsed={() => setHistoryCollapsed((c) => !c)}
-            onMarkPaid={openMarkPaid}
-            onRevert={handleRevert}
-            fmt={fmt}
-          />
+            {/* Transfer history */}
+            <Widget span={{ 2: 2, 3: 2, 4: 2, 6: 2 }}>
+              <TransferHistory
+                transfers={transfers}
+                collapsed={historyCollapsed}
+                onToggleCollapsed={() => setHistoryCollapsed((c) => !c)}
+                onMarkPaid={openMarkPaid}
+                onRevert={handleRevert}
+                fmt={fmt}
+              />
+            </Widget>
 
-          {/* Transfer breakdown by account */}
-          <TransferByAccount breakdown={transferBreakdown} fmt={fmt} />
+            {/* Transfer breakdown by account */}
+            <Widget span={{ 2: 2, 3: 1, 4: 2, 6: 1 }}>
+              <TransferByAccount breakdown={transferBreakdown} fmt={fmt} />
+            </Widget>
+          </WidgetGrid>
 
           {/* Mark as Paid modal */}
           {markPaidTransfer && (
@@ -300,6 +335,6 @@ export function DashboardPage() {
 
         </>
       )}
-    </main>
+    </Page>
   )
 }

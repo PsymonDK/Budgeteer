@@ -29,7 +29,7 @@ export function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { hou
             )}
             {!h.budgetYear && <span className="text-xs text-gray-600">No active budget</span>}
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1.5">
+          <div className="grid grid-cols-2 @xl:grid-cols-4 gap-x-6 gap-y-1.5">
             <Stat label={`Income ${periodLabel}`} value={h.monthlyGrossIncome} subLabel="Net" subValue={h.monthlyIncome} color="text-gray-200" fmt={fmt} />
             <Stat label={`Expenses ${periodLabel}`} value={h.monthlyExpenses} color="text-gray-200" fmt={fmt} />
             <Stat label={`Savings ${periodLabel}`} value={h.monthlySavings} color="text-gray-200" fmt={fmt} />

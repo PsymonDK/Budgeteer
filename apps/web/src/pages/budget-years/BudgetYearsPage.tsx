@@ -17,6 +17,7 @@ import {
   CopyYearModal, CreateYearModal, DeleteYearDialog, NewSimulationModal, PromoteYearDialog, RenameSimulationModal,
   RetireYearDialog,
 } from './BudgetYearDialogs'
+import { Page } from '../../components/Page'
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -220,7 +221,7 @@ export function BudgetYearsPage() {
 
   return (
     <>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <Page template="list">
         <PageHeader
           title="Budget Years"
           subtitle="Manage budget years and planning simulations."
@@ -272,7 +273,7 @@ export function BudgetYearsPage() {
             />
           </>
         )}
-      </main>
+      </Page>
 
       {/* ── Create year modal ────────────────────────────────────────────────── */}
       {showCreate && (

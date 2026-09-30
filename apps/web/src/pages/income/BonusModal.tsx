@@ -4,6 +4,7 @@ import { FormError } from '../../components/FormError'
 import { inputClass, primaryBtn, secondaryBtn } from '../../lib/styles'
 import type { BudgetMode, Job } from './types'
 import type { BonusEditor } from './useIncomeEditors'
+import { StickyActions } from '../../components/StickyActions'
 
 interface BonusModalProps {
   editor: BonusEditor
@@ -26,7 +27,7 @@ export function BonusModal({ editor, jobs, currencies, baseCurrency }: BonusModa
           <input type="text" value={bonusForm.label} onChange={(e) => setBonusForm({ ...bonusForm, label: e.target.value })}
             required autoFocus placeholder="e.g. Annual bonus" className={inputClass} />
         </div>
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 @xl:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-400 mb-1">Payment date</label>
             <input type="date" value={bonusForm.paymentDate} onChange={(e) => setBonusForm({ ...bonusForm, paymentDate: e.target.value })}
@@ -83,14 +84,14 @@ export function BonusModal({ editor, jobs, currencies, baseCurrency }: BonusModa
           </div>
         )}
         <FormError message={bonusError} />
-        <div className="flex gap-3 pt-2">
+        <StickyActions>
           <button type="submit" disabled={createBonusMutation.isPending || updateBonusMutation.isPending}
             className={`flex-1 ${primaryBtn}`}>
             {createBonusMutation.isPending || updateBonusMutation.isPending ? 'Saving…' : editingBonus ? 'Save changes' : 'Add bonus'}
           </button>
           <button type="button" onClick={closeBonus}
             className={`flex-1 ${secondaryBtn}`}>Cancel</button>
-        </div>
+        </StickyActions>
       </form>
     </Modal>
   )
