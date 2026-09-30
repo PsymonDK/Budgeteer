@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom'
-import { Trash2, RotateCcw } from 'lucide-react'
+import { Trash, RotateCcw } from 'lucide-react'
 import { PageHeader } from '../../components/PageHeader'
 import { PageLoader } from '../../components/LoadingSpinner'
 import { DataTable, type DataColumn } from '../../components/DataTable'
@@ -83,7 +83,7 @@ export function TrashPage() {
 
       {items.length === 0 ? (
         <div className="bg-gray-900 border border-gray-800 rounded-xl py-12 text-center">
-          <Trash2 size={24} className="mx-auto text-gray-600 mb-3" />
+          <Trash size={24} className="mx-auto text-gray-600 mb-3" />
           <p className="text-gray-500 text-sm">The trash is empty.</p>
         </div>
       ) : (

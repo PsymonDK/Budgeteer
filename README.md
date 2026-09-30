@@ -220,7 +220,7 @@ See [docs/architecture.md](docs/architecture.md) for the full data model and API
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router v6, Recharts, D3/Sankey, Lucide React, Sonner |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router v6, Recharts, D3/Sankey, Lucide React, Sonner |
 | Backend | Node.js, TypeScript, Fastify, Prisma ORM, Zod, node-cron, @anthropic-ai/sdk |
 | Database | PostgreSQL 16 |
 | Auth | JWT + refresh tokens |

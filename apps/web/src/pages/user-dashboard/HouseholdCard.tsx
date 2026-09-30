@@ -1,4 +1,4 @@
-import { ArrowRight, AlertTriangle } from 'lucide-react'
+import { ArrowRight, TriangleAlert } from 'lucide-react'
 import { StatusBadge } from '../../components/StatusBadge'
 import type { HouseholdSummary } from './types'
 
@@ -39,12 +39,12 @@ export function HouseholdCard({ household: h, onClick, fmt, periodLabel }: { hou
             <div className="flex gap-2 mt-3 flex-wrap">
               {h.warnings.expensesExceedIncome && (
                 <span className="flex items-center gap-1 text-xs text-amber-400 bg-amber-900/20 border border-amber-800/30 rounded-full px-2 py-0.5">
-                  <AlertTriangle size={10} /> Expenses exceed income
+                  <TriangleAlert size={10} /> Expenses exceed income
                 </span>
               )}
               {h.warnings.noSavings && (
                 <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-800/50 border border-gray-700/30 rounded-full px-2 py-0.5">
-                  <AlertTriangle size={10} /> No savings
+                  <TriangleAlert size={10} /> No savings
                 </span>
               )}
             </div>

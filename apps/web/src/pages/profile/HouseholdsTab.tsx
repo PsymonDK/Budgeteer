@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { AlertTriangle, Home } from 'lucide-react'
+import { TriangleAlert, House } from 'lucide-react'
 import { api } from '../../api/client'
 import { qk } from '../../api/queryKeys'
 import { useHouseholds } from '../../api/queries'
@@ -22,7 +22,7 @@ export function HouseholdsTab() {
     <div className="space-y-6">
       {summary?.overAllocated && (
         <div className="flex items-center gap-3 bg-red-950 border border-red-800 rounded-xl px-4 py-3 text-sm text-red-300">
-          <AlertTriangle size={16} className="flex-shrink-0" />
+          <TriangleAlert size={16} className="flex-shrink-0" />
           <span>
             Your income is over-allocated
             {summary.overAllocatedJobs.length > 0 && (
@@ -67,7 +67,7 @@ export function HouseholdsTab() {
                   to={`/households/${hh.id}`}
                   className="text-gray-600 hover:text-gray-400 transition-colors"
                 >
-                  <Home size={18} />
+                  <House size={18} />
                 </Link>
               </div>
               <div className="mt-3 pt-3 border-t border-gray-800 text-xs text-gray-500">

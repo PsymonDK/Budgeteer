@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { User, Home, CreditCard } from 'lucide-react'
+import { User, House, CreditCard } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { PageHeader } from '../../components/PageHeader'
 import { ProfileTab } from './ProfileTab'
@@ -11,7 +11,7 @@ type TabKey = 'profile' | 'households' | 'accounts'
 
 const TABS: { key: TabKey; label: string; icon: typeof User }[] = [
   { key: 'profile', label: 'Profile', icon: User },
-  { key: 'households', label: 'Households', icon: Home },
+  { key: 'households', label: 'Households', icon: House },
   { key: 'accounts', label: 'Accounts', icon: CreditCard },
 ]
 

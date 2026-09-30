@@ -11,21 +11,21 @@
     "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
+    "@anthropic-ai/sdk": "^0.128.0",
     "@fastify/cookie": "^11.1.2",
-    "@fastify/cors": "^11.2.0",
-    "@fastify/helmet": "^13.0.2",
-    "@fastify/jwt": "^10.0.0",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.1",
+    "@fastify/jwt": "^10.2.2",
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^9.1.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "bcryptjs": "^3.0.3",
-    "fast-xml-parser": "^5.5.10",
-    "fastify": "^5.8.5",
-    "node-cron": "^4.2.1",
-    "pg": "^8.13.0",
+    "fast-xml-parser": "^5.11.1",
+    "fastify": "^5.12.5",
+    "node-cron": "^4.6.0",
+    "pg": "^8.23.0",
     "prisma": "^7.10.0",
     "zod": "^3.22.4"
   },
@@ -35,7 +35,7 @@
     "@types/node-cron": "^3.0.11",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.3.3",
+    "typescript": "^6.0.3",
     "vitest": "^1.4.0"
   }
 }
