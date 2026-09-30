@@ -15,7 +15,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **Lucide React** — icon library
 - **Sonner** — toast notifications
 - **TanStack Query** — server state and caching
-- **React Router v6** — client-side routing
+- **React Router v7** — client-side routing
 - **Recharts** — budget visualisations
 - **D3 / Sankey** — income and receipt consumption flow diagrams
 
