@@ -103,6 +103,7 @@ export function DashboardPage() {
         { actualAmount: parseFloat(markPaidAmount) },
       )
       queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
+      queryClient.invalidateQueries({ queryKey: qk.reminders() })
       setMarkPaidTransfer(null)
     } catch (err) {
       toast.error(getApiError(err, 'Failed to mark transfer as paid'))
@@ -118,6 +119,7 @@ export function DashboardPage() {
         `/budget-years/${summary.budgetYear.id}/transfers/${transfer.id}/mark-pending`,
       )
       queryClient.invalidateQueries({ queryKey: qk.transfers(summary.budgetYear.id) })
+      queryClient.invalidateQueries({ queryKey: qk.reminders() })
     } catch (err) {
       toast.error(getApiError(err, 'Failed to revert transfer'))
     }

@@ -7,7 +7,7 @@ import { api } from './client'
 import { qk } from './queryKeys'
 import type {
   Account, AccountGroups, AppConfig, BudgetYear, Category, CategoryType, Currency, Household,
-  MonthPayments, ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
+  MonthPayments, PaymentReminders, ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
 } from './types'
 
 /** Per-call options a screen may set on a shared query. */
@@ -152,5 +152,15 @@ export function useMonthPayments(budgetYearId: string | undefined, month?: numbe
     queryFn: async () =>
       (await api.get<MonthPayments>(`/budget-years/${budgetYearId}/payments`, { params: month ? { month } : undefined })).data,
     enabled: !!budgetYearId,
+  })
+}
+
+/** GET /me/reminders — the signed-in member's manual payments due soon, due today or overdue. */
+export function useReminders() {
+  return useQuery({
+    queryKey: qk.reminders(),
+    queryFn: async () => (await api.get<PaymentReminders>('/me/reminders')).data,
+    // Stages move with the calendar; refresh now and then as well as on focus
+    refetchInterval: 15 * 60 * 1000,
   })
 }

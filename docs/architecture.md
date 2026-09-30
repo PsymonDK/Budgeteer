@@ -57,7 +57,7 @@ Self-hosted, open-source household budget tracker. Tracks recurring income and e
 - **PostgreSQL** — primary database
 - **Zod** — runtime validation and shared types
 - **JWT + Refresh Tokens** — stateless auth
-- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), automatic transfer marking (daily 00:15, and at startup), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
+- **node-cron** — scheduled jobs: budget-year lifecycle (daily 00:05, and at startup), expired refresh-token purge (daily 00:10), automatic transfer marking (daily 00:15, and at startup), reminder digests (every 15 minutes), notification delivery purge (daily 00:20), monthly transfer automation (1st of the month, 00:00), currency rate sync (daily 06:00)
 - **@anthropic-ai/sdk** — AI-assisted payslip parsing (optional; requires `ANTHROPIC_API_KEY`)
 - **Local OCR** — server-side receipt OCR uses Tesseract for images and Poppler `pdftoppm` for scanned PDFs inside the API container
 - **Local AI HTTP provider** — optional receipt cleanup and opt-in line categorization enhancement (requires `LOCAL_AI_BASE_URL` + `LOCAL_AI_MODEL`; categorization also requires `RECEIPT_AI_CATEGORIZE=true`; receipt data must not be sent to hosted AI services)
@@ -243,6 +243,17 @@ budgeteer/
 - New rows appended daily; queries use `DISTINCT ON` to get the latest rate per currency
 - Past expense/savings rates are locked at `rateDate` using the stored rate on or before the payment period (`frequencyPeriod`); unlocked ones are re-priced at the latest rate on each daily sync, using the same `calcMonthlyInBase` as save-time (partial-year average included). RETIRED years are never rewritten
 - A locked rate is kept on edit only while the currency is unchanged; switching currency unlocks and uses the latest rate
+
+**Reminders for manual payments** (`lib/reminders.ts` rules, `lib/reminderItems.ts` loader, `lib/reminderDigests.ts` sending)
+- Items: PENDING manual expense/savings occurrences and PENDING manual household transfers of each ACTIVE budget year, up to next month. Due date = the entry's due day in that month, clamped (weekly/fortnightly and no due day → the 1st); a transfer uses the household's transfer due day
+- Stages: DUE_SOON within the lead time (2 days until per-member settings, #260), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
+- Recipients: INDIVIDUAL → its owner; CUSTOM → members with a share above 0; SHARED (or an owner no longer a member) → every member; transfers → every member
+- Digests: once a member's digest time (08:00 server time until #260) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log). Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (#258) and ntfy/webhook (#259); none yet
+- In-app: the navigation badge (red when something is overdue) and the to-pay list's summary line come from `GET /me/reminders`
+
+**notification_deliveries** — log of reminder digests sent or attempted
+- recipientKey (`user:<id>` or `household:<id>`), userId / householdId (nullable), channel (`EMAIL` | `WEBHOOK`), date (YYYY-MM-DD), itemKeys (`<stage>:<item key>`), status (`SENT` | `FAILED`), attempts, error
+- Unique per recipient, channel and date; rows older than 90 days are purged daily
 
 **automations** — scheduled or manually-triggered household jobs
 - householdId, key (unique per household), label, description, schedule (cron), isEnabled
@@ -442,6 +453,7 @@ PUT    /income/:id/allocations/:householdId
 DELETE /income/:id/allocations/:householdId
 
 GET    /me/summary                                     # cross-household dashboard summary
+GET    /me/reminders                                   # manual payments due soon / today / overdue across the member's households, with counts
 
 GET    /households
 POST   /households

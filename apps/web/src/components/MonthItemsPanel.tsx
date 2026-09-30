@@ -4,6 +4,7 @@ import { ArrowRightLeft, ChevronLeft, ChevronRight, ListChecks, MoreHorizontal, 
 import { toast } from 'sonner'
 import { api } from '../api/client'
 import { qk } from '../api/queryKeys'
+import { useReminders } from '../api/queries'
 import type { DismissReason, OccurrenceStatus, PaymentMethod } from '../api/types'
 import { getApiError } from '../lib/apiError'
 
@@ -79,8 +80,13 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
       (await api.get<MonthItems>(`/budget-years/${budgetYearId}/occurrences`, { params: month ? { month } : undefined })).data,
   })
 
+  // What needs attention now, for the summary under the title
+  const { data: reminderData } = useReminders()
+  const reminders = reminderData?.reminders.filter((r) => r.budgetYearId === budgetYearId) ?? []
+
   function refresh() {
     queryClient.invalidateQueries({ queryKey: qk.occurrences(budgetYearId) })
+    queryClient.invalidateQueries({ queryKey: qk.reminders() })
     // The month's transfer total and breakdown can change
     queryClient.invalidateQueries({ queryKey: qk.transfersAll() })
   }
@@ -145,6 +151,8 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
         </div>
       </div>
 
+      {reminders.length > 0 && <ReminderSummary reminders={reminders} leadDays={reminderData?.leadDays ?? 2} />}
+
       {data.transfers.length > 0 && (
         <ul className="divide-y divide-gray-800 mb-4 pb-3 border-b border-gray-800">
           {data.transfers.map((t) => (
@@ -207,6 +215,26 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
         </p>
       )}
     </div>
+  )
+}
+
+/** What needs attention now: overdue, due today and due within the lead time. */
+function ReminderSummary({ reminders, leadDays }: { reminders: { stage: string }[]; leadDays: number }) {
+  const count = (stage: string) => reminders.filter((r) => r.stage === stage).length
+  const parts = [
+    { n: count('OVERDUE'), text: 'overdue', className: 'text-red-300' },
+    { n: count('DUE_TODAY'), text: 'due today', className: 'text-amber-300' },
+    { n: count('DUE_SOON'), text: `due in the next ${leadDays} days`, className: 'text-gray-300' },
+  ].filter((p) => p.n > 0)
+  return (
+    <p className="-mt-2 mb-4 text-sm" role="status">
+      {parts.map((p, i) => (
+        <span key={p.text}>
+          {i > 0 && <span className="text-gray-600"> · </span>}
+          <b className={`font-semibold ${p.className}`}>{p.n}</b> <span className="text-gray-400">{p.text}</span>
+        </span>
+      ))}
+    </p>
   )
 }
 

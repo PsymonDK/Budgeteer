@@ -28,6 +28,7 @@ export function TransferSettings({ householdId: id, household }: { householdId: 
       // Switching to automatic marks due transfers paid; the dashboard and to-pay list change
       queryClient.invalidateQueries({ queryKey: qk.transfersAll() })
       queryClient.invalidateQueries({ queryKey: ['occurrences'] })
+      queryClient.invalidateQueries({ queryKey: qk.reminders() })
     },
     onError: () => toast.error('Failed to update settings'),
   })

@@ -248,3 +248,30 @@ export interface MonthPayments {
   /** Closed (SKIPPED) items are left out; doneCount (paid or dismissed) and unpaid count manual items */
   totals: { count: number; due: string; manualCount: number; doneCount: number; unpaid: string }
 }
+
+export type ReminderStage = 'DUE_SOON' | 'DUE_TODAY' | 'OVERDUE'
+
+/** A manual payment that needs attention now (GET /me/reminders). */
+export interface PaymentReminder {
+  /** "expense:<occurrence id>", "savings:<occurrence id>" or "transfer:<transfer id>" */
+  key: string
+  kind: 'expense' | 'savings' | 'transfer'
+  label: string
+  amount: string
+  /** YYYY-MM-DD */
+  dueDate: string
+  stage: ReminderStage
+  /** Negative when overdue */
+  daysUntilDue: number
+  householdId: string
+  householdName: string
+  budgetYearId: string
+}
+
+/** GET /me/reminders — due soon (within leadDays), due today and overdue, overdue first */
+export interface PaymentReminders {
+  date: string
+  leadDays: number
+  reminders: PaymentReminder[]
+  counts: { overdue: number; dueToday: number; dueSoon: number; total: number }
+}

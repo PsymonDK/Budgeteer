@@ -23,6 +23,8 @@ export const qk = {
   incomeTrendMe: () => ['income-trend-me'] as const,
   incomeSankeyMe: () => ['income-sankey-me'] as const,
   users: () => ['users'] as const,
+  /** GET /me/reminders — invalidate whenever a manual item or transfer is marked or dismissed */
+  reminders: () => ['reminders'] as const,
 
   // ── Households ──────────────────────────────────────────────────────────────
   households: () => ['households'] as const,

@@ -12,6 +12,16 @@ export interface ShellNavItem {
   icon: LucideIcon
   /** Match the path exactly (index routes) instead of as a prefix. */
   end?: boolean
+  /** A count shown next to the link (a dot where the label is hidden), e.g. payments needing attention */
+  badge?: ShellNavBadge
+}
+
+export interface ShellNavBadge {
+  count: number
+  /** Read out to screen readers, e.g. "3 payments need attention" */
+  label: string
+  /** Port red instead of brass, e.g. when something is overdue */
+  alert?: boolean
 }
 
 export interface ShellNavSection {
@@ -241,6 +251,31 @@ const SECTION_TITLE: Record<NavMode, string> = { drawer: 'block', rail: 'hidden'
 const SECTION_DIVIDER: Record<NavMode, string> = { drawer: 'hidden', rail: 'block', responsive: 'lg:hidden' }
 const LINK_ALIGN: Record<NavMode, string> = { drawer: 'justify-start', rail: 'justify-center', responsive: 'justify-center lg:justify-start' }
 const LINK_LABEL: Record<NavMode, string> = { drawer: '', rail: 'sr-only', responsive: 'sr-only lg:not-sr-only' }
+// Badge as a count where the label shows, as a dot on the icon where it doesn't
+const BADGE_PILL: Record<NavMode, string> = { drawer: 'inline-flex', rail: 'hidden', responsive: 'hidden lg:inline-flex' }
+const BADGE_DOT: Record<NavMode, string> = { drawer: 'hidden', rail: 'block', responsive: 'block lg:hidden' }
+
+function NavBadgePill({ badge, className }: { badge: ShellNavBadge; className: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} ml-auto min-w-5 h-5 px-1.5 items-center justify-center rounded-full text-[11px] font-semibold tabular-nums ${
+        badge.alert ? 'bg-red-500/20 text-red-300' : 'bg-amber-400/15 text-amber-300'
+      }`}
+    >
+      {badge.count}
+    </span>
+  )
+}
+
+function NavBadgeDot({ badge, className }: { badge: ShellNavBadge; className: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full ring-2 ring-gray-900 ${badge.alert ? 'bg-red-400' : 'bg-amber-400'}`}
+    />
+  )
+}
 
 function NavSections({ sections, mode, showTitles }: { sections: ShellNavSection[]; mode: NavMode; showTitles: boolean }) {
   return (
@@ -263,7 +298,7 @@ function NavSections({ sections, mode, showTitles }: { sections: ShellNavSection
 }
 
 function ShellNavLink({ item, mode, showTitle }: { item: ShellNavItem; mode: NavMode; showTitle: boolean }) {
-  const { label, to, icon: Icon, end } = item
+  const { label, to, icon: Icon, end, badge } = item
   return (
     <NavLink
       to={to}
@@ -278,8 +313,17 @@ function ShellNavLink({ item, mode, showTitle }: { item: ShellNavItem; mode: Nav
     >
       {({ isActive }) => (
         <>
-          <Icon size={16} className={`flex-shrink-0 ${isActive ? 'text-amber-400' : 'text-gray-500'}`} />
+          <span className="relative flex-shrink-0">
+            <Icon size={16} className={isActive ? 'text-amber-400' : 'text-gray-500'} />
+            {badge && badge.count > 0 && <NavBadgeDot badge={badge} className={BADGE_DOT[mode]} />}
+          </span>
           <span className={`${LINK_LABEL[mode]} truncate`}>{label}</span>
+          {badge && badge.count > 0 && (
+            <>
+              <NavBadgePill badge={badge} className={BADGE_PILL[mode]} />
+              <span className="sr-only">, {badge.label}</span>
+            </>
+          )}
         </>
       )}
     </NavLink>
@@ -302,8 +346,12 @@ function TabBar({ tabs, quickAction, onQuickAction, onMore, moreActive }: {
     >
       {({ isActive }) => (
         <>
-          <item.icon size={20} className={isActive ? 'text-amber-400' : undefined} />
+          <span className="relative">
+            <item.icon size={20} className={isActive ? 'text-amber-400' : undefined} />
+            {item.badge && item.badge.count > 0 && <NavBadgeDot badge={item.badge} className="block" />}
+          </span>
           <span className="truncate max-w-full px-1">{item.label}</span>
+          {item.badge && item.badge.count > 0 && <span className="sr-only">, {item.badge.label}</span>}
         </>
       )}
     </NavLink>

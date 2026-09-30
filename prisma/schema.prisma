@@ -91,6 +91,17 @@ enum OccurrenceStatus {
   DISMISSED // taken off the to-pay list by a member without marking it paid (see dismissReason)
 }
 
+// Channels that deliver reminder digests. In-app reminders are a live view, not a delivery.
+enum NotificationChannel {
+  EMAIL
+  WEBHOOK
+}
+
+enum NotificationDeliveryStatus {
+  SENT
+  FAILED
+}
+
 // Why a member took an occurrence off the to-pay list
 enum DismissReason {
   PAID_ELSEWHERE // paid, but not in a way the app tracks (e.g. from another account)
@@ -142,6 +153,7 @@ model User {
   households                HouseholdMember[]
   jobs                      Job[]
   refreshTokens             RefreshToken[]
+  notificationDeliveries    NotificationDelivery[]
   createdCategories         Category[]
   preferences               UserPreferences?
   ownedExpenses             Expense[]              @relation("OwnedExpenses")
@@ -188,6 +200,7 @@ model Household {
   receiptSubcategories ReceiptSubcategory[]
   receiptCategoryMappings ReceiptCategoryMapping[]
   receiptClassifierTerms ReceiptClassifierTerm[]
+  notificationDeliveries NotificationDelivery[]
 }
 
 model HouseholdMember {
@@ -710,4 +723,29 @@ model SavingsOccurrence {
   updatedAt       DateTime         @updatedAt
 
   @@unique([savingsEntryId, year, month])
+}
+
+// One reminder digest sent (or attempted) to a recipient on one channel on one day. The
+// item keys record which reminder stages it carried, so each stage is sent once.
+model NotificationDelivery {
+  id           String                     @id @default(cuid())
+  // "user:<id>" or "household:<id>" (the household channel); unique per channel per day
+  recipientKey String
+  userId       String?
+  user         User?                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  householdId  String?
+  household    Household?                 @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  channel      NotificationChannel
+  // The digest's local date, YYYY-MM-DD
+  date         String
+  // "<stage>:<item key>", e.g. "DUE_SOON:expense:ckx…"
+  itemKeys     String[]
+  status       NotificationDeliveryStatus
+  attempts     Int                        @default(1)
+  error        String?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+
+  @@unique([recipientKey, channel, date])
+  @@index([createdAt])
 }
