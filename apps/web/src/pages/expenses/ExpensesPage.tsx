@@ -27,6 +27,9 @@ import { emptyForm, filterAndSortExpenses, formFromExpense } from './helpers'
 import { ExpensesTable } from './ExpensesTable'
 import { ExpenseDetail } from './ExpenseDetail'
 import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
+import { FilteredList, type FilterFacet } from '../../components/FilterColumn'
+import { CategoryIcon } from '../../components/CategoryIcon'
+import { ACCOUNT_TYPE_LABELS } from '../../lib/constants'
 import { ExpenseCalendar } from './ExpenseCalendar'
 import { ExpenseFormModal } from './ExpenseFormModal'
 import type { Expense, ExpenseForm, SortKey } from './types'
@@ -96,6 +99,31 @@ export function ExpensesPage() {
   // ── Derived data ─────────────────────────────────────────────────────────────
 
   const accountsInExpenses = useMemo(() => accountsIn(expenses), [expenses])
+
+  // Filter column (4K): the same filters as the chips, with how many expenses have each value
+  const facets = useMemo<FilterFacet[]>(() => {
+    const byCategory = new Map<string, number>()
+    const byAccount = new Map<string, number>()
+    for (const e of expenses) {
+      byCategory.set(e.category.id, (byCategory.get(e.category.id) ?? 0) + 1)
+      if (e.account) byAccount.set(e.account.id, (byAccount.get(e.account.id) ?? 0) + 1)
+    }
+    return [
+      {
+        key: 'category', title: 'Category', total: expenses.length, selected: filterCategories, onChange: setFilterCategories,
+        options: categories
+          .filter((c) => byCategory.has(c.id) || filterCategories.has(c.id))
+          .map((c) => ({
+            id: c.id, label: c.name, count: byCategory.get(c.id) ?? 0,
+            icon: c.icon ? <CategoryIcon name={c.icon} size={14} className="text-gray-500 shrink-0" /> : undefined,
+          })),
+      },
+      {
+        key: 'account', title: 'Account', total: expenses.length, selected: filterAccounts, onChange: setFilterAccounts,
+        options: accountsInExpenses.map((a) => ({ id: a.id, label: a.name, hint: ACCOUNT_TYPE_LABELS[a.type], count: byAccount.get(a.id) ?? 0 })),
+      },
+    ]
+  }, [expenses, categories, accountsInExpenses, filterCategories, filterAccounts])
 
   const filtered = useMemo(
     () => filterAndSortExpenses(expenses, filterCategories, filterAccounts, sortKey, sortAsc),
@@ -307,13 +335,16 @@ export function ExpensesPage() {
           <>
             {/* Controls */}
             <div className="flex flex-col gap-3 mb-4">
-              <AccountFilterChips accounts={accountsInExpenses} selected={filterAccounts} setSelected={setFilterAccounts} />
+              <AccountFilterChips accounts={accountsInExpenses} selected={filterAccounts} setSelected={setFilterAccounts} className="ultra:hidden" />
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <CategoryFilter
-                  categories={categories}
-                  selected={filterCategories}
-                  onChange={setFilterCategories}
-                />
+                {/* From 2200px the filter column replaces the chips */}
+                <div className="ultra:hidden">
+                  <CategoryFilter
+                    categories={categories}
+                    selected={filterCategories}
+                    onChange={setFilterCategories}
+                  />
+                </div>
                 <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
                   <div className={segmentGroup}>
                     <button
@@ -341,6 +372,7 @@ export function ExpensesPage() {
               </div>
             </div>
 
+            <FilteredList facets={facets}>
             {/* Bulk action bar */}
             {!isReadOnly && selectedIds.size > 0 && (
               <BulkSelectionBar
@@ -393,6 +425,7 @@ export function ExpensesPage() {
               />
               </ListWithDetail>
             )}
+            </FilteredList>
           </>
         )}
       </Page>

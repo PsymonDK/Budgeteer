@@ -24,6 +24,8 @@ import { getApiError } from '../../lib/apiError'
 import { SavingsTable } from './SavingsTable'
 import { SavingsDetail } from './SavingsDetail'
 import { ListWithDetail, useDetailSelection } from '../../components/DetailPane'
+import { FilteredList, type FilterFacet } from '../../components/FilterColumn'
+import { ACCOUNT_TYPE_LABELS } from '../../lib/constants'
 import { SavingsFormModal } from './SavingsFormModal'
 import { emptyForm, type EntryForm, type SavingsEntry } from './types'
 import { restoreUrl, useTrashedToast } from '../../hooks/useTrash'
@@ -88,6 +90,16 @@ export function SavingsPage() {
   // ── Derived ───────────────────────────────────────────────────────────────────
 
   const accountsInEntries = useMemo(() => accountsIn(entries), [entries])
+
+  // Filter column (4K): the account chips as a list, with how many entries use each account
+  const facets = useMemo<FilterFacet[]>(() => {
+    const byAccount = new Map<string, number>()
+    for (const e of entries) if (e.account) byAccount.set(e.account.id, (byAccount.get(e.account.id) ?? 0) + 1)
+    return [{
+      key: 'account', title: 'Account', total: entries.length, selected: filterAccounts, onChange: setFilterAccounts,
+      options: accountsInEntries.map((a) => ({ id: a.id, label: a.name, hint: ACCOUNT_TYPE_LABELS[a.type], count: byAccount.get(a.id) ?? 0 })),
+    }]
+  }, [entries, accountsInEntries, filterAccounts])
 
   const filteredEntries = useMemo(() => {
     if (filterAccounts.size === 0) return entries
@@ -283,9 +295,9 @@ export function SavingsPage() {
 
         <AccountFilterChips
           accounts={accountsInEntries}
+          className="mb-4 ultra:hidden"
           selected={filterAccounts}
           setSelected={setFilterAccounts}
-          className="mb-4"
         />
 
         {yearsLoading ? (
@@ -309,7 +321,7 @@ export function SavingsPage() {
             )}
           </div>
         ) : (
-          <>
+          <FilteredList facets={facets}>
           {selectedIds.size > 0 && !isReadOnly && (
             <BulkSelectionBar
               count={selectedIds.size}
@@ -346,7 +358,7 @@ export function SavingsPage() {
             fmt={fmt}
           />
           </ListWithDetail>
-          </>
+          </FilteredList>
         )}
       </Page>
 
