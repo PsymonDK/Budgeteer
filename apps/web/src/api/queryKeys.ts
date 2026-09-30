@@ -25,6 +25,14 @@ export const qk = {
   users: () => ['users'] as const,
   /** GET /me/reminders — invalidate whenever a manual item or transfer is marked or dismissed */
   reminders: () => ['reminders'] as const,
+  /** GET /me/notification-settings */
+  myNotificationSettings: () => ['notification-settings', 'me'] as const,
+  /** GET /households/:id/notification-settings */
+  householdNotificationSettings: (householdId: Id) => ['notification-settings', 'household', householdId] as const,
+  /** GET /admin/notification-settings */
+  adminNotificationSettings: () => ['admin', 'notification-settings'] as const,
+  /** GET /admin/notification-deliveries */
+  adminNotificationDeliveries: () => ['admin', 'notification-deliveries'] as const,
 
   // ── Households ──────────────────────────────────────────────────────────────
   households: () => ['households'] as const,

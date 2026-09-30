@@ -2,10 +2,6 @@
 // household transfer is due soon, due today or overdue, and who is reminded. Pure functions;
 // lib/reminderItems.ts loads the items and lib/reminderDigests.ts sends the digests.
 
-/** Days before the due date a "due soon" reminder starts (until notification settings, #260) */
-export const DEFAULT_LEAD_DAYS = 2
-/** Local time the daily digest goes out, HH:MM (until notification settings, #260) */
-export const DEFAULT_DIGEST_TIME = '08:00'
 /** A digest reminds about an unpaid item once more, this many days after its due date */
 export const OVERDUE_AFTER_DAYS = 3
 
@@ -99,19 +95,21 @@ const STAGE_ORDER: Record<ReminderStage, number> = { OVERDUE: 0, DUE_TODAY: 1, D
 /**
  * A member's reminders today: the items they're reminded about that have a stage, overdue
  * first, then by due date. `mode` picks the in-app view (`current`) or the digest rule.
+ * `leadDays` may depend on the item's household (a member's own setting, or each household's default).
  */
 export function remindersFor(
   userId: string,
   items: ReminderItem[],
   today: string,
-  leadDays: number,
+  leadDays: number | ((item: ReminderItem) => number),
   mode: 'current' | 'digest',
 ): Reminder[] {
+  const leadFor = typeof leadDays === 'number' ? () => leadDays : leadDays
   const stageOf = mode === 'current' ? currentStage : digestStage
   const reminders: Reminder[] = []
   for (const item of items) {
     if (!item.recipientIds.includes(userId)) continue
-    const stage = stageOf(item.dueDate, today, leadDays)
+    const stage = stageOf(item.dueDate, today, leadFor(item))
     if (stage) reminders.push({ item, stage, daysUntilDue: daysBetween(today, item.dueDate) })
   }
   return reminders.sort((a, b) =>

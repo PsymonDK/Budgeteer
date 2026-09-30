@@ -7,7 +7,7 @@ import { api } from './client'
 import { qk } from './queryKeys'
 import type {
   Account, AccountGroups, AppConfig, BudgetYear, Category, CategoryType, Currency, Household,
-  MonthPayments, PaymentReminders, ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
+  HouseholdNotificationResponse, MonthPayments, MyNotificationSettings, PaymentReminders, ReceiptConsumptionSummary, ReceiptSummaryPeriod, UserMe, UserPreferences,
 } from './types'
 
 /** Per-call options a screen may set on a shared query. */
@@ -162,5 +162,22 @@ export function useReminders() {
     queryFn: async () => (await api.get<PaymentReminders>('/me/reminders')).data,
     // Stages move with the calendar; refresh now and then as well as on focus
     refetchInterval: 15 * 60 * 1000,
+  })
+}
+
+/** GET /me/notification-settings — the member's reminder settings and what the install allows. */
+export function useMyNotificationSettings() {
+  return useQuery({
+    queryKey: qk.myNotificationSettings(),
+    queryFn: async () => (await api.get<MyNotificationSettings>('/me/notification-settings')).data,
+  })
+}
+
+/** GET /households/:id/notification-settings — the household's reminder settings and what the install allows. */
+export function useHouseholdNotificationSettings(householdId: string | undefined) {
+  return useQuery({
+    queryKey: qk.householdNotificationSettings(householdId),
+    queryFn: async () => (await api.get<HouseholdNotificationResponse>(`/households/${householdId}/notification-settings`)).data,
+    enabled: !!householdId,
   })
 }

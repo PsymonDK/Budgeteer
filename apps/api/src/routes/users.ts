@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
+import { reminderPreferenceFields } from '../lib/notificationSchemas'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -17,7 +18,7 @@ const UpdateMeSchema = z
   .partial()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
 
-const UpdatePreferencesSchema = z
+export const UpdatePreferencesSchema = z
   .object({
     defaultHouseholdId: z.string().nullable(),
     preferredCurrency: z.string().min(1).max(10),
@@ -26,6 +27,7 @@ const UpdatePreferencesSchema = z
     notifyNoSavings: z.boolean(),
     notifyUncategorised: z.boolean(),
     showDashboardSparklines: z.boolean(),
+    ...reminderPreferenceFields,
   })
   .partial()
   .refine((data) => Object.keys(data).length > 0, { message: 'At least one field is required' })
@@ -192,6 +194,13 @@ export async function userRoutes(fastify: FastifyInstance) {
             notifyNoSavings: true,
             notifyUncategorised: true,
             showDashboardSparklines: true,
+            reminderInApp: true,
+            reminderEmail: true,
+            reminderEmailAddress: true,
+            reminderWebhook: true,
+            reminderWebhookUrl: true,
+            reminderLeadDays: true,
+            reminderDigestTime: true,
           },
         },
       },

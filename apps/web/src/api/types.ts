@@ -263,15 +263,78 @@ export interface PaymentReminder {
   stage: ReminderStage
   /** Negative when overdue */
   daysUntilDue: number
+  /** Days before the due date "due soon" starts, for this member in this household */
+  leadDays: number
   householdId: string
   householdName: string
   budgetYearId: string
 }
 
-/** GET /me/reminders — due soon (within leadDays), due today and overdue, overdue first */
+/** GET /me/reminders — due soon (within each reminder's leadDays), due today and overdue, overdue first */
 export interface PaymentReminders {
   date: string
-  leadDays: number
   reminders: PaymentReminder[]
   counts: { overdue: number; dueToday: number; dueSoon: number; total: number }
+}
+
+// ── Notification settings (admin → household → member; each narrows the one above) ──
+
+/** Which channels the level above allows */
+export interface AllowedChannels { inApp: boolean; email: boolean; webhook: boolean }
+
+/** GET/PUT /admin/notification-settings */
+export interface SystemNotificationSettings {
+  inAppEnabled: boolean
+  emailEnabled: boolean
+  webhookEnabled: boolean
+  /** Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN) */
+  webhookAllowPrivateNetwork: boolean
+}
+
+/** GET /admin/notification-deliveries */
+export interface NotificationDeliveryRow {
+  id: string
+  channel: 'EMAIL' | 'WEBHOOK'
+  date: string
+  status: 'SENT' | 'FAILED'
+  attempts: number
+  error: string | null
+  updatedAt: string
+  reminderCount: number
+  user: { name: string; email: string } | null
+  household: { name: string } | null
+}
+
+export interface HouseholdNotificationSettings {
+  inAppEnabled: boolean
+  emailEnabled: boolean
+  webhookEnabled: boolean
+  /** Shared ntfy topic or webhook URL */
+  webhookUrl: string | null
+  leadDays: number
+}
+
+/** GET/PUT /households/:id/notification-settings */
+export interface HouseholdNotificationResponse {
+  settings: HouseholdNotificationSettings
+  allowed: AllowedChannels
+}
+
+export interface UserReminderSettings {
+  reminderInApp: boolean
+  reminderEmail: boolean
+  reminderEmailAddress: string | null
+  reminderWebhook: boolean
+  reminderWebhookUrl: string | null
+  /** null = each household's default */
+  reminderLeadDays: number | null
+  /** HH:MM */
+  reminderDigestTime: string
+}
+
+/** GET /me/notification-settings (saved through PUT /users/me/preferences) */
+export interface MyNotificationSettings {
+  settings: UserReminderSettings
+  loginEmail: string
+  allowed: AllowedChannels
 }

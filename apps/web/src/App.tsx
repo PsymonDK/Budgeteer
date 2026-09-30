@@ -30,6 +30,7 @@ const CategoriesPage = lazyNamed(() => import('./pages/CategoriesPage'), 'Catego
 const CategoriesAdminPage = lazyNamed(() => import('./pages/admin/CategoriesAdminPage'), 'CategoriesAdminPage')
 const CurrenciesAdminPage = lazyNamed(() => import('./pages/admin/CurrenciesAdminPage'), 'CurrenciesAdminPage')
 const AutomationsAdminPage = lazyNamed(() => import('./pages/admin/AutomationsAdminPage'), 'AutomationsAdminPage')
+const NotificationsAdminPage = lazyNamed(() => import('./pages/admin/NotificationsAdminPage'), 'NotificationsAdminPage')
 const ReceiptTrainingAdminPage = lazyNamed(() => import('./pages/admin/ReceiptTrainingAdminPage'), 'ReceiptTrainingAdminPage')
 const ExpensesPage = lazyNamed(() => import('./pages/expenses/ExpensesPage'), 'ExpensesPage')
 const IncomePage = lazyNamed(() => import('./pages/income/IncomePage'), 'IncomePage')
@@ -101,6 +102,7 @@ function App() {
               <Route path="categories" element={page(<CategoriesAdminPage />)} />
               <Route path="receipt-training" element={page(<ReceiptTrainingAdminPage />)} />
               <Route path="automations" element={page(<AutomationsAdminPage />)} />
+              <Route path="notifications" element={page(<NotificationsAdminPage />)} />
             </Route>
 
             {/* Standalone personal routes — shared GlobalLayout */}

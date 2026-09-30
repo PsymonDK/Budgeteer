@@ -175,6 +175,18 @@ model UserPreferences {
   notifyNoSavings            Boolean   @default(true)
   notifyUncategorised        Boolean   @default(true)
   showDashboardSparklines    Boolean   @default(true)
+  // Payment reminders (each channel also needs the admin and the household to allow it)
+  reminderInApp             Boolean  @default(true)
+  reminderEmail             Boolean  @default(true)
+  // Where reminder emails go; null = the login email
+  reminderEmailAddress      String?
+  reminderWebhook           Boolean  @default(true)
+  // Personal ntfy topic or webhook URL; the webhook channel needs one
+  reminderWebhookUrl        String?
+  // Days before the due date a "due soon" reminder starts; null = the household's default
+  reminderLeadDays          Int?
+  // Local time the daily digest goes out, HH:MM
+  reminderDigestTime        String   @default("08:00")
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 }
@@ -201,6 +213,7 @@ model Household {
   receiptCategoryMappings ReceiptCategoryMapping[]
   receiptClassifierTerms ReceiptClassifierTerm[]
   notificationDeliveries NotificationDelivery[]
+  notificationSettings   HouseholdNotificationSettings?
 }
 
 model HouseholdMember {
@@ -748,4 +761,32 @@ model NotificationDelivery {
 
   @@unique([recipientKey, channel, date])
   @@index([createdAt])
+}
+
+// Install-wide notification settings, set by system admins: which reminder channels exist.
+// A single row (id "default"); a missing row means the defaults below.
+model NotificationSettings {
+  id                         String   @id @default("default")
+  inAppEnabled               Boolean  @default(true)
+  // Off until an admin sets up email
+  emailEnabled               Boolean  @default(false)
+  webhookEnabled             Boolean  @default(false)
+  // Let webhooks reach private and loopback addresses (e.g. an ntfy server on the LAN)
+  webhookAllowPrivateNetwork Boolean  @default(false)
+  updatedAt                  DateTime @updatedAt
+}
+
+// A household's reminder settings, set by its admins; they can only narrow the install's.
+// A missing row means the defaults below.
+model HouseholdNotificationSettings {
+  householdId    String    @id
+  household      Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  inAppEnabled   Boolean   @default(true)
+  emailEnabled   Boolean   @default(true)
+  webhookEnabled Boolean   @default(true)
+  // Shared ntfy topic or webhook URL: the household channel, reminded about every item
+  webhookUrl     String?
+  // Default days before the due date a "due soon" reminder starts
+  leadDays       Int       @default(2)
+  updatedAt      DateTime  @updatedAt
 }

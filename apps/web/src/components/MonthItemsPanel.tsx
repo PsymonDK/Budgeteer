@@ -151,7 +151,7 @@ export function MonthItemsPanel({ budgetYearId, fmt }: { budgetYearId: string; f
         </div>
       </div>
 
-      {reminders.length > 0 && <ReminderSummary reminders={reminders} leadDays={reminderData?.leadDays ?? 2} />}
+      {reminders.length > 0 && <ReminderSummary reminders={reminders} leadDays={reminders[0].leadDays} />}
 
       {data.transfers.length > 0 && (
         <ul className="divide-y divide-gray-800 mb-4 pb-3 border-b border-gray-800">

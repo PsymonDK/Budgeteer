@@ -30,6 +30,7 @@ import { receiptRoutes } from './routes/receipts'
 import { receiptTrainingRoutes } from './routes/receiptTraining'
 import { occurrenceRoutes } from './routes/occurrences'
 import { reminderRoutes } from './routes/reminders'
+import { notificationSettingsRoutes } from './routes/notificationSettings'
 import { purgeNotificationDeliveries, runReminderDigests } from './lib/reminderDigests'
 import { trashRoutes } from './routes/trash'
 import { syncRates, BASE_CURRENCY } from './lib/currency'
@@ -122,6 +123,7 @@ app.register(profileRoutes)
 app.register(budgetTransferRoutes)
 app.register(occurrenceRoutes)
 app.register(reminderRoutes)
+app.register(notificationSettingsRoutes)
 app.register(trashRoutes)
 app.register(automationRoutes)
 app.register(payslipRoutes)

@@ -111,6 +111,7 @@ budgeteer/
 
 **user_preferences** — per-user settings (1:1 with user)
 - userId, defaultHouseholdId, preferredCurrency, notifyOverAllocation, notifyExpensesExceedIncome, notifyNoSavings, notifyUncategorised, showDashboardSparklines
+- Payment reminders: reminderInApp, reminderEmail, reminderEmailAddress (nullable; null = login email), reminderWebhook, reminderWebhookUrl (nullable), reminderLeadDays (nullable; null = household default), reminderDigestTime (HH:MM, default 08:00)
 
 **households** — shared budget spaces
 - id, name, isActive, budgetModel (`AVERAGE` | `FORWARD_LOOKING` | `PAY_NO_PAY`)
@@ -246,10 +247,18 @@ budgeteer/
 
 **Reminders for manual payments** (`lib/reminders.ts` rules, `lib/reminderItems.ts` loader, `lib/reminderDigests.ts` sending)
 - Items: PENDING manual expense/savings occurrences and PENDING manual household transfers of each ACTIVE budget year, up to next month. Due date = the entry's due day in that month, clamped (weekly/fortnightly and no due day → the 1st); a transfer uses the household's transfer due day
-- Stages: DUE_SOON within the lead time (2 days until per-member settings, #260), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
+- Stages: DUE_SOON within the lead time (the member's reminderLeadDays, else the household's leadDays), DUE_TODAY, OVERDUE. In-app (`GET /me/reminders`) anything past due is overdue; a digest sends OVERDUE once, 3 days after the due date
 - Recipients: INDIVIDUAL → its owner; CUSTOM → members with a share above 0; SHARED (or an owner no longer a member) → every member; transfers → every member
-- Digests: once a member's digest time (08:00 server time until #260) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log). Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (#258) and ntfy/webhook (#259); none yet
+- Digests: once a member's digest time (server time) has come, each channel sends at most one digest per member per day with only the stages not delivered before (`planDigest` against the delivery log), and only items of households whose settings let that channel reach the member. Failed deliveries are retried on later runs the same day, up to 5 attempts. Channels register in `activeChannels()`: email (#258) and ntfy/webhook (#259); none yet
 - In-app: the navigation badge (red when something is overdue) and the to-pay list's summary line come from `GET /me/reminders`
+
+**Notification settings** (`lib/notificationSettings.ts`) — three levels, each narrowing the one above (`resolveChannels`): a channel reaches a member for a household's items only when the install, the household and the member all allow it and there's a destination (email: reminderEmailAddress or the login email; webhook: the member's URL). The household channel (`resolveHouseholdChannel`) is the household's shared webhook URL. Missing rows mean the defaults
+
+**notification_settings** — install-wide, one row (`id` = "default"), system admins
+- inAppEnabled (default true), emailEnabled (default false), webhookEnabled (default false), webhookAllowPrivateNetwork (default false)
+
+**household_notification_settings** — per household (PK householdId), household admins
+- inAppEnabled, emailEnabled, webhookEnabled (default true), webhookUrl (nullable; the household channel), leadDays (0–14, default 2)
 
 **notification_deliveries** — log of reminder digests sent or attempted
 - recipientKey (`user:<id>` or `household:<id>`), userId / householdId (nullable), channel (`EMAIL` | `WEBHOOK`), date (YYYY-MM-DD), itemKeys (`<stage>:<item key>`), status (`SENT` | `FAILED`), attempts, error
@@ -416,7 +425,8 @@ DELETE /users/:id/jobs/:jobId
 GET    /users/:id/income/history
 GET    /users/me
 PUT    /users/me
-PUT    /users/me/preferences
+PUT    /users/me/preferences                          # includes the reminder* settings
+GET    /me/notification-settings                      # the member's reminder settings, login email, and channels the install allows
 POST   /users/me/change-password
 POST   /users/me/avatar
 DELETE /users/me/avatar
@@ -459,6 +469,8 @@ GET    /households
 POST   /households
 GET    /households/:id
 PUT    /households/:id                                  # { name, budgetModel?, transferPaymentMethod?, transferDueDay? } — household admin
+GET    /households/:id/notification-settings          # members; { settings, allowed }
+PUT    /households/:id/notification-settings          # household admin; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookUrl?, leadDays? }
 PUT    /households/:id/deactivate
 PUT    /households/:id/reactivate
 DELETE /households/:id                                 # admin only (hard delete)
@@ -549,6 +561,9 @@ PATCH  /admin/receipt-training/mappings/:id            # admin only
 DELETE /admin/receipt-training/mappings/:id            # admin only
 
 GET    /admin/automations                              # admin only
+GET    /admin/notification-settings                    # admin only
+PUT    /admin/notification-settings                    # admin only; { inAppEnabled?, emailEnabled?, webhookEnabled?, webhookAllowPrivateNetwork? }
+GET    /admin/notification-deliveries?limit=N          # admin only; latest reminder digests with status and error
 PATCH  /admin/automations/:id/toggle                   # admin only
 GET    /admin/automations/:id/runs                     # admin only
 POST   /admin/automations/:id/trigger                  # admin only
